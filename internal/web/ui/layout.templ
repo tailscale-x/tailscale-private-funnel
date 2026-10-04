@@ -7,21 +7,24 @@ templ Shell(title string, body string) {
         <meta charset="utf-8"/>
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
         <meta name="color-scheme" content="light"/>
-        <title>{ title } · Private Funnel</title>
+        <meta name="description" content="Tailnet-only control plane for private HTTPS exposure, signed ingress reports, and ownership-scoped DNS."/>
+        <title>{ title } · Local Funnel</title>
+        <link rel="icon" type="image/png" href="/assets/brand/local-funnel-logo.png"/>
         <link rel="stylesheet" href="/assets/app.css"/>
         <script src="/assets/htmx.min.js" defer></script>
     </head>
     <body>
         <div class="pf-app">
             <aside class="pf-sidebar" id="pf-sidebar">
-                <div class="pf-brand"><span class="pf-brand-mark">PF</span><span><strong>Private Funnel</strong><small>tailnet control plane</small></span></div>
+                <div class="pf-brand"><img class="pf-brand-logo" src="/assets/brand/local-funnel-logo.png" alt="Local Funnel logo"/><span><strong>Local Funnel</strong><small>Tailscale private edge</small></span></div>
                 <nav class="pf-nav" aria-label="Primary navigation">
                     <p class="pf-nav-label">Overview</p>
                     <a href="/" data-nav="/"><img src="/assets/icons/layout-dashboard.svg" alt=""/>Dashboard</a>
                     <a href="/exposures" data-nav="/exposures"><img src="/assets/icons/world.svg" alt=""/>Exposures</a>
                     <p class="pf-nav-label">Infrastructure</p>
-                    <a href="/gateways" data-nav="/gateways"><img src="/assets/icons/server-2.svg" alt=""/>Gateways</a>
-                    <a href="/routers" data-nav="/routers"><img src="/assets/icons/route.svg" alt=""/>Routers</a>
+                    <a href="/loadbalancers" data-nav="/loadbalancers"><img src="/assets/icons/server-2.svg" alt=""/>Load balancers</a>
+                    <a href="/ingresses" data-nav="/ingresses"><img src="/assets/icons/route.svg" alt=""/>Ingress nodes</a>
+                    <a href="/applications" data-nav="/applications"><img src="/assets/icons/server-2.svg" alt=""/>Applications</a>
                     <a href="/providers" data-nav="/providers"><img src="/assets/icons/database.svg" alt=""/>DNS providers</a>
                     <a href="/zones" data-nav="/zones"><img src="/assets/icons/link.svg" alt=""/>Zones</a>
                     <p class="pf-nav-label">Access</p>
@@ -35,12 +38,12 @@ templ Shell(title string, body string) {
             </aside>
             <div class="pf-main">
                 <header class="pf-topbar">
-                    <button class="pf-menu" type="button" aria-label="Open navigation" aria-controls="pf-sidebar" aria-expanded="false" onclick="document.getElementById('pf-sidebar').classList.toggle('pf-sidebar-open'); this.setAttribute('aria-expanded', this.getAttribute('aria-expanded') !== 'true')"><img src="/assets/icons/menu-2.svg" alt=""/></button>
-                    <div class="pf-topbar-context"><span class="pf-kicker">Tailnet</span><strong>Private Funnel</strong><img src="/assets/icons/chevron-down.svg" alt=""/></div>
-                    <div class="pf-topbar-right"><span class="pf-health"><i class="pf-status-dot pf-status-ok"></i> System healthy</span><span class="pf-identity"><img src="/assets/icons/user-circle.svg" alt=""/> Control node</span></div>
+                    <button class="pf-menu" type="button" aria-label="Open navigation" aria-controls="pf-sidebar" aria-expanded="false" onclick="const open=this.getAttribute('aria-expanded') !== 'true'; document.getElementById('pf-sidebar').classList.toggle('pf-sidebar-open', open); this.setAttribute('aria-expanded', String(open)); this.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation')"><img src="/assets/icons/menu-2.svg" alt=""/></button>
+                    <div class="pf-topbar-context"><span class="pf-kicker">Tailnet</span><strong>Local Funnel</strong><img src="/assets/icons/chevron-down.svg" alt=""/></div>
+                    <div class="pf-topbar-right"><span class="pf-health"><i class="pf-status-dot pf-status-ok"></i> Control plane online</span><span class="pf-identity"><img src="/assets/icons/user-circle.svg" alt=""/> Control node</span></div>
                 </header>
                 <main class="pf-content" id="page-content">@templ.Raw(body)</main>
-                <footer class="pf-footer"><span>Private Funnel · tailnet-only control plane</span><span><a href="/operations">Docs</a><a href="/settings">Settings</a></span></footer>
+                <footer class="pf-footer"><span>Local Funnel · tailnet-only control plane</span><span><a href="/operations">Docs</a><a href="/settings">Settings</a></span></footer>
             </div>
         </div>
         <script>

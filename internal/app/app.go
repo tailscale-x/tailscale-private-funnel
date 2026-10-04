@@ -12,19 +12,22 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	"github.com/docker/docker/api/types/events"
+	"github.com/docker/docker/api/types/filters"
+	dockerclient "github.com/docker/docker/client"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/ingress"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
+	tailscaleclient "github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/web"
 	"tailscale.com/tsnet"
 )
@@ -65,98 +68,117 @@ func defaults(mode string, o Options) (Options, error) {
 	if o.LoginServer == "" {
 		o.LoginServer = "https://controlplane.tailscale.com"
 	}
+	requiredTag := map[string]string{
+		"control":      "tag:tailscale-private-funnel",
+		"loadbalancer": "tag:tailscale-private-funnel",
+		"ingress":      "tag:tailscale-private-funnel",
+	}[mode]
+	if requiredTag != "" {
+		if len(o.Tags) == 0 {
+			o.Tags = []string{requiredTag}
+		} else {
+			for _, tag := range o.Tags {
+				if tag != "tag:tailscale-private-funnel" {
+					return o, fmt.Errorf("unsupported Tailscale tag %q; use tag:tailscale-private-funnel", tag)
+				}
+			}
+			if !containsString(o.Tags, requiredTag) {
+				return o, fmt.Errorf("%s requires %s", mode, requiredTag)
+			}
+		}
+	}
 	if mode != "control" && o.ManagementURL == "" && o.NonInteractive {
-		return o, errors.New("--management-url is required for gateway and router joins")
+		return o, errors.New("--management-url is required for loadbalancer and ingress deployment")
 	}
 	return o, nil
 }
 
-func Join(ctx context.Context, mode string, o Options) error {
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func Setup(ctx context.Context, mode string, o Options) error {
+	if mode != "control" {
+		return errors.New("only control uses direct OAuth bootstrap")
+	}
+	if !o.NonInteractive && o.OAuthClientIDFile == "" && o.OAuthClientSecretFile == "" && !o.OAuthClientIDStdin && !o.OAuthClientSecretStdin {
+		if err := controlWizard(&o); err != nil {
+			return err
+		}
+	}
 	var err error
 	o, err = defaults(mode, o)
 	if err != nil {
 		return err
 	}
-	if mode == "control" && !o.NonInteractive && !o.InteractiveLogin && o.AuthKeyFile == "" && !o.AuthKeyStdin {
-		return joinTUI(ctx, mode, o)
-	}
-	key, err := authKey(ctx, mode, o)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(o.StateDir, 0700); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(o.DataDir, 0700); err != nil {
-		return err
-	}
-	// Keep the resolved hostname beside the application state. Status uses it
-	// when no hostname flag is supplied so inspecting a live node cannot open a
-	// second tsnet identity under the container's transient hostname.
-	if err := os.WriteFile(filepath.Join(o.DataDir, "hostname"), []byte(o.Hostname), 0600); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(o.StateDir, "authkey"), []byte(key), 0600); err != nil {
-		return err
-	}
-	var reportPublic string
-	if mode == "router" || mode == "gateway" {
-		pub, _, identityErr := report.LoadOrCreate(filepath.Join(o.DataDir, "report-identity.json"))
-		if identityErr != nil {
-			return identityErr
-		}
-		reportPublic = base64.RawStdEncoding.EncodeToString(pub)
-	}
-	s := &tsnet.Server{Hostname: o.Hostname, Dir: o.StateDir, AuthKey: key, ControlURL: o.LoginServer}
-	if len(o.Tags) > 0 {
-		s.AdvertiseTags = o.Tags
-	}
-	if _, err := s.Up(ctx); err != nil {
-		return fmt.Errorf("join tsnet: %w", err)
-	}
-	defer s.Close()
-	if err := waitTsnetReady(ctx, s, 45*time.Second); err != nil {
-		return err
-	}
-	if o.EnrollmentID != "" && reportPublic != "" {
-		if err := bindSigningKey(ctx, mode, o, reportPublic, tsnetHTTPClient(s)); err != nil {
-			return err
-		}
-	}
-	if o.EnrollmentID != "" {
-		_ = os.WriteFile(filepath.Join(o.DataDir, "node-id"), []byte(o.EnrollmentID), 0600)
-		_ = os.WriteFile(filepath.Join(o.DataDir, "management-url"), []byte(o.ManagementURL), 0600)
-	}
-	_ = ctx
-	fmt.Printf("%s joined as %s\n", mode, o.Hostname)
-	if mode == "control" {
-		fmt.Printf("setup URL: http://%s\n", o.Hostname)
-	}
-	return nil
+	return Serve(ctx, mode, o)
 }
 
-func waitTsnetReady(ctx context.Context, s *tsnet.Server, timeout time.Duration) error {
-	local, err := s.LocalClient()
+func controlWizard(o *Options) error {
+	info, err := os.Stdin.Stat()
+	if err != nil || info.Mode()&os.ModeCharDevice == 0 {
+		return errors.New("control join requires OAuth credential files; use --non-interactive for scripted setup")
+	}
+	reader := bufio.NewReader(os.Stdin)
+	read := func(label, current string) (string, error) {
+		if current != "" {
+			fmt.Printf("%s [%s]: ", label, current)
+		} else {
+			fmt.Printf("%s: ", label)
+		}
+		line, err := reader.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return "", err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			return current, nil
+		}
+		return line, nil
+	}
+	fmt.Println("tailscale-private-funnel control setup")
+	fmt.Println()
+	fmt.Println("Tailscale OAuth client requirements:")
+	fmt.Println("  scopes: auth_keys, devices:core, services")
+	fmt.Println("  permitted tag: tag:tailscale-private-funnel")
+	fmt.Println("  do not paste credentials; store each value in a protected 0600 file")
+	fmt.Println()
+	fmt.Println("Add this grants policy once in Tailscale Access controls:")
+	fmt.Println(`  {"grants":[{"src":["tag:tailscale-private-funnel"],"dst":["tag:tailscale-private-funnel"],"ip":["*"]}]}`)
+	fmt.Println()
+	if o.Tailnet, err = read("Tailnet", o.Tailnet); err != nil {
+		return err
+	}
+	if o.OAuthClientIDFile, err = read("OAuth client ID file", o.OAuthClientIDFile); err != nil {
+		return err
+	}
+	if o.OAuthClientSecretFile, err = read("OAuth client secret file", o.OAuthClientSecretFile); err != nil {
+		return err
+	}
+	if o.Hostname, err = read("Control hostname", o.Hostname); err != nil {
+		return err
+	}
+	if o.StateDir, err = read("State directory", o.StateDir); err != nil {
+		return err
+	}
+	if o.DataDir, err = read("Data directory", o.DataDir); err != nil {
+		return err
+	}
+	fmt.Println()
+	fmt.Printf("Starting control with tailnet %q, OAuth files %q and %q.\n", o.Tailnet, o.OAuthClientIDFile, o.OAuthClientSecretFile)
+	answer, err := read("Continue? (yes/no)", "yes")
 	if err != nil {
 		return err
 	}
-	deadline := time.NewTimer(timeout)
-	defer deadline.Stop()
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		status, statusErr := local.StatusWithoutPeers(ctx)
-		if statusErr == nil && status.BackendState == "Running" {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-deadline.C:
-			return fmt.Errorf("tsnet did not become ready: %v", statusErr)
-		case <-ticker.C:
-		}
+	if strings.ToLower(answer) != "yes" && strings.ToLower(answer) != "y" {
+		return errors.New("control setup cancelled")
 	}
+	return nil
 }
 
 func bindSigningKey(ctx context.Context, mode string, o Options, publicKey string, client *http.Client) error {
@@ -194,86 +216,85 @@ func bindSigningKey(ctx context.Context, mode string, o Options, publicKey strin
 }
 
 func tsnetHTTPClient(s *tsnet.Server) *http.Client {
-	return &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-		return s.Dial(ctx, network, address)
-	}}}
+	client := s.HTTPClient()
+	client.Timeout = 30 * time.Second
+	return client
 }
 
 func authKey(ctx context.Context, mode string, o Options) (string, error) {
-	if o.EnrollmentID != "" || o.EnrollmentCode != "" {
-		if (o.ManagementURL == "" && o.BootstrapURL == "") || o.EnrollmentID == "" || o.EnrollmentCode == "" {
-			return "", errors.New("management or bootstrap URL, enrollment ID, and enrollment code are required")
-		}
-		exchangeURL := o.BootstrapURL
-		if exchangeURL == "" {
-			exchangeURL = o.ManagementURL
-		}
-		u, err := url.Parse(exchangeURL)
-		if err != nil || u.Scheme == "" || u.Host == "" {
-			return "", errors.New("invalid management URL")
-		}
-		q := u.Query()
-		q.Set("enrollment_id", o.EnrollmentID)
-		q.Set("code", o.EnrollmentCode)
-		u.Path = strings.TrimRight(u.Path, "/") + "/auth-keys/" + mode
-		u.RawQuery = q.Encode()
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), nil)
-		if err != nil {
-			return "", err
-		}
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return "", err
-		}
-		defer res.Body.Close()
-		if res.StatusCode/100 != 2 {
-			return "", fmt.Errorf("enrollment exchange failed: HTTP %d", res.StatusCode)
-		}
-		b, err := io.ReadAll(res.Body)
-		if err != nil {
-			return "", err
-		}
-		return strings.TrimSpace(string(b)), nil
+	if mode == "control" {
+		key, _, err := controlOAuthAuthKey(ctx, o)
+		return key, err
 	}
-	if o.AuthKeyFile != "" {
-		b, err := os.ReadFile(o.AuthKeyFile)
-		if err != nil {
-			return "", err
-		}
-		return strings.TrimSpace(string(b)), nil
+	// Container supervisors may receive a freshly minted key through the
+	// process environment. It is intentionally read once and never persisted;
+	// this also lets a host bootstrap a node before the control bootstrap
+	// listener is reachable over its tailnet ACL.
+	if key := strings.TrimSpace(os.Getenv("TS_AUTHKEY")); key != "" {
+		return key, nil
 	}
-	if o.AuthKeyStdin {
-		b, err := io.ReadAll(bufio.NewReader(os.Stdin))
-		if err != nil {
-			return "", err
-		}
-		return strings.TrimSpace(string(b)), nil
+	return "", errors.New("first join requires the generated temporary TS_AUTHKEY assignment")
+}
+
+func controlOAuthAuthKey(ctx context.Context, o Options) (string, bool, error) {
+	st, err := store.Open(o.DataDir)
+	if err != nil {
+		return "", true, err
 	}
-	if o.InteractiveLogin {
+	defer st.Close()
+	read := func(inline, file string, stdin bool) (string, error) {
+		if strings.TrimSpace(inline) != "" {
+			return strings.TrimSpace(inline), nil
+		}
+		if file != "" {
+			b, err := os.ReadFile(file)
+			return strings.TrimSpace(string(b)), err
+		}
+		if stdin {
+			b, err := io.ReadAll(os.Stdin)
+			return strings.TrimSpace(string(b)), err
+		}
 		return "", nil
 	}
-	return "", errors.New("a Tailscale auth key is required in non-interactive mode")
-}
-
-func joinTUI(_ context.Context, mode string, o Options) error {
-	if runtime.GOOS == "windows" {
-		return errors.New("interactive join is not supported on Windows")
+	id, err := read(o.OAuthClientID, o.OAuthClientIDFile, o.OAuthClientIDStdin)
+	if err != nil {
+		return "", true, err
 	}
-	m := joinModel{mode: mode}
-	if _, err := tea.NewProgram(m).Run(); err != nil {
-		return err
+	secret, err := read(o.OAuthClientSecret, o.OAuthClientSecretFile, o.OAuthClientSecretStdin)
+	if err != nil {
+		return "", true, err
 	}
-	if m.path == "" {
-		o.InteractiveLogin, o.NonInteractive = true, true
-		return Join(context.Background(), mode, o)
+	if id == "" {
+		id, _ = st.GetSecret("tailscale_oauth_client_id")
 	}
-	o.AuthKeyFile, o.NonInteractive = m.path, true
-	return Join(context.Background(), mode, o)
-}
-
-type joinModel struct {
-	mode, path string
-	screen     int
+	if secret == "" {
+		secret, _ = st.GetSecret("tailscale_oauth_client_secret")
+	}
+	tailnet := strings.TrimSpace(o.Tailnet)
+	if tailnet == "" {
+		var settings struct {
+			Name string `json:"name"`
+		}
+		_ = st.GetJSON("tailnet", &settings)
+		tailnet = settings.Name
+	}
+	if id == "" || secret == "" || tailnet == "" {
+		return "", true, errors.New("control requires OAuth client ID, secret, and --tailnet or stored tailnet")
+	}
+	if err := st.SetSecret("tailscale_oauth_client_id", id); err != nil {
+		return "", true, err
+	}
+	if err := st.SetSecret("tailscale_oauth_client_secret", secret); err != nil {
+		return "", true, err
+	}
+	settings := map[string]any{}
+	_ = st.GetJSON("tailnet", &settings)
+	settings["name"] = tailnet
+	if err := st.SetJSON("tailnet", settings); err != nil {
+		return "", true, err
+	}
+	key, err := (tailscaleclient.Client{ClientID: id, ClientSecret: secret, Tailnet: tailnet}).CreateAuthKey(ctx, "control", o.Hostname, []string{"tag:tailscale-private-funnel"})
+	return key, true, err
 }
 
 type runtimeStatus struct {
@@ -324,51 +345,21 @@ func readRuntimeStatus(dataDir string) (runtimeStatus, bool) {
 	return status, true
 }
 
-func (m joinModel) Init() tea.Cmd { return nil }
-func (m joinModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch v := msg.(type) {
-	case tea.KeyMsg:
-		switch v.String() {
-		case "ctrl+c", "q":
-			return m, tea.Quit
-		case "enter":
-			if m.screen < 4 {
-				m.screen++
-				return m, nil
-			}
-			return m, tea.Quit
-		case "backspace":
-			if len(m.path) > 0 {
-				m.path = m.path[:len(m.path)-1]
-			}
-		default:
-			if len(v.Runes) > 0 {
-				m.path += string(v.Runes)
-			}
-		}
-	}
-	return m, nil
-}
-func (m joinModel) View() string {
-	switch m.screen {
-	case 0:
-		return fmt.Sprintf("Tailscale %s join · 1/5 Authentication\nEnter auth-key file path (or press Enter for interactive setup): %s\n\nPress Enter to continue, Ctrl-C to quit.\n", m.mode, m.path)
-	case 1:
-		return fmt.Sprintf("Tailscale %s join · 2/5 Defaults\nHostname: local machine default\nState path: platform config default\n\nPress Enter to continue, Ctrl-C to quit.\n", m.mode)
-	case 2:
-		return fmt.Sprintf("Tailscale %s join · 3/5 Review\nAuth-key file: %s\nHostname and paths use resolved defaults.\n\nPress Enter to connect, Ctrl-C to quit.\n", m.mode, m.path)
-	case 3:
-		return fmt.Sprintf("Tailscale %s join · 4/5 Connect\nThe node will join and persist its tsnet identity.\n\nPress Enter to continue, Ctrl-C to quit.\n", m.mode)
-	default:
-		return fmt.Sprintf("Tailscale %s join · 5/5 Complete\nThe node is ready to start control serve.\n\nPress Enter to exit, Ctrl-C to quit.\n", m.mode)
-	}
-}
-
 func Serve(ctx context.Context, mode string, o Options) error {
 	var err error
 	o, err = defaults(mode, o)
 	if err != nil {
 		return err
+	}
+	if o.ConfigFile != "" {
+		o, err = loadConfig(mode, o)
+		if err != nil {
+			return err
+		}
+		o, err = defaults(mode, o)
+		if err != nil {
+			return err
+		}
 	}
 	if err := os.MkdirAll(o.DataDir, 0700); err != nil {
 		return err
@@ -386,14 +377,69 @@ func Serve(ctx context.Context, mode string, o Options) error {
 		return err
 	}
 	defer st.Close()
-	s := &tsnet.Server{Hostname: o.Hostname, Dir: o.StateDir}
-	if key, readErr := os.ReadFile(filepath.Join(o.StateDir, "authkey")); readErr == nil {
-		s.AuthKey = strings.TrimSpace(string(key))
+	if mode != "control" && o.EnrollmentCode == "" {
+		if b, readErr := os.ReadFile(filepath.Join(o.DataDir, "enrollment-code")); readErr == nil {
+			o.EnrollmentCode = strings.TrimSpace(string(b))
+		}
 	}
+	// A persistent node only needs its enrollment material during its first
+	// bind. Subsequent starts reuse the identity already stored in StateDir.
+	joinedMarker := filepath.Join(o.StateDir, "joined")
+	alreadyJoined := false
+	if _, statErr := os.Stat(joinedMarker); statErr == nil {
+		alreadyJoined = true
+	}
+	if mode != "control" && o.EnrollmentID != "" && o.EnrollmentCode == "" && !alreadyJoined {
+		return errors.New("enrollment code is required for the first start")
+	}
+	if err := os.MkdirAll(o.StateDir, 0700); err != nil {
+		return err
+	}
+	key := ""
+	if _, statErr := os.Stat(filepath.Join(o.StateDir, "tailscaled.state")); statErr == nil {
+		// Do not mint or persist another auth key for an already enrolled
+		// persistent device. Tailscale loads the identity from StateDir.
+		key = ""
+	} else if mode == "control" {
+		var ok bool
+		key, ok, err = controlOAuthAuthKey(ctx, o)
+		if !ok && err == nil {
+			err = errors.New("control OAuth credentials are required")
+		}
+	} else {
+		key, err = authKey(ctx, mode, o)
+	}
+	if err != nil {
+		return err
+	}
+	s := &tsnet.Server{Hostname: o.Hostname, Dir: o.StateDir, AuthKey: key, Ephemeral: false}
+	defer s.Close()
 	if _, err := s.Up(ctx); err != nil {
 		return fmt.Errorf("start tsnet: %w", err)
 	}
-	defer s.Close()
+	if err := waitTSNetReady(ctx, s, 45*time.Second); err != nil {
+		return err
+	}
+	if mode != "control" && o.EnrollmentID != "" && !alreadyJoined {
+		pub, _, identityErr := report.LoadOrCreate(filepath.Join(o.DataDir, "report-identity.json"))
+		if identityErr != nil {
+			return identityErr
+		}
+		publicKey := base64.RawStdEncoding.EncodeToString(pub)
+		if err := bindSigningKey(ctx, mode, o, publicKey, tsnetHTTPClient(s)); err != nil {
+			return err
+		}
+		_ = os.WriteFile(filepath.Join(o.DataDir, "node-id"), []byte(o.EnrollmentID), 0600)
+		_ = os.Remove(filepath.Join(o.DataDir, "enrollment-code"))
+	}
+	if err := os.WriteFile(joinedMarker, []byte("persistent\n"), 0600); err != nil {
+		return err
+	}
+	s.AuthKey = ""
+	_ = os.Unsetenv("TS_AUTHKEY")
+	if o.BootstrapOnly {
+		return nil
+	}
 	if local, localErr := s.LocalClient(); localErr == nil {
 		if current, statusErr := local.StatusWithoutPeers(ctx); statusErr == nil {
 			ips := make([]string, 0, len(current.TailscaleIPs))
@@ -404,63 +450,62 @@ func Serve(ctx context.Context, mode string, o Options) error {
 		}
 	}
 	defer os.Remove(filepath.Join(o.DataDir, "serve.pid"))
-	if mode != "control" {
-		// Reports need the router's stable tailnet address as their backend A
-		// target. Derive it from the same persistent tsnet identity used by the
-		// proxy unless the operator explicitly supplied --tailscale-ip.
-		if o.TailscaleIP == "" {
-			if local, localErr := s.LocalClient(); localErr == nil {
-				if status, statusErr := local.StatusWithoutPeers(ctx); statusErr == nil && len(status.TailscaleIPs) > 0 {
-					o.TailscaleIP = status.TailscaleIPs[0].String()
-				}
-			}
-		}
-		// The embedded proxy reads these values when constructing its Caddy and
-		// tsnet configuration. Keep CLI paths and identity names authoritative.
+	if mode == "loadbalancer" {
 		_ = os.Setenv("FUNNEL_STATE_DIR", o.StateDir)
 		_ = os.Setenv("FUNNEL_HOSTNAME", o.Hostname)
 		_ = os.Setenv("FUNNEL_DATA_DIR", o.DataDir)
 		setEnvIfPresent("FUNNEL_MANAGEMENT_URL", o.ManagementURL)
-		setEnvIfPresent("FUNNEL_GATEWAY_HOSTNAME", o.GatewayHostname)
-		setEnvIfPresent("FUNNEL_TAILSCALE_IP", o.TailscaleIP)
-		setEnvIfPresent("FUNNEL_INGRESS_NETWORK", o.IngressNetwork)
-		if mode == "router" {
-			if os.Getenv("FUNNEL_ROUTER_PORT") == "" {
-				_ = os.Setenv("FUNNEL_ROUTER_PORT", "18080")
-			}
-		}
-		if nodeID, readErr := os.ReadFile(filepath.Join(o.DataDir, "node-id")); readErr == nil {
-			_ = os.Setenv("FUNNEL_NODE_ID", strings.TrimSpace(string(nodeID)))
-		}
-		// Caddy follows the XDG data/config locations. Point it at the
-		// selected mode's writable data directory so certificates and config
-		// survive restarts without requiring a container filesystem layout.
-		_ = os.Setenv("XDG_DATA_HOME", o.DataDir)
-		_ = os.Setenv("XDG_CONFIG_HOME", filepath.Join(o.DataDir, "config"))
 		if o.CertEmail != "" {
 			_ = os.Setenv("FUNNEL_CERT_EMAIL", o.CertEmail)
+		}
+		if o.ManagementURL != "" {
+			if config, fetchErr := fetchLoadBalancerConfig(ctx, tsnetHTTPClient(s), o.ManagementURL); fetchErr == nil {
+				routes := config.Routes
+				if encoded, marshalErr := json.Marshal(routes); marshalErr == nil {
+					_ = os.Setenv("FUNNEL_ROUTES", string(encoded))
+				}
+			} else {
+				slog.Warn("load balancer route config unavailable; starting with no public routes", "error", fetchErr)
+			}
 		}
 		if err := proxy.Start(mode, o.Listen, s.Dial); err != nil {
 			return err
 		}
-		if mode == "router" {
-			// caddy-docker-proxy listens on the container's HTTP port. Bridge
-			// that listener to the same router's tsnet identity so the gateway
-			// can reach it without a second Tailscale node or TUN device.
-			listener, listenErr := s.Listen("tcp", ":18080")
-			if listenErr != nil {
-				return fmt.Errorf("listen on router tailnet: %w", listenErr)
-			}
-			upstream, parseErr := url.Parse("http://127.0.0.1:80")
-			if parseErr != nil {
-				return parseErr
-			}
-			bridge := httputil.NewSingleHostReverseProxy(upstream)
+		defer proxy.Stop()
+		if o.ManagementURL != "" {
+			go reportLoadBalancerHealth(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.PublicIPv4, o.LoadBalancerHostname)
+		}
+		if o.ManagementURL != "" {
 			go func() {
-				if serveErr := (&http.Server{Handler: bridge}).Serve(listener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-					slog.Error("router tailnet bridge stopped", "error", serveErr)
+				ticker := time.NewTicker(30 * time.Second)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						config, fetchErr := fetchLoadBalancerConfig(ctx, tsnetHTTPClient(s), o.ManagementURL)
+						if fetchErr != nil {
+							slog.Warn("load balancer route refresh failed", "error", fetchErr)
+							reportLoadBalancerHealth(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.PublicIPv4, o.LoadBalancerHostname)
+							continue
+						}
+						if reloadErr := proxy.ReloadRoutes(config.Routes); reloadErr != nil {
+							slog.Error("load balancer route reload failed", "error", reloadErr)
+						}
+						reportLoadBalancerHealth(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.PublicIPv4, o.LoadBalancerHostname)
+					}
 				}
 			}()
+		}
+		<-ctx.Done()
+		return nil
+	}
+	if mode == "ingress" {
+		_ = os.Setenv("FUNNEL_LABEL_KEYS", strings.Join(o.LabelKeys, ","))
+		_ = os.Setenv("FUNNEL_DENY_NETWORKS", strings.Join(o.DenyNetworks, ","))
+		if err := runIngressSupervisor(ctx, o, s); err != nil {
+			return err
 		}
 		<-ctx.Done()
 		return nil
@@ -479,6 +524,11 @@ func Serve(ctx context.Context, mode string, o Options) error {
 			select {
 			case <-ticker.C:
 				_, _ = control.ExpireReports(context.Background(), 5*time.Minute)
+				_, _ = control.CleanupStaleNodes(context.Background(), 5*time.Minute)
+				_ = control.ReconcileLoadBalancerDNS(context.Background())
+				if err := control.ReconcileServiceApprovals(context.Background()); err != nil {
+					slog.Warn("service approval reconciliation failed", "error", err)
+				}
 			case <-ctx.Done():
 				return
 			}
@@ -531,7 +581,268 @@ func Serve(ctx context.Context, mode string, o Options) error {
 		fmt.Printf("enrollment bootstrap listening on %s\n", o.BootstrapListen)
 	}
 	fmt.Printf("control listening on tailnet %s\n", o.Listen)
+	if mode != "control" {
+		return fmt.Errorf("unsupported serve mode %q", mode)
+	}
 	return server.Serve(ln)
+}
+
+func waitTSNetReady(ctx context.Context, s *tsnet.Server, timeout time.Duration) error {
+	local, err := s.LocalClient()
+	if err != nil {
+		return err
+	}
+	if timeout <= 0 {
+		timeout = 45 * time.Second
+	}
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	var lastErr error
+	for {
+		status, statusErr := local.StatusWithoutPeers(ctx)
+		if statusErr == nil && status.BackendState == "Running" {
+			return nil
+		}
+		lastErr = statusErr
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			if lastErr != nil {
+				return fmt.Errorf("tsnet did not become ready: %w", lastErr)
+			}
+			return fmt.Errorf("tsnet did not become ready")
+		case <-ticker.C:
+		}
+	}
+}
+
+func notifyNodeShutdown(ctx context.Context, client *http.Client, managementURL string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(managementURL, "/")+"/api/node/shutdown", strings.NewReader(`{}`))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode/100 != 2 {
+		return fmt.Errorf("shutdown cleanup: HTTP %d", res.StatusCode)
+	}
+	return nil
+}
+
+type loadBalancerConfig struct {
+	Routes     []proxy.Route `json:"routes"`
+	PublicIPv4 string        `json:"public_ipv4"`
+}
+
+func fetchLoadBalancerConfig(ctx context.Context, client *http.Client, managementURL string) (loadBalancerConfig, error) {
+	var payload loadBalancerConfig
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(managementURL, "/")+"/api/node/config", nil)
+	if err != nil {
+		return payload, err
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return payload, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode/100 != 2 {
+		return payload, fmt.Errorf("management route config: HTTP %d", res.StatusCode)
+	}
+	if err := json.NewDecoder(res.Body).Decode(&payload); err != nil {
+		return payload, err
+	}
+	return payload, nil
+}
+
+func loadBalancerNodeID(dataDir string) string {
+	b, _ := os.ReadFile(filepath.Join(dataDir, "node-id"))
+	return strings.TrimSpace(string(b))
+}
+
+func reportLoadBalancerHealth(ctx context.Context, client *http.Client, managementURL, nodeID, publicIPv4, hostname string) {
+	if nodeID == "" || managementURL == "" {
+		return
+	}
+	ips := splitCSV(publicIPv4)
+	body, _ := json.Marshal(map[string]any{
+		"mode": "loadbalancer", "ready": true, "public_ipv4": ips,
+		"loadbalancer_hostname": hostname, "reported_at": time.Now().Unix(),
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(managementURL, "/")+"/api/node/health", bytes.NewReader(body))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := client.Do(req)
+	if err != nil {
+		slog.Warn("load balancer health report failed", "error", err)
+		return
+	}
+	defer res.Body.Close()
+	if res.StatusCode/100 != 2 {
+		slog.Warn("load balancer health report rejected", "status", res.StatusCode)
+	}
+}
+
+func runIngressSupervisor(ctx context.Context, o Options, s *tsnet.Server) error {
+	if _, err := os.Stat("/var/run/docker.sock"); err != nil && os.Getenv("DOCKER_HOST") == "" {
+		return fmt.Errorf("ingress supervisor requires Docker socket access: %w", err)
+	}
+	if o.ManagementURL != "" {
+		_ = os.Setenv("FUNNEL_MANAGEMENT_URL", o.ManagementURL)
+	}
+	if nodeID, readErr := os.ReadFile(filepath.Join(o.DataDir, "node-id")); readErr == nil {
+		_ = os.Setenv("FUNNEL_NODE_ID", strings.TrimSpace(string(nodeID)))
+	}
+	client, err := dockerclient.NewClientWithOpts(dockerclient.FromEnv, dockerclient.WithAPIVersionNegotiation())
+	if err != nil {
+		return err
+	}
+	managementClient := tsnetHTTPClient(s)
+	nodeIDBytes, _ := os.ReadFile(filepath.Join(o.DataDir, "node-id"))
+	nodeID := strings.TrimSpace(string(nodeIDBytes))
+	var configRevision string
+	resolver := ingress.HTTPResolver{BaseURL: o.ManagementURL, NodeID: nodeID, ControlKey: o.ControlKey, Client: managementClient, Revision: &configRevision}
+	image := o.Image
+	if image == "" {
+		image = os.Getenv("FUNNEL_IMAGE")
+	}
+	if image == "" {
+		image = "ghcr.io/tailscale-x/tailscale-private-funnel:dev"
+	}
+	listenerManager := ingress.NewListenerManager(s)
+	go func() { <-ctx.Done(); listenerManager.Close() }()
+	supervisor := ingress.Config{Docker: client, Image: image, NodeID: nodeID, ManagementURL: o.ManagementURL, LabelKeys: o.LabelKeys, DenyNetworks: o.DenyNetworks, Resolver: resolver, ListenerManager: listenerManager}
+	var reconcileMu sync.Mutex
+	reconcile := func() {
+		reconcileMu.Lock()
+		defer reconcileMu.Unlock()
+		runtimes, reconcileErr := supervisor.Reconcile(ctx)
+		if reconcileErr != nil {
+			slog.Error("ingress discovery failed", "error", reconcileErr)
+			return
+		}
+		if o.ManagementURL == "" || nodeID == "" {
+			return
+		}
+		if configRevision != "" {
+			serviceNames := make([]string, 0, len(runtimes))
+			seenServices := map[string]struct{}{}
+			for _, runtime := range runtimes {
+				if _, seen := seenServices[runtime.Assignment.ServiceName]; !seen {
+					seenServices[runtime.Assignment.ServiceName] = struct{}{}
+					serviceNames = append(serviceNames, runtime.Assignment.ServiceName)
+				}
+			}
+			if ackErr := resolver.Acknowledge(ctx, configRevision, serviceNames); ackErr != nil {
+				slog.Warn("ingress configuration acknowledgement failed", "error", ackErr)
+			}
+		}
+		networkReports := make([]report.Exposure, 0, len(runtimes))
+		reachableCount := 0
+		for _, runtime := range runtimes {
+			networkIDs := make([]string, 0, len(runtime.Networks))
+			for _, selected := range runtime.Networks {
+				networkIDs = append(networkIDs, selected.ID)
+			}
+			backendHostname := runtime.BackendHostname
+			if backendHostname == "" {
+				backendHostname = nodeID
+			}
+			networkReports = append(networkReports, report.Exposure{ApplicationID: runtime.Assignment.ApplicationID, ServiceName: runtime.Assignment.ServiceName, ContainerID: runtime.ContainerID, PublicHostname: runtime.Spec.Hostname, BackendIP: runtime.BackendIP, BackendHostname: backendHostname, LoadBalancerHostname: o.LoadBalancerHostname, Port: runtime.Spec.Port, Protocol: runtime.Spec.Protocol, Networks: networkIDs, Reachable: runtime.Reachable})
+			if runtime.Reachable {
+				reachableCount++
+			}
+		}
+		if healthErr := resolver.ReportHealth(ctx, map[string]any{"sidecars": len(runtimes), "reachable": reachableCount, "at": time.Now().Unix()}); healthErr != nil {
+			slog.Warn("ingress health report failed", "error", healthErr)
+		}
+		if reportErr := (report.Agent{NodeID: nodeID, ManagementURL: o.ManagementURL, DataDir: o.DataDir, HTTPClient: managementClient, LoadBalancerHostname: o.LoadBalancerHostname}).Send(ctx, networkReports); reportErr != nil {
+			slog.Error("ingress report submission failed", "error", reportErr)
+		}
+	}
+	// Discovery and sidecar lifecycle are intentionally independent of Caddy.
+	// The supervisor process owns the Docker socket; every forwarding sidecar
+	// receives only its selected networks and target address.
+	reconcile()
+	go func() {
+		messages, errs := client.Events(ctx, events.ListOptions{Filters: filters.NewArgs(filters.Arg("type", "container"))})
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case _, ok := <-messages:
+				if !ok {
+					return
+				}
+				reconcile()
+			case eventErr, ok := <-errs:
+				if !ok {
+					return
+				}
+				if eventErr != nil && !errors.Is(eventErr, context.Canceled) {
+					slog.Warn("Docker event stream ended; polling remains active", "error", eventErr)
+				}
+				return
+			}
+		}
+	}()
+	go func() {
+		defer client.Close()
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				reconcile()
+			}
+		}
+	}()
+	return nil
+}
+
+func splitCSV(value string) []string {
+	var out []string
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// RelayServe is a credential-free raw TCP relay launched by the ingress
+// supervisor. It never joins Tailscale and never needs the Docker socket.
+func RelayServe(ctx context.Context, o Options) error {
+	if strings.TrimSpace(o.BackendIP) == "" || o.BackendPort == 0 {
+		return errors.New("relay requires --backend-ip and --backend-port")
+	}
+	listenAddr := strings.TrimSpace(o.Listen)
+	if listenAddr == "" {
+		listenAddr = ":8080"
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	conn, err := (&net.Dialer{}).DialContext(probeCtx, "tcp", net.JoinHostPort(o.BackendIP, fmt.Sprintf("%d", o.BackendPort)))
+	cancel()
+	if err != nil {
+		return fmt.Errorf("backend reachability check failed: %w", err)
+	}
+	_ = conn.Close()
+	listener, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		return err
+	}
+	defer listener.Close()
+	return ingress.Forward(ctx, listener, net.JoinHostPort(o.BackendIP, fmt.Sprintf("%d", o.BackendPort)))
 }
 
 func setEnvIfPresent(name, value string) {
@@ -544,6 +855,16 @@ func Status(mode string, o Options) error {
 	o, err := defaults(mode, o)
 	if err != nil {
 		return err
+	}
+	if o.ConfigFile != "" {
+		o, err = loadConfig(mode, o)
+		if err != nil {
+			return err
+		}
+		o, err = defaults(mode, o)
+		if err != nil {
+			return err
+		}
 	}
 	if explicitHostname == "" {
 		if b, readErr := os.ReadFile(filepath.Join(o.DataDir, "hostname")); readErr == nil && strings.TrimSpace(string(b)) != "" {
@@ -560,31 +881,11 @@ func Status(mode string, o Options) error {
 		}
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	s := &tsnet.Server{Hostname: o.Hostname, Dir: o.StateDir}
-	if key, readErr := os.ReadFile(filepath.Join(o.StateDir, "authkey")); readErr == nil {
-		s.AuthKey = strings.TrimSpace(string(key))
+	fmt.Printf("mode: %s\nhostname: %s\nstate: stopped\nstate_dir: %s\ndata_dir: %s\n", mode, o.Hostname, o.StateDir, o.DataDir)
+	if _, stateErr := os.Stat(filepath.Join(o.StateDir, "tailscaled.state")); stateErr == nil {
+		fmt.Println("identity: persistent (saved Tailscale state)")
 	}
-	if _, err := s.Up(ctx); err != nil {
-		return fmt.Errorf("status: tsnet unavailable: %w", err)
-	}
-	defer s.Close()
-	lc, err := s.LocalClient()
-	if err != nil {
-		return err
-	}
-	status, err := lc.StatusWithoutPeers(ctx)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("mode: %s\nhostname: %s\nstate: %s\nips: %v\nstate_dir: %s\ndata_dir: %s\n", mode, o.Hostname, status.BackendState, status.TailscaleIPs, o.StateDir, o.DataDir)
 	printStoredNode(o.DataDir)
-	if len(status.Health) > 0 {
-		fmt.Printf("health: %s\n", strings.Join(status.Health, "; "))
-	} else {
-		fmt.Println("health: ok")
-	}
 	return nil
 }
 
@@ -609,6 +910,22 @@ func Reset(mode string, o Options) error {
 	}
 	if !o.Force {
 		return errors.New("reset requires --force")
+	}
+	if o.ConfigFile != "" || mode != "control" {
+		if loaded, loadErr := loadConfig(mode, o); loadErr == nil {
+			o = loaded
+		}
+	}
+	if strings.TrimSpace(o.ManagementURL) != "" {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		s := &tsnet.Server{Hostname: o.Hostname, Dir: o.StateDir, Ephemeral: false}
+		if _, upErr := s.Up(cleanupCtx); upErr == nil {
+			if notifyErr := notifyNodeShutdown(cleanupCtx, s.HTTPClient(), o.ManagementURL); notifyErr != nil {
+				slog.Warn("control cleanup during reset failed; local state will still be removed", "error", notifyErr)
+			}
+		}
+		_ = s.Close()
 	}
 	if err := os.RemoveAll(o.StateDir); err != nil {
 		return err

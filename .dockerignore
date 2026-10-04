@@ -1,0 +1,13 @@
+.git
+.github
+docs
+internal
+cmd
+ui
+third_party
+scripts
+*.md
+go.mod
+go.sum
+dist/*
+!dist/tailscale-private-funnel-*

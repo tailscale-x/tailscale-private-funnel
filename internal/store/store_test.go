@@ -43,7 +43,7 @@ func TestAcceptReportRequiresEnrolledSigningKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e, err := report.NewEnvelope("router-1", map[string]any{"exposures": []any{}}, pub, priv, time.Now())
+	e, err := report.NewEnvelope("ingress-1", map[string]any{"exposures": []any{}}, pub, priv, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,10 +51,10 @@ func TestAcceptReportRequiresEnrolledSigningKey(t *testing.T) {
 	if err := s.AcceptReport(e.NodeID, e.Nonce, b, e.PublicKey); err == nil {
 		t.Fatal("unknown node report was accepted")
 	}
-	if err := s.UpsertNode("router-1", "router", "router-1"); err != nil {
+	if err := s.UpsertNode("ingress-1", "ingress", "ingress-1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.BindNodeKey("router-1", e.PublicKey); err != nil {
+	if err := s.BindNodeKey("ingress-1", e.PublicKey); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.AcceptReport(e.NodeID, e.Nonce, b, e.PublicKey); err != nil {
@@ -67,12 +67,51 @@ func TestAcceptReportRequiresEnrolledSigningKey(t *testing.T) {
 
 func TestEnrollmentIsReusableUntilRevoked(t *testing.T) {
 	s, err := Open(t.TempDir())
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer s.Close()
-	e, code, err := s.CreateEnrollment("router", "router-node")
-	if err != nil { t.Fatal(err) }
-	if _, err := s.RedeemEnrollment(e.ID, code); err != nil { t.Fatal(err) }
-	if _, err := s.RedeemEnrollment(e.ID, code); err != nil { t.Fatal(err) }
-	if err := s.RevokeEnrollment(e.ID); err != nil { t.Fatal(err) }
-	if _, err := s.RedeemEnrollment(e.ID, code); err == nil { t.Fatal("revoked enrollment was accepted") }
+	e, code, err := s.CreateEnrollment("ingress", "ingress-node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RedeemEnrollment(e.ID, code); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RedeemEnrollment(e.ID, code); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RevokeEnrollment(e.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RedeemEnrollment(e.ID, code); err == nil {
+		t.Fatal("revoked enrollment was accepted")
+	}
+}
+
+func TestSidecarSnapshotsReconcileAndExpire(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.UpsertRelay(RelayAssignment{ID: "sidecar-a", NodeID: "ingress-1", ApplicationID: "app", BackendPort: 8080}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertRelay(RelayAssignment{ID: "sidecar-b", NodeID: "ingress-1", ApplicationID: "app", BackendPort: 8081}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReconcileRelays("ingress-1", map[string]bool{"sidecar-a": true}); err != nil {
+		t.Fatal(err)
+	}
+	var revoked int
+	if err := s.db.QueryRow(`SELECT revoked FROM relay_assignments WHERE id=?`, "sidecar-b").Scan(&revoked); err != nil || revoked != 1 {
+		t.Fatalf("stale sidecar revoked=%d err=%v", revoked, err)
+	}
+	if err := s.RevokeRelays("ingress-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRow(`SELECT revoked FROM relay_assignments WHERE id=?`, "sidecar-a").Scan(&revoked); err != nil || revoked != 1 {
+		t.Fatalf("active sidecar not revoked on expiry: revoked=%d err=%v", revoked, err)
+	}
 }

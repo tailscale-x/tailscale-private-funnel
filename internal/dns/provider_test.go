@@ -33,7 +33,7 @@ func TestConcreteProviderFactories(t *testing.T) {
 func TestPlanOnlyRemovesOwnedRecords(t *testing.T) {
 	old := libdns.RR{Name: "old.example.com.", Type: "A", Data: "192.0.2.1"}
 	keep := libdns.RR{Name: "keep.example.com.", Type: "A", Data: "192.0.2.2"}
-	want := libdns.RR{Name: "new.example.com.", Type: "CNAME", Data: "gateway.example.com."}
+	want := libdns.RR{Name: "new.example.com.", Type: "CNAME", Data: "loadbalancer.example.com."}
 	add, remove := Plan("installation-a", []LedgerEntry{{Record: old, OwnerID: "installation-a"}, {Record: keep, OwnerID: "other"}}, []libdns.Record{want})
 	if len(add) != 1 || add[0].RR().Name != want.Name {
 		t.Fatalf("unexpected additions: %#v", add)

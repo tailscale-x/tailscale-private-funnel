@@ -43,45 +43,9 @@ jobs:
           git diff --exit-code -- internal/web/ui/layout_templ.go internal/web/assets/icons
       - run: go test ./...
       - run: go vet ./...
-      - run: go build ./cmd/tailscale-private-funnel
-      - run: go build -tags caddy ./cmd/tailscale-private-funnel
       - run: go test -tags caddy ./...
-      - name: Build-check the release image
-        run: docker buildx build --platform linux/amd64 --file Dockerfile.private-funnel --tag private-funnel:ci .
-
-  image:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.private-funnel
-          push: true
-          platforms: linux/amd64,linux/arm64
-          # Use the repository name for the image so GHCR automatically links
-          # the package to this repository and accepts the repository token.
-          tags: ghcr.io/tailscale-x/tailscale-cloudflare:${{ github.ref_name }}
-          build-args: VERSION=${{ github.ref_name }}
 
   binaries:
-    if: startsWith(github.ref, 'refs/tags/v')
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -92,15 +56,62 @@ jobs:
       - name: Build native binaries
         run: |
           mkdir -p dist
-          for target in linux-amd64 linux-arm64 darwin-arm64; do
+          targets="linux-amd64"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            targets="$targets linux-arm64 darwin-arm64"
+          fi
+          for target in $targets; do
             GOOS=${target%-*} GOARCH=${target#*-} CGO_ENABLED=0 go build -tags caddy -trimpath -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" -o "dist/tailscale-private-funnel-${target}" ./cmd/tailscale-private-funnel
           done
-          sha256sum dist/* > dist/SHA256SUMS
-          printf '{"version":"%s","commit":"%s","image":"ghcr.io/tailscale-x/tailscale-cloudflare:%s"}\n' "$GITHUB_REF_NAME" "$GITHUB_SHA" "$GITHUB_REF_NAME" > dist/release-metadata.json
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            sha256sum dist/* > dist/SHA256SUMS
+            printf '{"version":"%s","commit":"%s","image":"ghcr.io/tailscale-x/tailscale-private-funnel:%s"}\n' "$GITHUB_REF_NAME" "$GITHUB_SHA" "$GITHUB_REF_NAME" > dist/release-metadata.json
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: tailscale-private-funnel-binaries
           path: dist
+
+  image-check:
+    needs: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: tailscale-private-funnel-binaries
+          path: dist
+      - uses: docker/setup-buildx-action@v3
+      - name: Package the prebuilt binary
+        run: docker buildx build --platform linux/amd64 --file Dockerfile --tag private-funnel:ci .
+
+  image:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [binaries, image-check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: tailscale-private-funnel-binaries
+          path: dist
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/tailscale-x/tailscale-private-funnel:${{ github.ref_name }}
+          build-args: VERSION=${{ github.ref_name }}
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -118,4 +129,6 @@ jobs:
         with:
           files: |
             dist/*
-            docs/screenshots/control-dashboard-v1.png
+            docs/screenshots/*.png
+            docs/architecture-security.png
+            docs/architecture.svg

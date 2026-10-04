@@ -90,19 +90,24 @@ func (c *Control) authorize(next http.Handler) http.Handler {
 				}
 			}
 		}
-		if r.Method == http.MethodPost && (r.URL.Path == "/api/reports" || strings.HasSuffix(r.URL.Path, "/signing-key")) {
+		if (r.Method == http.MethodPost && (r.URL.Path == "/api/reports" || strings.HasPrefix(r.URL.Path, "/api/enrollments/") && strings.HasSuffix(r.URL.Path, "/signing-key") || strings.HasPrefix(r.URL.Path, "/api/node/"))) || (r.Method == http.MethodGet && r.URL.Path == "/api/node/config") {
 			next.ServeHTTP(w, r)
 			return
 		}
 		c.accessMu.Lock()
 		settings := c.accessSettings()
 		if len(settings.Admins) == 0 && !roleConfigured(settings.Roles) {
-			if p.Login == "" || p.Tagged || len(p.Tags) != 0 {
+			sharedTag := contains(p.Tags, "tag:tailscale-private-funnel")
+			if (p.Tagged || len(p.Tags) != 0 || p.Login == "") && !sharedTag {
 				c.accessMu.Unlock()
 				http.Error(w, "first setup requires an untagged verified user identity", 403)
 				return
 			}
-			settings.Admins = []string{p.Login}
+			if !p.Tagged && len(p.Tags) == 0 && p.Login != "" {
+				settings.Admins = []string{p.Login}
+			} else {
+				settings.Admins = []string{"node:" + p.NodeID}
+			}
 			if err := c.Store.SetJSON("access_roles", settings); err != nil {
 				c.accessMu.Unlock()
 				http.Error(w, err.Error(), 500)

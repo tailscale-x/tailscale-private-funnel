@@ -14,6 +14,7 @@ import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 )
 
 func TestSignedReportRequiresBoundTailnetIdentityAndRejectsReplay(t *testing.T) {
@@ -26,7 +27,7 @@ func TestSignedReportRequiresBoundTailnetIdentityAndRejectsReplay(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertNodeEnrollment("node-1", "enrollment-1", "router", "router-one"); err != nil {
+	if err := s.UpsertNodeEnrollment("node-1", "enrollment-1", "ingress", "ingress-one"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.BindNodeIdentity("node-1", encodePublicKey(pub), "tailnode-1", []string{"100.64.0.5"}); err != nil {
@@ -40,7 +41,7 @@ func TestSignedReportRequiresBoundTailnetIdentityAndRejectsReplay(t *testing.T) 
 	h := (&Control{Store: s}).Handler()
 	request := func() *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, "/api/reports", bytes.NewReader(body))
-		r = WithPrincipal(r, Principal{NodeID: "tailnode-1", Hostname: "router-one", Addresses: []string{"100.64.0.5"}})
+		r = WithPrincipal(r, Principal{NodeID: "tailnode-1", Hostname: "ingress-one", Addresses: []string{"100.64.0.5"}})
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		return w
@@ -54,7 +55,7 @@ func TestSignedReportRequiresBoundTailnetIdentityAndRejectsReplay(t *testing.T) 
 	}
 }
 
-func TestRouterReportRequiresHostnamePolicy(t *testing.T) {
+func TestIngressReportRequiresHostnamePolicy(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "data"))
 	if err != nil {
 		t.Fatal(err)
@@ -64,18 +65,21 @@ func TestRouterReportRequiresHostnamePolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertNodeEnrollment("node-policy", "enrollment-policy", "router", "router-policy"); err != nil {
+	if err := s.UpsertNodeEnrollment("node-policy", "enrollment-policy", "ingress", "ingress-policy"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.BindNodeIdentity("node-policy", encodePublicKey(pub), "tailnode-policy", []string{"100.64.0.5"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "dev", HostnameRegex: `[^.]+\.dev\.example\.com`, Roles: []string{"tag:router-dev"}, Enabled: true}}}); err != nil {
+	if err := s.UpsertApplication(store.ApplicationRecord{ID: "app-dev", ServiceName: "svc:app-dev", ServiceFQDN: "svc:app-dev", ServicePort: 18080, BackendPort: 18080, PublicHostnames: []string{"app.dev.example.com"}, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "dev", HostnameRegex: `[^.]+\.dev\.example\.com`, Roles: []string{"tag:ingress-dev"}, Enabled: true}}}); err != nil {
 		t.Fatal(err)
 	}
 	reportBody := func(host string) []byte {
 		e, envelopeErr := report.NewEnvelope("node-policy", map[string]any{
-			"exposures":  []map[string]any{{"public_hostname": host, "backend_hostname": "router-policy", "backend_ip": "100.64.0.5", "gateway_hostname": "gateway.example.com", "port": 18080}},
+			"exposures":  []map[string]any{{"application_id": "app-dev", "service_name": "svc:app-dev", "public_hostname": host, "backend_hostname": "ingress-policy", "backend_ip": "100.64.0.5", "loadbalancer_hostname": "loadbalancer.example.com", "port": 18080, "reachable": true}},
 			"expires_at": time.Now().Add(time.Minute).Unix(),
 		}, pub, priv, time.Now())
 		if envelopeErr != nil {
@@ -87,15 +91,15 @@ func TestRouterReportRequiresHostnamePolicy(t *testing.T) {
 	h := (&Control{Store: s}).Handler()
 	request := func(host string, tags []string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, "/api/reports", bytes.NewReader(reportBody(host)))
-		r = WithPrincipal(r, Principal{NodeID: "tailnode-policy", Hostname: "router-policy", Tags: tags, Addresses: []string{"100.64.0.5"}})
+		r = WithPrincipal(r, Principal{NodeID: "tailnode-policy", Hostname: "ingress-policy", Tags: tags, Addresses: []string{"100.64.0.5"}})
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		return w
 	}
-	if got := request("app.dev.example.com", []string{"tag:router-dev"}).Code; got != http.StatusAccepted {
+	if got := request("app.dev.example.com", []string{"tag:ingress-dev"}).Code; got != http.StatusAccepted {
 		t.Fatalf("allowed report status=%d", got)
 	}
-	if got := request("app.prod.example.com", []string{"tag:router-dev"}).Code; got != http.StatusForbidden {
+	if got := request("app.prod.example.com", []string{"tag:ingress-dev"}).Code; got != http.StatusForbidden {
 		t.Fatalf("hostname policy status=%d", got)
 	}
 }
@@ -107,34 +111,31 @@ func TestEnrollmentCommandsUseConfiguredImageAndWritableBindDirs(t *testing.T) {
 	}
 	defer s.Close()
 	if err := s.SetJSON("tailnet", map[string]any{
-		"name":            "example.ts.net",
-		"tags":            "tag:router",
-		"management_url":  "http://100.64.0.10:8080",
-		"bootstrap_url":   "http://control-bootstrap:8081",
-		"image":           "ghcr.io/example/funnel:test",
-		"ingress_network": "funnel-ingress",
+		"name":           "example.ts.net",
+		"tags":           "tag:ingress",
+		"management_url": "http://100.64.0.10:8080",
+		"bootstrap_url":  "http://control-bootstrap:8081",
+		"image":          "ghcr.io/example/funnel:test",
+		"deny_networks":  "secret-*",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	r := httptest.NewRequest(http.MethodPost, "/api/enrollments/router", bytes.NewBufferString(`{"hostname":"router-test"}`))
+	r := httptest.NewRequest(http.MethodPost, "/api/enrollments/ingress", bytes.NewBufferString(`{"hostname":"ingress-test"}`))
 	r.Header.Set("Content-Type", "application/json")
 	r = WithPrincipal(r, Principal{NodeID: "admin-node", Login: "admin@example.com"})
 	w := httptest.NewRecorder()
-	(&Control{Store: s}).Handler().ServeHTTP(w, r)
+	enrollmentTestControl(t, s).Handler().ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 	var response struct {
-		DockerJoin  string `json:"docker_join"`
-		DockerServe string `json:"docker_serve"`
+		DeploymentScript string `json:"deployment_script"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	for _, command := range []string{response.DockerJoin, response.DockerServe} {
-		if !strings.Contains(command, "mkdir -p router-state router-data") || !strings.Contains(command, `--user "$(id -u):$(id -g)"`) || !strings.Contains(command, "ghcr.io/example/funnel:test") {
-			t.Fatalf("command does not preserve writable bind paths and image: %s", command)
-		}
+	if !strings.Contains(response.DeploymentScript, "ingress join") || !strings.Contains(response.DeploymentScript, "enrollment-code-file") {
+		t.Fatalf("deployment script does not use the native deploy flow: %s", response.DeploymentScript)
 	}
 }
 
@@ -150,7 +151,7 @@ func TestDeploymentSettingsDoNotClearOAuthCredentials(t *testing.T) {
 	if err := s.SetSecret("tailscale_oauth_client_secret", "client-secret"); err != nil {
 		t.Fatal(err)
 	}
-	r := httptest.NewRequest(http.MethodPost, "/settings", strings.NewReader("image=ghcr.io/example/funnel:v1.0.0&gateway_hostname=gateway.example.com"))
+	r := httptest.NewRequest(http.MethodPost, "/settings", strings.NewReader("image=ghcr.io/example/funnel:v1.0.0&loadbalancer_hostname=loadbalancer.example.com"))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r = WithPrincipal(r, Principal{NodeID: "admin-node", Login: "admin@example.com"})
 	w := httptest.NewRecorder()
@@ -176,14 +177,14 @@ func TestManagementAuthorizationUsesTailscaleRoles(t *testing.T) {
 	}
 	defer s.Close()
 	if err := s.SetJSON("tailnet", map[string]any{
-		"name": "example.ts.net", "tags": "tag:router", "management_url": "http://100.64.0.10:8080", "bootstrap_url": "http://control-bootstrap:8081",
+		"name": "example.ts.net", "tags": "tag:ingress", "management_url": "http://100.64.0.10:8080", "bootstrap_url": "http://control-bootstrap:8081",
 		"roles": map[string][]string{"admin": {"group:platform-admins"}, "viewer": {"group:readonly"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	h := (&Control{Store: s}).Handler()
+	h := enrollmentTestControl(t, s).Handler()
 	request := func(groups []string) int {
-		r := httptest.NewRequest(http.MethodPost, "/api/enrollments/router", bytes.NewBufferString(`{"hostname":"router-role"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/enrollments/ingress", bytes.NewBufferString(`{"hostname":"ingress-role"}`))
 		r.Header.Set("Content-Type", "application/json")
 		r = WithPrincipal(r, Principal{NodeID: "admin-node", Login: "member@example.com", Groups: groups})
 		w := httptest.NewRecorder()
@@ -219,22 +220,22 @@ func TestTaggedNodeDoesNotInheritCreatorAndCapabilityCanGrantRole(t *testing.T) 
 		h.ServeHTTP(w, r)
 		return w.Code
 	}
-	if got := request(Principal{NodeID: "tagged-node", Login: "owner@example.com", Tagged: true, Tags: []string{"tag:router"}}); got != http.StatusForbidden {
+	if got := request(Principal{NodeID: "tagged-node", Login: "owner@example.com", Tagged: true, Tags: []string{"tag:ingress"}}); got != http.StatusForbidden {
 		t.Fatalf("tagged node inherited creator access: status=%d", got)
 	}
-	if got := request(Principal{NodeID: "cap-node", Tagged: true, Tags: []string{"tag:router"}, Capabilities: map[string][]json.RawMessage{DefaultCapability: {json.RawMessage(`{"roles":["admin"]}`)}}}); got != http.StatusOK {
+	if got := request(Principal{NodeID: "cap-node", Tagged: true, Tags: []string{"tag:ingress"}, Capabilities: map[string][]json.RawMessage{DefaultCapability: {json.RawMessage(`{"roles":["admin"]}`)}}}); got != http.StatusOK {
 		t.Fatalf("capability admin should authorize: status=%d", got)
 	}
 }
 
-func TestManualRouterExposureIsDeniedByDefaultPolicy(t *testing.T) {
+func TestManualIngressExposureIsDeniedByDefaultPolicy(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "data"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 	h := (&Control{Store: s}).Handler()
-	body := bytes.NewBufferString(`{"kind":"router","provider_id":"missing","owner_id":"router-1","public_hostname":"app.dev.example.com","backend_hostname":"router-1","backend_ip":"100.64.0.5","gateway_hostname":"gateway.example.com","port":18080}`)
+	body := bytes.NewBufferString(`{"kind":"ingress","provider_id":"missing","owner_id":"ingress-1","public_hostname":"app.dev.example.com","backend_hostname":"ingress-1","backend_ip":"100.64.0.5","loadbalancer_hostname":"loadbalancer.example.com","port":18080}`)
 	r := httptest.NewRequest(http.MethodPost, "/api/exposures/sync", body)
 	r.Header.Set("Content-Type", "application/json")
 	r = WithPrincipal(r, Principal{NodeID: "admin-node", Login: "admin@example.com"})
@@ -252,14 +253,14 @@ func TestEnrollmentPageExplainsGeneratedCommands(t *testing.T) {
 	}
 	defer s.Close()
 	h := (&Control{Store: s}).Handler()
-	r := httptest.NewRequest(http.MethodGet, "/enroll/router", nil)
+	r := httptest.NewRequest(http.MethodGet, "/enroll/ingress", nil)
 	r = WithPrincipal(r, Principal{NodeID: "admin-node", Login: "admin@example.com"})
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("enrollment page status=%d body=%s", w.Code, w.Body.String())
 	}
-	for _, text := range []string{"Router enrollment", "Docker join:", "Docker serve:", "Exposure policy:"} {
+	for _, text := range []string{"Ingress enrollment", "One-copy native deployment", "Exposure policy:"} {
 		if !strings.Contains(w.Body.String(), text) {
 			t.Fatalf("enrollment page missing %q", text)
 		}
@@ -276,7 +277,7 @@ func TestRedesignedPagesRenderSharedShellForAdministrator(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := (&Control{Store: s}).Handler()
-	for _, path := range []string{"/", "/settings", "/access", "/providers", "/zones", "/gateways", "/routers", "/policies", "/exposures", "/operations", "/enroll/gateway", "/enroll/router"} {
+	for _, path := range []string{"/", "/settings", "/access", "/providers", "/zones", "/applications", "/loadbalancers", "/ingresses", "/policies", "/exposures", "/operations", "/enroll/loadbalancer", "/enroll/ingress"} {
 		r := httptest.NewRequest(http.MethodGet, path, nil)
 		r = WithPrincipal(r, Principal{NodeID: "admin-node", Login: "admin@example.com"})
 		w := httptest.NewRecorder()
@@ -288,6 +289,9 @@ func TestRedesignedPagesRenderSharedShellForAdministrator(t *testing.T) {
 		if !strings.Contains(body, `class="pf-app"`) || !strings.Contains(body, `aria-label="Primary navigation"`) {
 			t.Fatalf("%s missing shared shell", path)
 		}
+		if !strings.Contains(body, "Local Funnel") || !strings.Contains(body, "/assets/brand/local-funnel-logo.png") {
+			t.Fatalf("%s missing Local Funnel branding", path)
+		}
 	}
 }
 
@@ -298,7 +302,7 @@ func TestPolicyRuleEditorPersistsGuidedRule(t *testing.T) {
 	}
 	defer s.Close()
 	h := (&Control{Store: s}).Handler()
-	r := httptest.NewRequest(http.MethodPost, "/api/policies/rule", strings.NewReader("name=dev&hostname_regex=%5B%5E.%5D%2B%5C.dev%5C.example%5C.com&roles=tag%3Arouter-dev&gateway_hostnames=gateway.example.com&enabled=on"))
+	r := httptest.NewRequest(http.MethodPost, "/api/policies/rule", strings.NewReader("name=dev&hostname_regex=%5B%5E.%5D%2B%5C.dev%5C.example%5C.com&roles=tag%3Aingress-dev&loadbalancer_hostnames=loadbalancer.example.com&enabled=on"))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("HX-Request", "true")
 	r = WithPrincipal(r, Principal{NodeID: "admin-node", Login: "admin@example.com"})
@@ -315,4 +319,34 @@ func TestPolicyRuleEditorPersistsGuidedRule(t *testing.T) {
 
 func encodePublicKey(key []byte) string {
 	return base64.RawStdEncoding.EncodeToString(key)
+}
+
+func enrollmentTestControl(t *testing.T, s *store.Store) *Control {
+	t.Helper()
+	for key, value := range map[string]string{"tailscale_oauth_client_id": "test-id", "tailscale_oauth_client_secret": "test-secret"} {
+		if err := s.SetSecret(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/oauth/token") {
+			json.NewEncoder(w).Encode(map[string]string{"access_token": "test-token"})
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/keys") {
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Error(err)
+			}
+			create := payload["capabilities"].(map[string]any)["devices"].(map[string]any)["create"].(map[string]any)
+			if create["ephemeral"] != false || create["reusable"] != false || create["preauthorized"] != true || payload["expirySeconds"] != float64(900) {
+				t.Errorf("invalid bootstrap key settings: %v", payload)
+			}
+			json.NewEncoder(w).Encode(map[string]string{"key": "tskey-bootstrap-test"})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(server.Close)
+	return &Control{Store: s, TailscaleClient: &tailscale.Client{HTTP: server.Client(), ClientID: "test-id", ClientSecret: "test-secret", Tailnet: "example.ts.net", APIBase: server.URL + "/api/v2", OAuthBase: server.URL}}
 }
