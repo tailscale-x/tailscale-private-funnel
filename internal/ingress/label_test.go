@@ -1,9 +1,13 @@
 package ingress
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"net"
 	"testing"
+	"time"
 )
 
 func TestParseLabel(t *testing.T) {
@@ -59,29 +63,78 @@ func TestForward(t *testing.T) {
 	}
 }
 
-func TestStableSidecarIDSurvivesContainerReplacement(t *testing.T) {
-	spec := Spec{Port: 8080, Hostname: "checkout.dev.example.com", Protocol: "http"}
-	first := StableSidecarID("svc:checkout", spec)
-	second := StableSidecarID("svc:checkout", spec)
-	if first == "" || first != second {
-		t.Fatalf("stable sidecar id changed: %q %q", first, second)
-	}
-	if first == StableSidecarID("svc:other", spec) {
-		t.Fatal("different Services share a sidecar identity")
-	}
-	if first == StableSidecarID("svc:checkout", Spec{Port: 8443, Hostname: spec.Hostname, Protocol: spec.Protocol}) {
-		t.Fatal("different backend ports share a sidecar identity")
-	}
-	if first != StableSidecarID("svc:checkout", Spec{Port: 8080, Hostname: "checkout-admin.dev.example.com", Protocol: spec.Protocol}) {
-		t.Fatal("aliases for one Service and port did not share a sidecar identity")
-	}
-}
-
 func TestValidateNoOverlap(t *testing.T) {
 	if err := ValidateNoOverlap([]Network{{Name: "app", CIDR: "10.0.0.0/24"}, {Name: "shared", CIDR: "10.0.0.0/25"}}); err == nil {
 		t.Fatal("overlapping Docker networks were accepted")
 	}
 	if err := ValidateNoOverlap([]Network{{Name: "app", CIDR: "10.0.0.0/24"}, {Name: "shared", CIDR: "10.0.1.0/24"}}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestForwardDialPreservesHalfClosedStreaming(t *testing.T) {
+	backend, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Close()
+	payload := bytes.Repeat([]byte("raw-stream"), 8192)
+	go func() {
+		c, err := backend.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		data, _ := io.ReadAll(c)
+		_, _ = c.Write(append([]byte("response:"), data...))
+	}()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		_ = ForwardDial(ctx, listener, "bound-device", func(ctx context.Context, network, target string) (net.Conn, error) {
+			if target != "bound-device" {
+				return nil, fmt.Errorf("unexpected target")
+			}
+			return (&net.Dialer{}).DialContext(ctx, network, backend.Addr().String())
+		})
+	}()
+	c, err := net.DialTCP("tcp", nil, listener.Addr().(*net.TCPAddr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
+	if _, err = c.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	if err = c.CloseWrite(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(c)
+	if err != nil || !bytes.Equal(data, append([]byte("response:"), payload...)) {
+		t.Fatalf("half-close truncated reverse stream: %d bytes %v", len(data), err)
+	}
+}
+
+func TestBackendEndpointUsesReachableSelectedNetwork(t *testing.T) {
+	backend, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backend.Close()
+	port := uint16(backend.Addr().(*net.TCPAddr).Port)
+	ip, target, err := backendEndpoint(context.Background(), []Network{
+		{Name: "missing", IPAddress: ""},
+		{Name: "allowed", IPAddress: "127.0.0.1"},
+	}, port)
+	if err != nil || ip != "127.0.0.1" || target != backend.Addr().String() {
+		t.Fatalf("selected backend = %q %q, %v", ip, target, err)
+	}
+	if _, _, err := backendEndpoint(context.Background(), []Network{{Name: "denied", IPAddress: ""}}, port); err == nil {
+		t.Fatal("accepted an unavailable selected backend")
 	}
 }

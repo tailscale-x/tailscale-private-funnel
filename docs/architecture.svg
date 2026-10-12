@@ -1,60 +1,45 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="760" viewBox="0 0 1440 760" role="img" aria-labelledby="title desc">
-  <title id="title">Local Funnel architecture</title>
-  <desc id="desc">A dedicated tag:tailscale-private-funnel ACL boundary isolates the control plane, load balancer, and ingress from all other tailnet nodes. Docker relays have no socket, credentials, or Tailscale identity.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">Local Funnel network layers</title>
+  <desc id="desc">Public clients reach Caddy through owned DNS. Docker traffic crosses an approved Tailscale Service on ingress before reaching an isolated container network. Tailnet-machine traffic goes directly from the load balancer to the selected peer by device identity, without an application Service or ingress hop.</desc>
   <defs>
-    <linearGradient id="canvas" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f7faff"/><stop offset="1" stop-color="#eef4fb"/></linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#10213f" flood-opacity=".10"/></filter>
-    <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="m0 0 10 5-10 5z" fill="#2563eb"/></marker>
-    <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="m0 0 10 5-10 5z" fill="#15945a"/></marker>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#2563eb"/></marker>
     <style>
-      .eyebrow{font:700 13px Inter,system-ui,sans-serif;letter-spacing:2px;text-transform:uppercase;fill:#61708d}
-      .heading{font:700 24px Inter,system-ui,sans-serif;fill:#10213f}
-      .label{font:700 16px Inter,system-ui,sans-serif;fill:#10213f}
-      .copy{font:500 14px Inter,system-ui,sans-serif;fill:#61708d}
-      .mono{font:600 13px ui-monospace,SFMono-Regular,Consolas,monospace;fill:#2563eb}
-      .small{font:600 12px Inter,system-ui,sans-serif;fill:#15945a}
+      .bg{fill:#f7faff}.band{fill:#fff;stroke:#d8e4f1;stroke-width:2}.overlay{fill:#eefaf3;stroke:#56b985;stroke-width:2;stroke-dasharray:8 7}.docker{fill:#f2f5ff;stroke:#9aabed;stroke-width:2;stroke-dasharray:7 6}.box{fill:#fff;stroke:#bacce3;stroke-width:2}.heading{font:700 25px Inter,system-ui,sans-serif;fill:#142746}.label{font:700 18px Inter,system-ui,sans-serif;fill:#142746}.body{font:500 15px Inter,system-ui,sans-serif;fill:#526784}.small{font:600 13px Inter,system-ui,sans-serif;fill:#2763ad}.mono{font:600 14px ui-monospace,SFMono-Regular,Consolas,monospace;fill:#2763ad}.line{fill:none;stroke:#2563eb;stroke-width:3;marker-end:url(#arrow)}
     </style>
   </defs>
-  <rect width="1440" height="760" rx="28" fill="url(#canvas)"/>
-  <text x="72" y="72" class="eyebrow">LOCAL FUNNEL · PRIVATE EDGE</text>
-  <text x="72" y="116" class="heading">One policy-led path from tailnet service to public HTTPS</text>
-  <text x="72" y="146" class="copy">Dedicated tag:tailscale-private-funnel ACL grants isolate this path from the rest of the tailnet.</text>
+  <rect width="1440" height="900" rx="26" class="bg"/>
+  <text x="54" y="53" class="heading">Local Funnel · network boundaries</text>
+  <text x="54" y="78" class="body">One funnel tag. Direct tailnet routes skip ingress; Docker routes use an approved Service and isolated networks.</text>
 
-  <path d="M350 346H450" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow-blue)"/>
-  <path d="M710 346H810" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow-blue)"/>
-  <path d="M1070 346H1170" stroke="#15945a" stroke-width="3" marker-end="url(#arrow-green)"/>
-  <path d="M580 500V580H1120V500" fill="none" stroke="#15945a" stroke-width="3" stroke-dasharray="8 8" marker-end="url(#arrow-green)"/>
-  <path d="M940 500V580" stroke="#15945a" stroke-width="3" stroke-dasharray="8 8"/>
+  <rect x="32" y="105" width="1376" height="158" rx="18" class="band"/>
+  <text x="54" y="139" class="small">1 · PUBLIC INTERNET</text>
+  <rect x="288" y="159" width="214" height="72" rx="12" class="box"/><text x="313" y="188" class="label">Browser / API client</text><text x="313" y="212" class="body">HTTPS :443</text>
+  <rect x="622" y="159" width="214" height="72" rx="12" class="box"/><text x="648" y="188" class="label">Owned DNS records</text><text x="648" y="212" class="body">Exposure A records</text>
+  <rect x="956" y="159" width="248" height="72" rx="12" class="box"/><text x="982" y="188" class="label">Caddy load balancer</text><text x="982" y="212" class="body">Public TLS termination</text>
+  <path d="M502 195 H622 M836 195 H956" class="line"/>
 
-  <g filter="url(#shadow)">
-    <rect x="72" y="230" width="278" height="270" rx="20" fill="#fff" stroke="#dce4f0"/>
-    <rect x="450" y="230" width="260" height="270" rx="20" fill="#fff" stroke="#dce4f0"/>
-    <rect x="810" y="230" width="260" height="270" rx="20" fill="#fff" stroke="#dce4f0"/>
-    <rect x="1170" y="230" width="198" height="270" rx="20" fill="#fff" stroke="#dce4f0"/>
-  </g>
+  <rect x="32" y="281" width="1376" height="186" rx="18" class="overlay"/>
+  <text x="54" y="315" class="small">2 · TAILSCALE OVERLAY · tag:tailscale-private-funnel</text>
+  <rect x="256" y="343" width="265" height="91" rx="12" class="box"/><text x="279" y="374" class="label">Load balancer tsnet</text><text x="279" y="401" class="body">Service or direct peer dial</text>
+  <rect x="624" y="343" width="230" height="91" rx="12" class="box"/><text x="648" y="374" class="label">Tailscale Service</text><text x="648" y="401" class="body">Approved ingress host</text>
+  <rect x="957" y="343" width="266" height="91" rx="12" class="box"/><text x="980" y="374" class="label">Ingress tsnet</text><text x="980" y="401" class="body">One persistent identity</text>
+  <text x="257" y="454" class="small">Direct tailnet machine: load balancer → backend device ID · externally granted · no Service or ingress</text>
+  <path d="M521 390 H624 M854 390 H957" class="line"/>
+  <text x="1110" y="454" class="small">Other nodes need explicit grants</text>
 
-  <circle cx="126" cy="286" r="28" fill="#eff5ff"/><path d="M114 286h24M126 274v24M116 276l20 20M136 276l-20 20" stroke="#2563eb" stroke-width="3" stroke-linecap="round"/>
-  <text x="170" y="286" class="eyebrow">CONTROL PLANE</text><text x="104" y="340" class="label">Authorize + reconcile</text>
-  <text x="104" y="372" class="copy">WhoIs roles, enrollment,</text><text x="104" y="394" class="copy">signed reports, policy rules,</text><text x="104" y="416" class="copy">and the ownership ledger.</text>
-  <rect x="104" y="448" width="198" height="30" rx="15" fill="#eaf8f0"/><circle cx="124" cy="463" r="5" fill="#15945a"/><text x="138" y="468" class="small">dedicated tag ACL only</text>
+  <rect x="32" y="485" width="1376" height="165" rx="18" class="band"/>
+  <text x="54" y="519" class="small">3 · HOST SERVICES · CONTROL AND INGRESS RUN SEPARATELY</text>
+  <rect x="303" y="545" width="331" height="77" rx="12" class="box"/><text x="329" y="575" class="label">Control plane</text><text x="329" y="601" class="body">Signed config, policy, DNS ledger</text>
+  <rect x="835" y="545" width="338" height="77" rx="12" class="box"/><text x="859" y="575" class="label">Ingress supervisor</text><text x="859" y="601" class="body">Only Docker API client</text>
+  <path d="M634 585 H835" class="line"/>
+  <text x="651" y="578" class="small">approve + report</text>
 
-  <circle cx="498" cy="286" r="28" fill="#eff5ff"/><rect x="484" y="275" width="28" height="21" rx="3" fill="none" stroke="#2563eb" stroke-width="3"/><path d="M484 282h28M490 302h16" stroke="#2563eb" stroke-width="3" stroke-linecap="round"/>
-  <text x="542" y="286" class="eyebrow">LOAD BALANCER</text><text x="482" y="340" class="label">Public TLS edge</text>
-  <text x="482" y="372" class="copy">Caddy terminates HTTPS,</text><text x="482" y="394" class="copy">matches approved hostnames,</text><text x="482" y="416" class="copy">and forwards to a Tailscale</text><text x="482" y="438" class="copy">Service through the tailnet.</text>
-  <text x="482" y="470" class="mono">edge.preview.example.com</text>
-
-  <circle cx="858" cy="286" r="28" fill="#eff5ff"/><path d="M846 286h12M858 286l13-13M858 286l13 13M871 273h10v10M871 299h10v-10" fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="902" y="286" class="eyebrow">INGRESS</text><text x="842" y="340" class="label">Docker sidecars</text>
-  <text x="842" y="372" class="copy">Discovers consolidated labels,</text><text x="842" y="394" class="copy">selects local networks, and starts</text><text x="842" y="416" class="copy">one isolated raw TCP sidecar</text><text x="842" y="438" class="copy">per approved backend port.</text>
-  <text x="842" y="470" class="mono">8080:checkout.dev.example.com:http</text>
-
-  <circle cx="1216" cy="286" r="28" fill="#eaf8f0"/><path d="M1203 286h26M1216 273v26M1207 277l18 18M1225 277l-18 18" stroke="#15945a" stroke-width="3" stroke-linecap="round"/>
-  <text x="1258" y="286" class="eyebrow">DNS</text><text x="1202" y="340" class="label">Owned records</text>
-  <text x="1202" y="372" class="copy">Owned A + CNAME</text><text x="1202" y="394" class="copy">records point public names</text><text x="1202" y="416" class="copy">to the load balancer through</text><text x="1202" y="438" class="copy">a provider adapter.</text>
-  <text x="1202" y="470" class="mono">owner: funnel-prod</text>
-
-  <rect x="340" y="612" width="760" height="74" rx="18" fill="#10213f"/>
-  <text x="378" y="642" class="eyebrow" fill="#b8c7df">PUBLIC REQUEST</text>
-  <text x="378" y="670" font-family="ui-monospace,SFMono-Regular,Consolas,monospace" font-size="15" font-weight="600" fill="#fff">https://app.preview.example.com  →  CNAME loadbalancer.preview.example.com  →  Tailscale Service</text>
-  <text x="1124" y="656" class="small">policy approved</text>
+  <rect x="32" y="668" width="1376" height="198" rx="18" class="band"/>
+  <text x="54" y="703" class="small">4 · LOCAL APPLICATION NETWORKS</text>
+  <rect x="243" y="732" width="409" height="103" rx="14" class="docker"/>
+  <text x="266" y="761" class="label">App 1 · selected Docker bridge</text><text x="266" y="789" class="mono">container IP:8080</text><text x="266" y="814" class="body">No published backend port</text>
+  <rect x="788" y="732" width="409" height="103" rx="14" class="docker"/>
+  <text x="811" y="761" class="label">App 2 · selected Docker bridge</text><text x="811" y="789" class="mono">container IP:5173</text><text x="811" y="814" class="body">No relay or Tailscale credential</text>
+  <path d="M922 622 V694 H448 V732 M1048 622 V694 H992 V732" class="line"/>
+  <text x="568" y="723" class="small">direct raw TCP after reachability check</text>
 </svg>

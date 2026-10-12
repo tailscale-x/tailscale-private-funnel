@@ -27,28 +27,34 @@ func pageIntro(kicker, title, subtitle string) string {
 }
 
 func reportExposureCount(payloads map[string]string) int {
-	count := 0
+	seen := map[string]bool{}
+	anonymous := 0
 	for _, payload := range payloads {
-		var envelope struct {
+		var env struct {
 			Payload json.RawMessage `json:"payload"`
 		}
-		if json.Unmarshal([]byte(payload), &envelope) == nil && len(envelope.Payload) > 0 {
-			var report struct {
-				Exposures []json.RawMessage `json:"exposures"`
-			}
-			if json.Unmarshal(envelope.Payload, &report) == nil {
-				count += len(report.Exposures)
-				continue
-			}
+		body := []byte(payload)
+		if json.Unmarshal(body, &env) == nil && len(env.Payload) > 0 {
+			body = env.Payload
 		}
-		var report struct {
-			Exposures []json.RawMessage `json:"exposures"`
+		var p struct {
+			Exposures []struct {
+				Hostname string `json:"public_hostname"`
+			} `json:"exposures"`
 		}
-		if json.Unmarshal([]byte(payload), &report) == nil {
-			count += len(report.Exposures)
+		if json.Unmarshal(body, &p) != nil {
+			continue
+		}
+		for _, e := range p.Exposures {
+			host := strings.ToLower(strings.TrimSuffix(e.Hostname, "."))
+			if host == "" {
+				anonymous++
+			} else {
+				seen[host] = true
+			}
 		}
 	}
-	return count
+	return len(seen) + anonymous
 }
 
 func stringValue(values map[string]any, key, fallback string) string {

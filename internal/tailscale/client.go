@@ -81,14 +81,16 @@ type ServiceHost struct {
 }
 
 type Device struct {
-	ID         string   `json:"id"`
-	NodeID     string   `json:"nodeId"`
-	Name       string   `json:"name"`
-	Hostname   string   `json:"hostname"`
-	Tags       []string `json:"tags"`
-	Authorized bool     `json:"authorized"`
-	Endpoints  []string `json:"endpoints"`
-	Addresses  []string `json:"addresses"`
+	ID                 string   `json:"id"`
+	NodeID             string   `json:"nodeId"`
+	Name               string   `json:"name"`
+	Hostname           string   `json:"hostname"`
+	Tags               []string `json:"tags"`
+	Authorized         bool     `json:"authorized"`
+	ClientConnectivity struct {
+		Endpoints []string `json:"endpoints"`
+	} `json:"clientConnectivity"`
+	Addresses []string `json:"addresses"`
 }
 
 func (c Client) ListDevices(ctx context.Context) ([]Device, error) {
@@ -151,6 +153,9 @@ func (c Client) GetDevice(ctx context.Context, deviceID string) (Device, error) 
 	if err != nil {
 		return Device{}, err
 	}
+	q := req.URL.Query()
+	q.Set("fields", "all")
+	req.URL.RawQuery = q.Encode()
 	req.Header.Set("Authorization", "Bearer "+token)
 	res, err := c.client().Do(req)
 	if err != nil {
@@ -368,4 +373,28 @@ func (c Client) client() *http.Client {
 		return c.HTTP
 	}
 	return http.DefaultClient
+}
+
+// DeleteService removes a control-owned Service after its advertisements have
+// been withdrawn. A missing Service is already cleaned up.
+func (c Client) DeleteService(ctx context.Context, name string) error {
+	token, err := c.oauthToken(ctx)
+	if err != nil {
+		return err
+	}
+	endpoint := strings.TrimRight(c.apiBase(), "/") + "/tailnet/" + url.PathEscape(c.Tailnet) + "/services/" + url.PathEscape(name)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	response, err := c.client().Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode/100 != 2 && response.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("Tailscale Service deletion: HTTP %d", response.StatusCode)
+	}
+	return nil
 }

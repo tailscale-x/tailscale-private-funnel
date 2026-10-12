@@ -17,8 +17,8 @@ type Network struct {
 }
 
 // ValidateNoOverlap rejects ambiguous multi-network topologies before a relay
-// is started. A container connected to overlapping user-defined CIDRs could
-// otherwise resolve the same backend through an unintended network.
+// is exposed. Overlapping user-defined CIDRs could otherwise send traffic to
+// an unintended backend network.
 func ValidateNoOverlap(networks []Network) error {
 	for i := range networks {
 		if networks[i].CIDR == "" {
@@ -46,7 +46,7 @@ func ValidateNoOverlap(networks []Network) error {
 
 // SelectNetworks implements the local-only topology policy. Control never
 // decides whether a Docker network name is safe; the host operator can deny
-// names or IDs here before sidecars are created.
+// names or IDs here before backend addresses are selected.
 func SelectNetworks(networks []Network, denyPatterns []string) []Network {
 	var selected []Network
 	for _, network := range networks {

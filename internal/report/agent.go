@@ -11,25 +11,24 @@ import (
 )
 
 type Exposure struct {
-	ApplicationID        string   `json:"application_id,omitempty"`
-	ServiceName          string   `json:"service_name,omitempty"`
-	ContainerID          string   `json:"container_id,omitempty"`
-	PublicHostname       string   `json:"public_hostname"`
-	BackendHostname      string   `json:"backend_hostname"`
-	BackendIP            string   `json:"backend_ip"`
-	LoadBalancerHostname string   `json:"loadbalancer_hostname"`
-	Port                 uint16   `json:"port"`
-	Protocol             string   `json:"protocol"`
-	Networks             []string `json:"networks,omitempty"`
-	Reachable            bool     `json:"reachable"`
+	BackendDeviceID string   `json:"backend_device_id,omitempty"`
+	ApplicationID   string   `json:"application_id,omitempty"`
+	ServiceName     string   `json:"service_name,omitempty"`
+	ContainerID     string   `json:"container_id,omitempty"`
+	PublicHostname  string   `json:"public_hostname"`
+	BackendHostname string   `json:"backend_hostname"`
+	BackendIP       string   `json:"backend_ip"`
+	Port            uint16   `json:"port"`
+	Protocol        string   `json:"protocol"`
+	Networks        []string `json:"networks,omitempty"`
+	Reachable       bool     `json:"reachable"`
 }
 
 type Agent struct {
-	NodeID               string
-	ManagementURL        string
-	DataDir              string
-	HTTPClient           *http.Client
-	LoadBalancerHostname string
+	NodeID        string
+	ManagementURL string
+	DataDir       string
+	HTTPClient    *http.Client
 }
 
 func (a Agent) Send(ctx context.Context, exposures []Exposure) error {
@@ -63,6 +62,32 @@ func (a Agent) Send(ctx context.Context, exposures []Exposure) error {
 	if res.StatusCode/100 != 2 {
 		message, _ := io.ReadAll(res.Body)
 		return fmt.Errorf("report submission failed: HTTP %d: %s", res.StatusCode, strings.TrimSpace(string(message)))
+	}
+	return nil
+}
+
+func (a Agent) SendSnapshot(ctx context.Context, path string, payload any) error {
+	pub, priv, err := LoadOrCreate(a.DataDir + "/report-identity.json")
+	if err != nil {
+		return err
+	}
+	e, err := NewEnvelope(a.NodeID, payload, pub, priv, time.Now())
+	if err != nil {
+		return err
+	}
+	body, _ := json.Marshal(e)
+	req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(a.ManagementURL, "/")+path, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := a.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode/100 != 2 {
+		return fmt.Errorf("snapshot: HTTP %d", res.StatusCode)
 	}
 	return nil
 }

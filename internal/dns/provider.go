@@ -39,8 +39,15 @@ type cloudflareProvider struct {
 	apiBase    string
 	httpClient *http.Client
 }
-type godaddyProvider struct{ p godaddy.Provider }
-type route53Provider struct{ p route53.Provider }
+type godaddyProvider struct {
+	p          godaddy.Provider
+	apiBase    string
+	httpClient *http.Client
+}
+type route53Provider struct {
+	p          route53.Provider
+	zoneClient route53ZoneAPI
+}
 
 type recordProvider interface {
 	libdns.RecordGetter
@@ -104,21 +111,53 @@ func relativeRecords(records []libdns.Record, zone string) ([]libdns.Record, err
 }
 
 func (p *cloudflareProvider) Apply(ctx context.Context, zone string, add, remove []libdns.Record) error {
-	// Delete only exact authorized values, never a whole RRset. Append is used
-	// deliberately: SetRecords may replace a record created after our preview.
-	relative, err := relativeRecords(add, zone)
-	if err != nil {
-		return err
-	}
-	for _, record := range remove {
-		if err := p.deleteExactRecord(ctx, zone, record); err != nil {
+	// One-record operations make completed additions recoverable if a later
+	// append fails. The control ledger advances only after the full apply.
+	appendOne := func(ctx context.Context, record libdns.Record) error {
+		relative, err := relativeRecords([]libdns.Record{record}, zone)
+		if err != nil {
 			return err
 		}
-	}
-	if len(relative) > 0 {
 		_, err = p.p.AppendRecords(ctx, zone, relative)
+		return err
 	}
-	return err
+	return applyExact(ctx, add, remove, appendOne, func(ctx context.Context, record libdns.Record) error { return p.deleteExactRecord(ctx, zone, record) })
+}
+
+func applyExact(ctx context.Context, add, remove []libdns.Record, appendOne, deleteOne func(context.Context, libdns.Record) error) error {
+	added, removed := []libdns.Record{}, []libdns.Record{}
+	recover := func(cause error) error {
+		recoveryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		failures := []string{}
+		for _, record := range added {
+			if err := deleteOne(recoveryCtx, record); err != nil {
+				failures = append(failures, err.Error())
+			}
+		}
+		for _, record := range removed {
+			if err := appendOne(recoveryCtx, record); err != nil {
+				failures = append(failures, err.Error())
+			}
+		}
+		if len(failures) > 0 {
+			return fmt.Errorf("%w; DNS recovery pending: %s", cause, strings.Join(failures, "; "))
+		}
+		return cause
+	}
+	for _, record := range remove {
+		if err := deleteOne(ctx, record); err != nil {
+			return recover(err)
+		}
+		removed = append(removed, record)
+	}
+	for _, record := range add {
+		if err := appendOne(ctx, record); err != nil {
+			return recover(err)
+		}
+		added = append(added, record)
+	}
+	return nil
 }
 
 func (p *cloudflareProvider) deleteExactRecord(ctx context.Context, zone string, record libdns.Record) error {
@@ -223,9 +262,6 @@ func (p *cloudflareProvider) deleteExactRecord(ctx context.Context, zone string,
 	}
 	return nil
 }
-func (p *cloudflareProvider) ListZones(ctx context.Context) ([]libdns.Zone, error) {
-	return p.p.ListZones(ctx)
-}
 
 func (p *godaddyProvider) List(ctx context.Context, zone string) ([]libdns.Record, error) {
 	records, err := p.p.GetRecords(ctx, zone)
@@ -239,7 +275,11 @@ func (p *godaddyProvider) Apply(ctx context.Context, zone string, add, remove []
 	return applyRecords(ctx, &p.p, zone, add, remove)
 }
 func (p *route53Provider) List(ctx context.Context, zone string) ([]libdns.Record, error) {
-	records, err := p.p.GetRecords(ctx, zone)
+	provider, err := p.recordsProvider(ctx, zone)
+	if err != nil {
+		return nil, err
+	}
+	records, err := provider.GetRecords(ctx, zone)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +287,11 @@ func (p *route53Provider) List(ctx context.Context, zone string) ([]libdns.Recor
 }
 func (p *route53Provider) Capabilities() []string { return []string{"A", "CNAME", "SRV", "TXT"} }
 func (p *route53Provider) Apply(ctx context.Context, zone string, add, remove []libdns.Record) error {
-	return applyRecords(ctx, &p.p, zone, add, remove)
+	provider, err := p.recordsProvider(ctx, zone)
+	if err != nil {
+		return err
+	}
+	return applyRecords(ctx, provider, zone, add, remove)
 }
 
 var Registry = map[string]Factory{

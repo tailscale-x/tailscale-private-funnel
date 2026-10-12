@@ -9,52 +9,64 @@ import (
 )
 
 // Rule grants a set of Tailscale principals permission to publish hostnames
-// matching HostnameRegex through one or more loadbalancers. HostnameRegex is
+// matching any HostnameRegexes pattern through one or more loadbalancers. Each pattern is
 // matched against the complete, lower-case hostname.
 type Rule struct {
-	Name                  string   `json:"name"`
-	HostnameRegex         string   `json:"hostname_regex"`
-	Roles                 []string `json:"roles"`
-	IngressIDs            []string `json:"ingress_ids"`
-	LoadBalancerHostnames []string `json:"loadbalancer_hostnames"`
-	Enabled               bool     `json:"enabled"`
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	HostnameRegexes []string `json:"hostname_regexes"`
+	Roles           []string `json:"roles"`
+	IngressIDs      []string `json:"ingress_ids"`
+	LoadBalancerIDs []string `json:"loadbalancer_ids"`
+	Enabled         bool     `json:"enabled"`
 }
 
 // Document is persisted by the control service. An empty document denies all
 // ingress exposure, which makes adding a ingress safe until an administrator
 // explicitly creates a matching rule.
 type Document struct {
-	Rules []Rule `json:"rules"`
+	Revision uint64 `json:"revision"`
+	Rules    []Rule `json:"rules"`
 }
 
 func (d Document) Validate() error {
 	if len(d.Rules) > 200 {
 		return fmt.Errorf("at most 200 exposure policy rules are supported")
 	}
+	ids := map[string]bool{}
 	for i, rule := range d.Rules {
-		if len(rule.HostnameRegex) > 2048 {
-			return fmt.Errorf("policy rule %d hostname regex is too long", i+1)
+		if rule.ID != "" {
+			if ids[rule.ID] {
+				return fmt.Errorf("duplicate rule ID %s", rule.ID)
+			}
+			ids[rule.ID] = true
 		}
-		if strings.TrimSpace(rule.HostnameRegex) == "" {
-			return fmt.Errorf("policy rule %d has no hostname_regex", i+1)
+		if len(rule.HostnameRegexes) == 0 || len(rule.HostnameRegexes) > 50 {
+			return fmt.Errorf("policy rule %d requires 1 to 50 hostname patterns", i+1)
 		}
-		if _, err := regexp.Compile("^(?:" + rule.HostnameRegex + ")$"); err != nil {
-			return fmt.Errorf("policy rule %d has invalid hostname_regex: %w", i+1, err)
-		}
-		if len(nonEmpty(rule.Roles)) == 0 && len(nonEmpty(rule.IngressIDs)) == 0 {
-			return fmt.Errorf("policy rule %d must select at least one role or ingress", i+1)
+		for j, pattern := range rule.HostnameRegexes {
+			if strings.TrimSpace(pattern) == "" {
+				return fmt.Errorf("policy rule %d pattern %d is empty", i+1, j+1)
+			}
+			if len(pattern) > 2048 {
+				return fmt.Errorf("policy rule %d pattern %d is too long", i+1, j+1)
+			}
+			if _, err := regexp.Compile("^(?:" + pattern + ")$"); err != nil {
+				return fmt.Errorf("policy rule %d pattern %d is invalid: %w", i+1, j+1, err)
+			}
 		}
 	}
 	return nil
 }
 
 // Allows returns whether one enabled rule authorizes this ingress, hostname,
-// and loadbalancer. Any matching role or ingress selector is sufficient.
+// and loadbalancer. Any matching role or ingress selector is sufficient. Empty principal selectors
+// allow any enrolled ingress; an empty loadbalancer list adds no restriction.
 func (d Document) Allows(hostname, loadbalancer string, ingressIDs, roles []string) (bool, string) {
 	if rule, ok := d.Match(hostname, loadbalancer, ingressIDs, roles); ok {
 		name := rule.Name
 		if name == "" {
-			name = rule.HostnameRegex
+			name = strings.Join(rule.HostnameRegexes, " OR ")
 		}
 		return true, name
 	}
@@ -65,8 +77,8 @@ func (d Document) Allows(hostname, loadbalancer string, ingressIDs, roles []stri
 // deterministic. Ingress IDs are stable identifiers and remain case sensitive.
 func (d Document) Match(hostname, loadbalancer string, ingressIDs, roles []string) (Rule, bool) {
 	hostname = normalize(hostname)
-	loadbalancer = normalize(loadbalancer)
-	if ValidateHostname(hostname) != nil || ValidateHostname(loadbalancer) != nil {
+	loadbalancer = strings.TrimSpace(loadbalancer)
+	if ValidateHostname(hostname) != nil {
 		return Rule{}, false
 	}
 	ingressSet := map[string]bool{}
@@ -78,11 +90,24 @@ func (d Document) Match(hostname, loadbalancer string, ingressIDs, roles []strin
 		if !rule.Enabled {
 			continue
 		}
-		matched, err := regexp.MatchString("^(?:"+rule.HostnameRegex+")$", hostname)
-		if err != nil || !matched {
+		matched := false
+		invalid := false
+		for _, pattern := range rule.HostnameRegexes {
+			if strings.TrimSpace(pattern) == "" || len(pattern) > 2048 {
+				invalid = true
+				break
+			}
+			ok, err := regexp.MatchString("^(?:"+pattern+")$", hostname)
+			if err != nil {
+				invalid = true
+				break
+			}
+			matched = matched || ok
+		}
+		if invalid || !matched {
 			continue
 		}
-		if len(nonEmpty(rule.LoadBalancerHostnames)) > 0 && !containsNormalized(rule.LoadBalancerHostnames, loadbalancer) {
+		if len(nonEmpty(rule.LoadBalancerIDs)) > 0 && !containsID(rule.LoadBalancerIDs, loadbalancer) {
 			continue
 		}
 		roleOK := false
@@ -99,7 +124,7 @@ func (d Document) Match(hostname, loadbalancer string, ingressIDs, roles []strin
 				break
 			}
 		}
-		if roleOK || ingressOK {
+		if roleOK || ingressOK || (len(nonEmpty(rule.Roles)) == 0 && len(nonEmpty(rule.IngressIDs)) == 0) {
 			return rule, true
 		}
 	}
@@ -151,9 +176,9 @@ func set(values []string) map[string]bool {
 	return out
 }
 
-func containsNormalized(values []string, want string) bool {
-	for _, value := range values {
-		if normalize(value) == want {
+func containsID(values []string, value string) bool {
+	for _, v := range values {
+		if strings.TrimSpace(v) == value {
 			return true
 		}
 	}

@@ -38,6 +38,7 @@ func (r HTTPResolver) ReportHealth(ctx context.Context, payload map[string]any) 
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/json")
 	res, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrControlUnavailable, err)
@@ -60,10 +61,12 @@ func (r HTTPResolver) Resolve(ctx context.Context, hostname string, backendPort 
 	if client == nil {
 		client = http.DefaultClient
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(r.BaseURL, "/")+"/api/node/config", nil)
+	body, _ := json.Marshal(map[string]any{"hostname": hostname, "backend_port": backendPort})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(r.BaseURL, "/")+"/api/node/config", strings.NewReader(string(body)))
 	if err != nil {
 		return Assignment{}, err
 	}
+	req.Header.Set("Content-Type", "application/json")
 	res, err := client.Do(req)
 	if err != nil {
 		return Assignment{}, fmt.Errorf("%w: %v", ErrControlUnavailable, err)
@@ -88,10 +91,10 @@ func (r HTTPResolver) Resolve(ctx context.Context, hostname string, backendPort 
 		*r.Revision = config.Revision
 	}
 	for _, app := range config.Applications {
-		if !app.Enabled || (app.BackendPort != 0 && app.BackendPort != backendPort) || app.ServicePort == 0 {
+		if app.BackendSource == "tailnet" || !app.Enabled || (app.BackendPort != 0 && app.BackendPort != backendPort) || app.ServicePort == 0 {
 			continue
 		}
-		matched := strings.EqualFold(app.ID, hostname) || strings.EqualFold(app.ServiceName, hostname)
+		matched := false
 		for _, publicHostname := range app.PublicHostnames {
 			if strings.EqualFold(strings.TrimSuffix(publicHostname, "."), strings.TrimSuffix(hostname, ".")) {
 				matched = true
@@ -119,6 +122,7 @@ func (r HTTPResolver) Acknowledge(ctx context.Context, revision string, services
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/json")
 	res, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrControlUnavailable, err)
@@ -128,4 +132,25 @@ func (r HTTPResolver) Acknowledge(ctx context.Context, revision string, services
 		return fmt.Errorf("configuration acknowledgement: HTTP %d", res.StatusCode)
 	}
 	return nil
+}
+
+func (r HTTPResolver) Configuration(ctx context.Context) (nodeconfig.Configuration, error) {
+	var config nodeconfig.Configuration
+	req, err := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(r.BaseURL, "/")+"/api/node/config", nil)
+	if err != nil {
+		return config, err
+	}
+	res, err := r.Client.Do(req)
+	if err != nil {
+		return config, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		return config, fmt.Errorf("config: HTTP %d", res.StatusCode)
+	}
+	var env report.Envelope
+	if err = json.NewDecoder(res.Body).Decode(&env); err != nil {
+		return config, err
+	}
+	return nodeconfig.Verify(env, r.ControlKey, r.NodeID, time.Now())
 }

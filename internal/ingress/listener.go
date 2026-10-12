@@ -10,8 +10,7 @@ import (
 )
 
 // ListenerManager keeps all Service listeners on the ingress node's one
-// tsnet identity. Relays are ordinary loopback TCP targets and never join the
-// tailnet themselves.
+// tsnet identity and forwards directly to selected backend addresses.
 type ListenerManager struct {
 	server *tsnet.Server
 	mu     sync.Mutex
@@ -29,6 +28,10 @@ func NewListenerManager(server *tsnet.Server) *ListenerManager {
 }
 
 func (m *ListenerManager) Listen(ctx context.Context, service string, port uint16, target string) error {
+	d := net.Dialer{}
+	return m.ListenDial(ctx, service, port, target, d.DialContext)
+}
+func (m *ListenerManager) ListenDial(ctx context.Context, service string, port uint16, target string, dial func(context.Context, string, string) (net.Conn, error)) error {
 	if m == nil || m.server == nil || service == "" || port == 0 || target == "" {
 		return fmt.Errorf("service listener requires server, service, port, and target")
 	}
@@ -52,7 +55,7 @@ func (m *ListenerManager) Listen(ctx context.Context, service string, port uint1
 	m.items[key] = listenerItem{listener: listener, cancel: cancel, target: target}
 	m.mu.Unlock()
 	go func() {
-		_ = Forward(listenCtx, listener, target)
+		_ = ForwardDial(listenCtx, listener, target, dial)
 		m.mu.Lock()
 		if current, ok := m.items[key]; ok && current.listener == listener {
 			delete(m.items, key)

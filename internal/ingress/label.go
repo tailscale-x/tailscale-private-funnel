@@ -65,16 +65,20 @@ func ParseLabel(value string) ([]Spec, error) {
 	return result, nil
 }
 
-// Forward copies a raw TCP stream to target. The supervisor gives each
-// forwarding spec its own sidecar, so no HTTP host/path dispatcher is needed.
+// Forward copies a raw TCP stream to the selected backend address. Each
+// Service listener already identifies its one approved backend port.
 func Forward(ctx context.Context, listener net.Listener, target string) error {
+	d := net.Dialer{Timeout: 5 * time.Second}
+	return ForwardDial(ctx, listener, target, d.DialContext)
+}
+func ForwardDial(ctx context.Context, listener net.Listener, target string, dial func(context.Context, string, string) (net.Conn, error)) error {
 	if listener == nil || strings.TrimSpace(target) == "" {
 		return errors.New("listener and target are required")
 	}
 	if err := contextErr(ctx); err != nil {
 		return err
 	}
-	relayCtx, cancel := context.WithCancel(context.Background())
+	drainCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var active sync.WaitGroup
 	stop := context.AfterFunc(ctx, func() { _ = listener.Close() })
@@ -98,14 +102,13 @@ func Forward(ctx context.Context, listener net.Listener, target string) error {
 			return err
 		}
 		active.Add(1)
-		go func() { defer active.Done(); relay(relayCtx, conn, target) }()
+		go func() { defer active.Done(); forwardConn(drainCtx, conn, target, dial) }()
 	}
 }
 
-func relay(ctx context.Context, downstream net.Conn, target string) {
+func forwardConn(ctx context.Context, downstream net.Conn, target string, dial func(context.Context, string, string) (net.Conn, error)) {
 	defer downstream.Close()
-	dialer := net.Dialer{Timeout: 5 * time.Second}
-	upstream, err := dialer.DialContext(ctx, "tcp", target)
+	upstream, err := dial(ctx, "tcp", target)
 	if err != nil {
 		return
 	}

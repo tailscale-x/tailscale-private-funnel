@@ -14,6 +14,7 @@ import (
 var version = "dev"
 
 func main() {
+	app.BuildVersion = version
 	root := &cobra.Command{
 		Use:   "tailscale-private-funnel",
 		Short: "Private funnel loadbalancer, ingress, and control service",
@@ -67,11 +68,11 @@ func modeCommand(mode string) *cobra.Command {
 		deploy.Flags().BoolVar(&opts.AcceptDNS, "accept-dns", true, "accept Tailscale DNS settings")
 		deploy.Flags().StringSliceVar(&opts.Tags, "advertise-tags", nil, "tags to advertise")
 		deploy.Flags().StringVar(&opts.CertEmail, "cert-email", "", "ACME certificate contact email")
-		deploy.Flags().StringVar(&opts.LoadBalancerHostname, "loadbalancer-hostname", "", "load balancer DNS hostname")
-		deploy.Flags().StringVar(&opts.PublicIPv4, "public-ipv4", "", "public IPv4 endpoint reported for load balancer DNS (loadbalancer mode)")
+		if mode == "loadbalancer" {
+			deploy.Flags().StringVar(&opts.LoadBalancerHostname, "loadbalancer-hostname", "", "public DNS hostname")
+		}
 		deploy.Flags().StringSliceVar(&opts.LabelKeys, "label-key", nil, "additional local exposure label aliases")
 		deploy.Flags().StringSliceVar(&opts.DenyNetworks, "deny-network", nil, "local Docker network name or ID pattern to deny")
-		deploy.Flags().StringVar(&opts.Image, "image", "ghcr.io/tailscale-x/tailscale-private-funnel:dev", "versioned sidecar image")
 		cmd.AddCommand(deploy)
 		service := &cobra.Command{Use: "service", Short: "manage the user systemd service"}
 		service.PersistentFlags().StringVar(&opts.ConfigFile, "config", "", "deployment configuration path")
@@ -106,24 +107,13 @@ func modeCommand(mode string) *cobra.Command {
 	serve.Flags().StringVar(&opts.Listen, "listen", "", "listen address")
 	serve.Flags().StringVar(&opts.BootstrapListen, "bootstrap-listen", "", "optional non-tailnet listener for enrollment bootstrap")
 	serve.Flags().StringVar(&opts.CertEmail, "cert-email", "", "ACME certificate contact email")
-	serve.Flags().StringVar(&opts.LoadBalancerHostname, "loadbalancer-hostname", "", "load balancer DNS hostname")
-	serve.Flags().StringVar(&opts.PublicIPv4, "public-ipv4", "", "public IPv4 endpoint reported for load balancer DNS (loadbalancer mode)")
+	if mode == "loadbalancer" {
+		serve.Flags().StringVar(&opts.LoadBalancerHostname, "loadbalancer-hostname", "", "public DNS hostname")
+	}
 	serve.Flags().StringSliceVar(&opts.LabelKeys, "label-key", nil, "additional local exposure label aliases")
 	serve.Flags().StringSliceVar(&opts.DenyNetworks, "deny-network", nil, "local Docker network name or ID pattern to deny")
-	serve.Flags().StringVar(&opts.Image, "image", "ghcr.io/tailscale-x/tailscale-private-funnel:dev", "versioned sidecar image")
 	serve.Flags().StringVar(&opts.ConfigFile, "config", "", "deployment configuration path")
 	cmd.AddCommand(serve)
-	if mode == "ingress" {
-		relay := &cobra.Command{Use: "relay", Short: "run a credential-free raw TCP relay"}
-		relayServe := &cobra.Command{Use: "serve", Short: "relay one backend port", RunE: func(cmd *cobra.Command, _ []string) error {
-			return app.RelayServe(cmd.Context(), opts)
-		}}
-		relayServe.Flags().StringVar(&opts.Listen, "listen", ":8080", "loopback relay listen address")
-		relayServe.Flags().StringVar(&opts.BackendIP, "backend-ip", "", "selected container address")
-		relayServe.Flags().Uint16Var(&opts.BackendPort, "backend-port", 0, "selected container port")
-		relay.AddCommand(relayServe)
-		cmd.AddCommand(relay)
-	}
 	status := &cobra.Command{Use: "status", Short: "show local node status", RunE: func(cmd *cobra.Command, _ []string) error {
 		return app.Status(mode, opts)
 	}}

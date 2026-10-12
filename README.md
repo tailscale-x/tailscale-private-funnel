@@ -46,15 +46,15 @@ credential-free environment.
 
 The architecture is shown as network layers: public DNS and HTTPS at the edge, the dedicated Tailscale ACL overlay, the ingress host network, and isolated application networks.
 
-<p align="center"><img src="docs/architecture-security.png" alt="Network-layer topology showing public HTTPS, the dedicated Tailscale ACL overlay, ingress host networking, isolated Docker application networks, and credential-free relays" width="100%" /></p>
+<p align="center"><img src="docs/architecture.svg" alt="Network-layer topology showing public HTTPS, the dedicated Tailscale ACL overlay, ingress host networking, isolated Docker application networks, and direct backend forwarding" width="100%" /></p>
 
 ## How it works
 
 1. **Control joins the tailnet.** Run `control join` once; the service keeps its tsnet identity and serves the management UI on a private address.
-2. **Policy and enrollment are created in the UI.** Administrators choose load balancers, ingress nodes, hostname rules, provider zones, and ownership IDs. Generated commands contain the exact release and paths to run.
-3. **The load balancer terminates HTTPS.** Load balancer mode runs Caddy with the process's persistent tsnet transport and routes each approved hostname to its private Tailscale Service.
-4. **Ingress reports labeled HTTP services.** Ingress watches the consolidated `tailscale-private-funnel.expose` label, starts one isolated raw TCP sidecar per backend port, and sends signed, expiring desired-state reports.
-5. **Control reconciles owned DNS.** The provider adapter creates the owned load balancer A record and public CNAMEs, and removes only records in this installation's ledger. Unowned records need explicit overwrite approval.
+2. **Policy and enrollment are created in the UI.** Administrators choose load balancers, ingress nodes, hostname rules, and provider zones. Generated commands contain the exact release and paths to run.
+3. **The load balancer terminates HTTPS.** Load balancer mode runs Caddy with the process's persistent tsnet transport. Docker routes reach private Tailscale Services; tailnet-machine routes connect directly to the selected device.
+4. **Ingress reports labeled HTTP services.** Ingress watches the consolidated `tailscale-private-funnel.expose` label, forwards each approved Service directly to a selected backend address, and sends signed, expiring desired-state reports.
+5. **Control distributes exposures and reconciles owned DNS.** The provider adapter creates owned A records for each exposure’s eligible load balancers, and removes only records in this installation's ledger. Unowned records need explicit overwrite approval.
 
 ## Quick start
 
@@ -65,6 +65,12 @@ release, hostname, tags, and storage paths; they are intentionally not
 duplicated in this README.
 
 ### Spawn the control node
+
+Create a Tailscale OAuth client with `auth_keys`, `devices:core`, `services`,
+and **`users:read`**. Use `tag:tailscale-private-funnel` for device and Service
+permissions. The read-only `users:read` scope lets control verify Tailscale
+Owner/Admin roles for web UI access; it does not allow changing users or roles.
+Store the client ID and secret in the protected files used below.
 
 Release workflows publish ready-to-run binaries for Linux amd64, Linux arm64,
 and macOS arm64. This one-line bootstrap downloads and verifies the matching
@@ -78,7 +84,7 @@ curl -fsSL https://raw.githubusercontent.com/tailscale-x/tailscale-private-funne
 The default state and data locations follow XDG conventions. Pass
 `--state-dir`, `--data-dir`, or `--install-dir` when a system service needs
 explicit paths. Open the private setup URL printed by `control join`, then
-configure providers, zones, ownership IDs, access roles, exposure policy, and
+configure providers, zones, access roles, exposure policy, and
 node enrollments there.
 
 ## Security and ownership
@@ -91,12 +97,12 @@ that tag's policy; existing tailnet nodes and services are outside the trust bou
 
 | Boundary | Protection |
 | --- | --- |
-| Tailscale boundary | Control, load balancer, ingress, and Services use only `tag:tailscale-private-funnel`. The ACL grants this tag the required paths and denies access to unrelated tailnet nodes by default. |
+| Tailscale boundary | Bootstrap and application Services use `tag:tailscale-private-funnel`. Existing Tailscale policy defines its access boundary. Additional ingress tags and grants for selected remote backends are assigned externally; the application never modifies ACLs. |
 | Management | The UI is reachable only through the dedicated tailnet path. Every request is authorized from Tailscale `WhoIs`; administrator, operator, and viewer roles are explicit. |
 | Enrollment | OAuth credentials stay in control. Generated bootstrap keys are short-lived, one-use, preauthorized, and never written to node state or systemd units. |
 | Ingress identity | One persistent tsnet identity owns the node's Services. Reports are Ed25519 signed, nonce checked, freshness limited, and bound to that enrolled identity. |
-| Docker isolation | The supervisor is the only process with Docker socket access. Each forwarding relay has no socket, no Tailscale state, no auth key, no elevated capability, and only the selected application networks. |
-| Service access | Control approves the exact Service/device pair and sends only policy-filtered configuration to the ingress node. Unknown applications and labels remain stopped. |
+| Docker reachability | The ingress supervisor is the only process with Docker socket access. It selects allowed user-defined application networks and forwards directly to a reachable container IP and port; no relay container or published backend host port is required. |
+| Service access | Control approves the exact Service/device pair and sends only policy-filtered configuration to the ingress node. Policy-authorized labels automatically provision application Services; denied labels remain stopped. |
 | Public edge | Caddy terminates public TLS at the load balancer and dials the approved private Service over the load balancer's persistent tsnet transport. Backends are never published directly. |
 | DNS | The internal ledger is authoritative. The control plane changes or deletes only records owned by its exact ledger owner. Unowned records require an explicit preview approval before overwrite. |
 
@@ -150,3 +156,24 @@ docker build --file Dockerfile --tag private-funnel:dev .
 
 Builds, screenshots, checksums, and multi-architecture images are published by
 the tag workflow. The VPS only pulls those prebuilt artifacts.
+
+### Policy-controlled Docker discovery
+
+Configure an exposure policy once, then add `tailscale-private-funnel.expose=5173:app.example.com:http` to a container. Control validates the enrolled ingress identity, hostname policy, managed zone, and hostname/port conflicts before creating its application and Tailscale Service. Applications are an operational inventory, not a second approval step. DNS ownership and explicit overwrite rules still apply.
+
+The default administrator selector is `autogroup:owner`, verified through a server-side Users API lookup (`users:read` OAuth scope); no individual user allowlist is required. Other account roles require an explicit selector grant. Tagged nodes do not inherit human account roles. Other principals use configured viewer/operator/admin selectors or application capabilities.
+
+### Expose an existing tailnet machine
+
+Use **Expose a tailnet machine** in the control UI: choose a load balancer and backend,
+enter an HTTP port and public hostname, test connectivity from that load balancer, then save. Additional
+backend access is granted externally through Tailscale tags and policy; this app
+never broadens ACLs. Machines are selected by stable device identity, and a visible
+peer still needs to pass the load-balancer-side port test. No per-application Service or ingress hop is created. [Workflow details](PRIVATE_FUNNEL.md#expose-another-tailnet-machine).
+
+### Editable names, stable references
+
+DNS provider, node, enrollment, application, and rule names are display labels.
+Renaming them does not change credentials, Tailscale identities, Service names,
+DNS domains, or record ownership. Selectors submit immutable IDs and show context
+to distinguish duplicate names. See [resource identity and API details](PRIVATE_FUNNEL.md#display-names-and-resource-ids).

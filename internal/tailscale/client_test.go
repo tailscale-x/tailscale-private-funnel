@@ -24,6 +24,8 @@ func TestServiceLifecycleUsesExactAPIEndpoints(t *testing.T) {
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]string{"key": "tskey-test"})
+		case strings.HasSuffix(r.URL.Path, "/services/svc:app") && r.Method == http.MethodDelete:
+			w.WriteHeader(204)
 		case strings.HasSuffix(r.URL.Path, "/services/svc:app") && r.Method == http.MethodPut:
 			if err := json.NewDecoder(r.Body).Decode(&serviceBody); err != nil {
 				http.Error(w, err.Error(), 400)
@@ -69,7 +71,10 @@ func TestServiceLifecycleUsesExactAPIEndpoints(t *testing.T) {
 	if err != nil || device.NodeID != "node-sidecar" || !device.Authorized {
 		t.Fatalf("device=%#v err=%v", device, err)
 	}
-	for _, want := range []string{"PUT /api/v2/tailnet/example.ts.net/services/svc:app", "GET /api/v2/tailnet/example.ts.net/services/svc:app/devices", "POST /api/v2/tailnet/example.ts.net/services/svc:app/device/node-1/approved"} {
+	if err := client.DeleteService(context.Background(), "svc:app"); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"DELETE /api/v2/tailnet/example.ts.net/services/svc:app", "PUT /api/v2/tailnet/example.ts.net/services/svc:app", "GET /api/v2/tailnet/example.ts.net/services/svc:app/devices", "POST /api/v2/tailnet/example.ts.net/services/svc:app/device/node-1/approved"} {
 		found := false
 		for _, got := range paths {
 			if got == want {

@@ -1,5 +1,7 @@
 package app
 
+var BuildVersion = "dev"
+
 type Options struct {
 	BootstrapOnly          bool
 	Hostname               string
@@ -25,17 +27,12 @@ type Options struct {
 	BootstrapListen        string
 	CertEmail              string
 	LoadBalancerHostname   string
-	PublicIPv4             string
 	TailscaleIP            string
 	ServiceName            string
-	SidecarID              string
 	ServicePort            uint16
-	BackendIP              string
-	BackendPort            uint16
 	ReadyFile              string
 	LabelKeys              []string
 	DenyNetworks           []string
-	Image                  string
 	Force                  bool
 	ConfigFile             string
 	EnrollmentCodeFile     string

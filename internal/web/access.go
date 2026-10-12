@@ -2,7 +2,9 @@ package web
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -33,10 +35,15 @@ func requestAccess(r *http.Request) Access {
 	return a
 }
 
-func (c *Control) accessSettings() AccessSettings {
+func (c *Control) loadAccessSettings() (AccessSettings, error) {
 	var settings AccessSettings
 	if err := c.Store.GetJSON("access_roles", &settings); err != nil {
-		_ = c.Store.GetJSON("tailnet", &settings)
+		if !errors.Is(err, sql.ErrNoRows) {
+			return settings, err
+		}
+		if err := c.Store.GetJSON("tailnet", &settings); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return settings, err
+		}
 	}
 	if settings.Capability == "" {
 		settings.Capability = DefaultCapability
@@ -44,11 +51,22 @@ func (c *Control) accessSettings() AccessSettings {
 	if settings.Roles == nil {
 		settings.Roles = map[string][]string{}
 	}
+	if _, configured := settings.Roles["admin"]; !configured {
+		settings.Roles["admin"] = []string{"autogroup:owner"}
+	}
+	return settings, nil
+}
+func (c *Control) accessSettings() AccessSettings {
+	settings, _ := c.loadAccessSettings()
 	return settings
 }
 
 func (settings AccessSettings) permissions(p Principal) Access {
-	a := Access{Admin: exactAdmin(p, settings.Admins) || hasRole(p, settings.Roles, "admin")}
+	adminSelectors, configured := settings.Roles["admin"]
+	if !configured {
+		adminSelectors = []string{"autogroup:owner"}
+	}
+	a := Access{Admin: exactAdmin(p, settings.Admins) || hasRole(p, map[string][]string{"admin": adminSelectors}, "admin")}
 	a.Operator = a.Admin || hasRole(p, settings.Roles, "operator")
 	a.Viewer = a.Operator || hasRole(p, settings.Roles, "viewer")
 	// Only WhoIs supplies capabilities. Never accept role or identity headers
@@ -94,27 +112,16 @@ func (c *Control) authorize(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		p.TailnetRole = c.tailnetRole(r.Context(), p)
+		r = WithPrincipal(r, p)
 		c.accessMu.Lock()
-		settings := c.accessSettings()
-		if len(settings.Admins) == 0 && !roleConfigured(settings.Roles) {
-			sharedTag := contains(p.Tags, "tag:tailscale-private-funnel")
-			if (p.Tagged || len(p.Tags) != 0 || p.Login == "") && !sharedTag {
-				c.accessMu.Unlock()
-				http.Error(w, "first setup requires an untagged verified user identity", 403)
-				return
-			}
-			if !p.Tagged && len(p.Tags) == 0 && p.Login != "" {
-				settings.Admins = []string{p.Login}
-			} else {
-				settings.Admins = []string{"node:" + p.NodeID}
-			}
-			if err := c.Store.SetJSON("access_roles", settings); err != nil {
-				c.accessMu.Unlock()
-				http.Error(w, err.Error(), 500)
-				return
-			}
-			_ = c.Store.Audit("administrator.bootstrap", p.Login)
+		settings, settingsErr := c.loadAccessSettings()
+		if settingsErr != nil {
+			c.accessMu.Unlock()
+			http.Error(w, "authorization settings unavailable; retry later", http.StatusServiceUnavailable)
+			return
 		}
+
 		c.accessMu.Unlock()
 		a := settings.permissions(p)
 		level := requiredAccess(r)
@@ -215,6 +222,6 @@ func (c *Control) accessPage(w http.ResponseWriter, r *http.Request) {
 	p := principal(r)
 	settings := c.accessSettings()
 	join := func(values []string) string { return template.HTMLEscapeString(strings.Join(values, ",")) }
-	body := pageIntro("Access", "Access roles", "WhoIs identity is the source of truth. Map verified users, groups, tags, node IDs, or app capabilities to the least privilege role they need.") + fmt.Sprintf(`<div class="pf-alert pf-alert-info"><strong>Your verified identity.</strong> Selectors: <code>%s</code> · Node: <code>%s</code></div><section class="pf-surface pf-form-surface"><div class="pf-section-heading"><div><p class="pf-kicker">Authorization</p><h2>Role mapping</h2></div><span class="pf-pill pf-pill-neutral">viewer · operator · admin</span></div><p class="pf-muted">Viewer reads the UI. Operator can preview and execute ownership-scoped DNS syncs. Admin manages settings, providers, zones, enrollments, access rules, and policies.</p><form class="pf-form-grid" method="post" action="/api/access" hx-post="/api/access" hx-target="#access-result"><label class="pf-field"><span class="pf-label">Application capability</span><input class="pf-input" name="capability" value="%s" required></label><label class="pf-field"><span class="pf-label">Exact administrator identities</span><input class="pf-input" name="admins" value="%s" placeholder="alice@example.com,group:platform-admins,tag:control"></label><label class="pf-field"><span class="pf-label">Admin selectors</span><input class="pf-input" name="admin" value="%s" placeholder="group:platform-admins,tag:control"></label><label class="pf-field"><span class="pf-label">Operator selectors</span><input class="pf-input" name="operator" value="%s" placeholder="group:platform-operators,tag:operator"></label><label class="pf-field"><span class="pf-label">Viewer selectors</span><input class="pf-input" name="viewer" value="%s" placeholder="group:platform-readonly"></label><div class="pf-form-actions"><button class="pf-button" type="submit">Save access rules <span aria-hidden="true">→</span></button><span id="access-result" class="pf-inline-result" role="status"></span></div></form></section><section class="pf-surface"><div class="pf-section-heading"><div><p class="pf-kicker">Identity model</p><h2>How access is decided</h2></div></div><p class="pf-muted">Tagged service nodes use their tags and stable node ID. Human users use their login and WhoIs groups. Tailscale account Owner and Admin roles stay in the Tailscale admin console; this app maps only verified application selectors.</p></section>`, template.HTMLEscapeString(strings.Join(p.RoleSelectors(), ", ")), template.HTMLEscapeString(p.NodeID), template.HTMLEscapeString(settings.Capability), join(settings.Admins), join(settings.Roles["admin"]), join(settings.Roles["operator"]), join(settings.Roles["viewer"]))
+	body := pageIntro("Access", "Access roles", "WhoIs identity is the source of truth. Map verified users, groups, tags, node IDs, or app capabilities to the least privilege role they need.") + fmt.Sprintf(`<div class="pf-alert pf-alert-info"><strong>Your verified identity.</strong> Selectors: <code>%s</code> · Node: <code>%s</code></div><section class="pf-surface pf-form-surface"><div class="pf-section-heading"><div><p class="pf-kicker">Authorization</p><h2>Role mapping</h2></div><span class="pf-pill pf-pill-neutral">viewer · operator · admin</span></div><p class="pf-muted">Viewer reads the UI. Operator can preview ownership-scoped DNS changes. Administrator approval is required to apply them. Admin manages settings, providers, zones, enrollments, access rules, and policies.</p><form class="pf-form-grid" method="post" action="/api/access" hx-post="/api/access" hx-target="#access-result"><label class="pf-field"><span class="pf-label">Application capability</span><input class="pf-input" name="capability" value="%s" required></label><label class="pf-field"><span class="pf-label">Admin selectors</span><input class="pf-input" name="admin" value="%s" placeholder="autogroup:owner"></label><label class="pf-field"><span class="pf-label">Operator selectors</span><input class="pf-input" name="operator" value="%s" placeholder="group:platform-operators,tag:operator"></label><label class="pf-field"><span class="pf-label">Viewer selectors</span><input class="pf-input" name="viewer" value="%s" placeholder="group:platform-readonly"></label><div class="pf-form-actions"><button class="pf-button" type="submit">Save access rules <span aria-hidden="true">→</span></button><span id="access-result" class="pf-inline-result" role="status"></span></div></form></section><section class="pf-surface"><div class="pf-section-heading"><div><p class="pf-kicker">Identity model</p><h2>How access is decided</h2></div></div><p class="pf-muted">Tagged service nodes use their tags and stable node ID. Human users use their login and WhoIs groups. The default admin selector is autogroup:owner: no individual identities are required. Account roles are verified server-side with users:read. Other roles, such as autogroup:admin, must be granted explicitly. Tagged nodes never inherit human roles. Additional access uses verified application selectors.</p></section>`, template.HTMLEscapeString(strings.Join(p.RoleSelectors(), ", ")), template.HTMLEscapeString(p.NodeID), template.HTMLEscapeString(settings.Capability), join(append(append([]string{}, settings.Roles["admin"]...), settings.Admins...)), join(settings.Roles["operator"]), join(settings.Roles["viewer"]))
 	render(w, "Access & roles", body)
 }

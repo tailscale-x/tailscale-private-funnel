@@ -78,7 +78,7 @@ func TestHTTPResolverReportsHealthToEnrolledNode(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer srv.Close()
-	if err := (HTTPResolver{BaseURL: srv.URL, NodeID: "node-1", Client: srv.Client()}).ReportHealth(context.Background(), map[string]any{"sidecars": 1}); err != nil {
+	if err := (HTTPResolver{BaseURL: srv.URL, NodeID: "node-1", Client: srv.Client()}).ReportHealth(context.Background(), map[string]any{"backends": 1}); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -10,31 +10,21 @@ import (
 )
 
 type IngressExposure struct {
-	ApplicationID        string   `json:"application_id,omitempty"`
-	ServiceName          string   `json:"service_name,omitempty"`
-	ContainerID          string   `json:"container_id,omitempty"`
-	PublicHostname       string   `json:"public_hostname"`
-	LoadBalancerHostname string   `json:"loadbalancer_hostname"`
-	Port                 uint16   `json:"port"`
-	BackendHostname      string   `json:"backend_hostname,omitempty"`
-	BackendIP            string   `json:"backend_ip,omitempty"`
-	Networks             []string `json:"networks,omitempty"`
-	Reachable            bool     `json:"reachable"`
+	BackendDeviceID string   `json:"backend_device_id,omitempty"`
+	ApplicationID   string   `json:"application_id,omitempty"`
+	ServiceName     string   `json:"service_name,omitempty"`
+	ContainerID     string   `json:"container_id,omitempty"`
+	PublicHostname  string   `json:"public_hostname"`
+	Port            uint16   `json:"port"`
+	BackendHostname string   `json:"backend_hostname,omitempty"`
+	BackendIP       string   `json:"backend_ip,omitempty"`
+	Networks        []string `json:"networks,omitempty"`
+	Reachable       bool     `json:"reachable"`
 }
 
 // IngressRecords contains only the public records that control owns for an
 // application Service. Tailscale Service discovery is private; no public SRV
 // record or backend A record is emitted.
-func IngressRecords(e IngressExposure) ([]libdns.Record, error) {
-	if strings.TrimSpace(e.PublicHostname) == "" || strings.TrimSpace(e.LoadBalancerHostname) == "" {
-		return nil, fmt.Errorf("public hostname and load balancer hostname are required")
-	}
-	return []libdns.Record{libdns.RR{
-		Name: strings.TrimSuffix(strings.TrimSpace(e.PublicHostname), "."),
-		Type: "CNAME", Data: strings.TrimSuffix(strings.TrimSpace(e.LoadBalancerHostname), "."), TTL: 60 * time.Second,
-	}}, nil
-}
-
 type LoadBalancerEndpoint struct {
 	Hostname   string   `json:"hostname"`
 	PublicIPv4 []string `json:"public_ipv4"`

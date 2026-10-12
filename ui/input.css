@@ -131,3 +131,70 @@ body > main, body > section { max-width:none; }
   .pf-table td { @apply border-0 px-4 py-1; }
   .pf-table td::before { content: attr(data-label); @apply mr-2 text-xs font-bold uppercase tracking-[.1em] text-funnel-muted; }
 }
+
+/* Credential groups must remain hidden despite component display rules. */
+.pf-field[hidden] { display:none !important; }
+.pf-surface > h2 { margin:0 0 1.25rem; font-size:1.05rem; font-weight:700; }
+.pf-surface small { display:block; }
+
+.pf-dialog { border: 1px solid #dce3ed; border-radius: 16px; padding: 28px; width: min(720px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow-y: auto; color: #172b4d; background: white; box-shadow: 0 24px 80px #172b4d33; }
+.pf-dialog::backdrop { background: #172b4d66; }
+.pf-dialog h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 16px; }
+.pf-dialog > p, .pf-dialog > label, .pf-dialog > details { margin-bottom: 16px; }
+.pf-dialog [role=alert], [data-form-error] { color: #b42318; white-space: pre-line; }
+.pf-editor-row[hidden] { display: none !important; }
+.pf-editor-row > td { background: #f8fafc; padding: 24px; }
+.pf-editor-row h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 16px; }
+.pf-zone-candidates { display: grid; gap: 8px; max-height: 280px; overflow: auto; margin: 16px 0; }
+.pf-zone-choice { display: flex; gap: 12px; align-items: center; padding: 12px; border: 1px solid #dce3ed; border-radius: 8px; flex-wrap: wrap; }
+.pf-zone-choice input { flex-shrink: 0; }
+.pf-zone-choice code { overflow-wrap: anywhere; }
+@media (max-width: 640px) { .pf-dialog { padding: 20px; } .pf-editor-row > td { display: block; padding: 16px; } .pf-editor-row > td::before { display: none; } }
+
+.pf-pattern-row { display: flex; align-items: flex-end; gap: .75rem; margin: .75rem 0; }
+.pf-pattern-row .pf-field { flex: 1; min-width: 0; }
+.pf-pattern-row button { flex-shrink: 0; }
+.pf-pattern-row button:disabled, #add-pattern:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Keep native dropdown affordances visible; DaisyUI's input reset hides them. */
+select.pf-input:not([multiple]) {
+  appearance: auto;
+  -webkit-appearance: auto;
+  padding-right: 1.75rem;
+  cursor: pointer;
+}
+select.pf-input[multiple] { min-height: 7rem; padding: .4rem; }
+select.pf-input[multiple] option { padding: .35rem .45rem; }
+select.pf-input:disabled { cursor: not-allowed; background-color: #f3f5f8; color: #61708d; }
+
+/* Shared action rhythm, readable recovery panels, and keyboard entry point. */
+.pf-form-actions .pf-button,.pf-form-actions .pf-secondary-button,.pf-action-row .pf-button,.pf-action-row .pf-secondary-button,.pf-section-heading .pf-button,.pf-section-heading .pf-secondary-button { margin-top:0; }
+.pf-surface button.pf-secondary-button { border:1px solid #cbd6e5; background:#fff; }
+.pf-secondary-button:hover { background:#eff5ff; }
+button:disabled { opacity:.5; cursor:not-allowed; }
+.pf-surface h2 { font-size:1.05rem; font-weight:700; margin-bottom:1rem; }
+.pf-section-heading h2 { margin-bottom:0; }
+.pf-surface h3 { font-weight:650; margin:.8rem 0; }
+.pf-inline-actions { gap:.65rem .85rem; }
+.pf-table td code,.pf-table td small,.pf-table td strong { overflow-wrap:anywhere; }
+.pf-dialog.pf-dns-dialog { width:min(900px,calc(100vw - 32px)); max-width:900px; }
+.pf-dns-node { padding:1rem 0; border-top:1px solid #dce4f0; }
+.pf-dns-node h4 { font-weight:700; }
+.pf-dns-node details { margin-top:.75rem; }
+.pf-skip-link { position:fixed;top:.5rem;left:.5rem;z-index:60;transform:translateY(-160%);background:#fff;color:#2563eb;padding:.7rem;border:2px solid #2563eb;border-radius:.5rem; }
+.pf-skip-link:focus { transform:translateY(0); }
+.pf-help:empty,[role=status]:empty,[role=alert]:empty { display:none; }
+.pf-check-field input { margin-top:.25rem;flex:0 0 auto; }
+@media (max-width:639px) { .pf-section-heading { flex-wrap:wrap; }.pf-table td { min-width:0; }.pf-table td::before { flex:0 0 100px; }.pf-dialog .pf-form-actions > button { flex:1 1 auto; }.pf-form-actions { gap:.7rem; } }
+
+[hidden] { display:none !important; }
+.pf-content > .pf-surface { margin-bottom:1rem; }
+.pf-inline-actions .pf-button,.pf-inline-actions .pf-secondary-button { margin-top:0; }
+.pf-link-button { min-height:32px; display:inline-flex; align-items:center; }
+.pf-table td[data-label="State"] { white-space:nowrap; }
+.pf-table .pf-name-editor::before { display:none; }
+.pf-name-editor details { margin-bottom:.5rem; }
+@media(max-width:639px) { .pf-link-button { min-height:36px; }.pf-table td[data-label="State"] { white-space:normal; } }
+
+.pf-dialog h3 { font-weight:700; margin:1.2rem 0 .7rem; }
+@media(min-width:640px) { .pf-dns-dialog .pf-table td code { white-space:nowrap; overflow-wrap:normal; } }

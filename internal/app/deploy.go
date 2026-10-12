@@ -28,10 +28,8 @@ type savedConfig struct {
 	Listen               string   `json:"listen"`
 	CertEmail            string   `json:"cert_email,omitempty"`
 	LoadBalancerHostname string   `json:"loadbalancer_hostname,omitempty"`
-	PublicIPv4           string   `json:"public_ipv4,omitempty"`
 	LabelKeys            []string `json:"label_keys,omitempty"`
 	DenyNetworks         []string `json:"deny_networks,omitempty"`
-	Image                string   `json:"image,omitempty"`
 }
 
 func configPath(mode string, o Options) string {
@@ -46,7 +44,7 @@ func writeConfig(mode string, o Options) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	b, err := json.MarshalIndent(savedConfig{Mode: mode, Hostname: o.Hostname, StateDir: o.StateDir, DataDir: o.DataDir, ManagementURL: o.ManagementURL, ControlKey: o.ControlKey, BootstrapURL: o.BootstrapURL, EnrollmentID: o.EnrollmentID, LoginServer: o.LoginServer, AcceptDNS: o.AcceptDNS, Tags: o.Tags, Listen: o.Listen, CertEmail: o.CertEmail, LoadBalancerHostname: o.LoadBalancerHostname, PublicIPv4: o.PublicIPv4, LabelKeys: o.LabelKeys, DenyNetworks: o.DenyNetworks, Image: o.Image}, "", "  ")
+	b, err := json.MarshalIndent(savedConfig{Mode: mode, Hostname: o.Hostname, StateDir: o.StateDir, DataDir: o.DataDir, ManagementURL: o.ManagementURL, ControlKey: o.ControlKey, BootstrapURL: o.BootstrapURL, EnrollmentID: o.EnrollmentID, LoginServer: o.LoginServer, AcceptDNS: o.AcceptDNS, Tags: o.Tags, Listen: o.Listen, CertEmail: o.CertEmail, LoadBalancerHostname: o.LoadBalancerHostname, LabelKeys: o.LabelKeys, DenyNetworks: o.DenyNetworks}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -80,9 +78,8 @@ func loadConfig(mode string, o Options) (Options, error) {
 	o.ManagementURL, o.BootstrapURL, o.EnrollmentID = saved.ManagementURL, saved.BootstrapURL, saved.EnrollmentID
 	o.ControlKey = saved.ControlKey
 	o.LoginServer, o.AcceptDNS, o.Tags, o.Listen = saved.LoginServer, saved.AcceptDNS, saved.Tags, saved.Listen
-	o.CertEmail, o.LoadBalancerHostname, o.PublicIPv4 = saved.CertEmail, saved.LoadBalancerHostname, saved.PublicIPv4
+	o.CertEmail, o.LoadBalancerHostname = saved.CertEmail, saved.LoadBalancerHostname
 	o.LabelKeys, o.DenyNetworks = saved.LabelKeys, saved.DenyNetworks
-	o.Image = saved.Image
 	return o, nil
 }
 

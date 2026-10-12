@@ -1,0 +1,13 @@
+# Direct tailnet-machine routing · 10 October 2026
+
+The load balancer now routes tailnet-machine HTTP backends by stable Tailscale device ID through its process-owned tsnet dialer. Ingress discovers Docker containers only. Docker routes still use Tailscale Services hosted by ingress.
+
+Local checks passed: `go test ./...`, `go test -tags caddy ./...`, `go vet ./...`, and `git diff --check`. Focused tests cover signed load-balancer reports and WhoIs binding, replay rejection, direct-route policy, current peer resolution, missing peer failure, forwarding-header sanitization, SSE flushing, DNS A/CNAME coexistence under one owner, and the final storage migration. The migration also passed on a disposable copy of the live control database; it retained the owned CNAME and reports while removing the old Service and ingress-assignment metadata.
+
+The live `voice.troly.ai.vn` exposure was moved from ingress to the load balancer after a successful load-balancer-side TCP probe. Its CNAME ledger entry transferred only when the exact previous owner and value matched. The old Tailscale Service `svc:tailscale-private-funnel-app-remote-63d792d727e96e54d1b09007` was deleted after its host became unconfigured; Tailscale returned 404 on a follow-up read. The final control database stores `direct:remote-63d792d727e96e54d1b09007`, with no old Service host or ingress assignment. Caddy's active config has the backend device ID and no old voice Service target.
+
+On the final prebuilt development artifacts, four public checks over about one minute returned HTTP 200 for `voice.troly.ai.vn` and `llm.dlkn.dev/health`. `dichvucong-harness.troly.ai.vn/` returned HTTP 404, matching a direct request inside its Flue container. The voice CNAME remained `funnel-gateway.dlkn.dev` throughout. Fresh signed reports show voice only on the load balancer and Llama/Flue only on ingress. The load-balancer A and voice CNAME remain owned by the same exact load-balancer ID. No ACL policy was changed and no stable tag or release was created.
+
+The deployed control image is `ghcr.io/tailscale-x/tailscale-private-funnel@sha256:a531e233c680c8aece45f2140816079f5c57743c5029a42c7ec2e1e74cbb4a34` (`dev-direct-20261010-r8`). Both remote native binaries report the same development version. The image and binaries were built locally; the remote hosts only pulled or installed prebuilt artifacts.
+
+Live WebSocket and SSE endpoints were not available on the selected voice backend for an application-level public probe. The Caddy direct-route SSE and forwarding-header behavior was exercised locally; WebSocket behavior still needs an application-level probe when a suitable endpoint exists.

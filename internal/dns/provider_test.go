@@ -1,6 +1,8 @@
 package dns
 
 import (
+	"context"
+	"fmt"
 	"github.com/libdns/libdns"
 	"testing"
 )
@@ -62,5 +64,33 @@ func TestOwnershipPlanRequiresOverrideForAnotherOwner(t *testing.T) {
 	}
 	if _, _, err := OwnershipPlan("owner", []LedgerEntry{{Record: desired, OwnerID: "other"}}, []libdns.Record{desired}, []libdns.Record{desired}, true); err != nil {
 		t.Fatalf("explicit override should permit migration: %v", err)
+	}
+}
+
+func TestExactApplyRestoresOwnedCNAMEAfterPartialAFailure(t *testing.T) {
+	old := libdns.RR{Name: "app.example.com", Type: "CNAME", Data: "edge.example.com"}
+	a := libdns.RR{Name: old.Name, Type: "A", Data: "203.0.113.1"}
+	b := libdns.RR{Name: old.Name, Type: "A", Data: "203.0.113.2"}
+	records := []libdns.Record{old}
+	appendOne := func(_ context.Context, r libdns.Record) error {
+		if r.RR().Data == b.Data {
+			return fmt.Errorf("provider append failure")
+		}
+		records = append(records, r)
+		return nil
+	}
+	deleteOne := func(_ context.Context, r libdns.Record) error {
+		out := []libdns.Record{}
+		for _, v := range records {
+			if RecordKey(v) != RecordKey(r) {
+				out = append(out, v)
+			}
+		}
+		records = out
+		return nil
+	}
+	err := applyExact(context.Background(), []libdns.Record{a, b}, []libdns.Record{old}, appendOne, deleteOne)
+	if err == nil || len(records) != 1 || RecordKey(records[0]) != RecordKey(old) {
+		t.Fatal(err, records)
 	}
 }

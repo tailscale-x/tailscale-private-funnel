@@ -26,8 +26,8 @@ var reloadState struct {
 	listen, email, dataDir, tailscaleBlock string
 }
 
-// Start runs the public load balancer. Ingress never starts Caddy: it owns
-// Docker discovery and launches isolated raw TCP sidecars instead.
+// Start runs the public load balancer. Ingress owns Docker discovery and
+// forwards approved Services directly to their selected backends.
 func Start(mode, listen string, dial func(context.Context, string, string) (net.Conn, error)) error {
 	sharedDialer.Lock()
 	sharedDialer.dial = dial
@@ -115,7 +115,13 @@ func caddyfile(listen, email, dataDir, tailscaleBlock string, routes []Route) (s
 		if err := validateRoute(route); err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&sites, "\n%s {\n\ttls {\n\t\ton_demand\n\t}\n\treverse_proxy %s {\n\t\ttransport funnel_tsnet\n\t}\n}\n", route.Hostname, net.JoinHostPort(route.Service, strconv.Itoa(int(route.Port))))
+		transport := "transport funnel_tsnet"
+		upstream := net.JoinHostPort(route.Service, strconv.Itoa(int(route.Port)))
+		if route.BackendDeviceID != "" {
+			transport = "transport funnel_tsnet {\n\t\t\tdevice " + caddyToken(route.BackendDeviceID) + "\n\t\t}"
+			upstream = net.JoinHostPort("direct.invalid", strconv.Itoa(int(route.Port)))
+		}
+		fmt.Fprintf(&sites, "\n%s {\n\ttls {\n\t\ton_demand\n\t}\n\trequest_header -Forwarded\n\trequest_header -X-Forwarded-*\n\trequest_header -X-Real-IP\n\treverse_proxy %s {\n\t\theader_up X-Forwarded-Port {http.request.local.port}\n\t\theader_up X-Real-IP {http.request.remote.host}\n\t\t%s\n\t}\n}\n", route.Hostname, upstream, transport)
 	}
 	// Keep an explicit catch-all for hosts that have no approved application;
 	// on-demand TLS still uses the local always-allow permission endpoint, but
@@ -150,8 +156,14 @@ func validateRoute(route Route) error {
 	if route.Hostname == "" || strings.ContainsAny(route.Hostname, " \t\r\n{}") {
 		return fmt.Errorf("invalid route hostname %q", route.Hostname)
 	}
-	if route.Service == "" || route.Port == 0 || strings.ContainsAny(route.Service, " \t\r\n{}") {
+	if route.Port == 0 || (route.Service == "" && route.BackendDeviceID == "") || strings.ContainsAny(route.Service, " \t\r\n{}") {
 		return fmt.Errorf("invalid Service route for %q", route.Hostname)
+	}
+	if route.BackendDeviceID != "" {
+		if strings.ContainsAny(route.BackendDeviceID, " \t\r\n{}\"'") || route.Service != "" {
+			return fmt.Errorf("invalid direct backend route for %q", route.Hostname)
+		}
+		return nil
 	}
 	if ip, err := netip.ParseAddr(strings.Trim(route.Service, "[]")); err != nil || !ip.IsValid() {
 		if strings.ContainsAny(route.Service, ":/") || strings.TrimSuffix(route.Service, ".") == "" {

@@ -6,18 +6,20 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	"time"
 )
 
 type Configuration struct {
-	NodeID               string                    `json:"node_id"`
-	Revision             string                    `json:"revision"`
-	Applications         []store.ApplicationRecord `json:"applications"`
-	LabelAliases         []string                  `json:"label_aliases"`
-	LoadBalancerHostname string                    `json:"loadbalancer_hostname"`
-	IssuedAt             int64                     `json:"issued_at"`
+	Routes       []proxy.Route             `json:"routes,omitempty"`
+	Probes       []Probe                   `json:"probes,omitempty"`
+	NodeID       string                    `json:"node_id"`
+	Revision     string                    `json:"revision"`
+	Applications []store.ApplicationRecord `json:"applications"`
+	LabelAliases []string                  `json:"label_aliases"`
+	IssuedAt     int64                     `json:"issued_at"`
 }
 
 func Revision(v any) string {

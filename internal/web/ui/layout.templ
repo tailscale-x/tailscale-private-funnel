@@ -14,6 +14,7 @@ templ Shell(title string, body string) {
         <script src="/assets/htmx.min.js" defer></script>
     </head>
     <body>
+        <a class="pf-skip-link" href="#page-content">Skip to content</a>
         <div class="pf-app">
             <aside class="pf-sidebar" id="pf-sidebar">
                 <div class="pf-brand"><img class="pf-brand-logo" src="/assets/brand/local-funnel-logo.png" alt="Local Funnel logo"/><span><strong>Local Funnel</strong><small>Tailscale private edge</small></span></div>
@@ -34,20 +35,24 @@ templ Shell(title string, body string) {
                     <p class="pf-nav-label">Operations</p>
                     <a href="/operations" data-nav="/operations"><img src="/assets/icons/list-check.svg" alt=""/>Operations</a>
                 </nav>
-                <div class="pf-sidebar-footer"><a href="/operations"><img src="/assets/icons/book.svg" alt=""/>Documentation</a><a href="/settings"><img src="/assets/icons/help-circle.svg" alt=""/>Support & settings</a></div>
+                <div class="pf-sidebar-footer"><a href="https://github.com/tailscale-x/tailscale-private-funnel/blob/main/PRIVATE_FUNNEL.md"><img src="/assets/icons/book.svg" alt=""/>Documentation</a><a href="https://github.com/tailscale-x/tailscale-private-funnel/issues"><img src="/assets/icons/help-circle.svg" alt=""/>Support</a></div>
             </aside>
             <div class="pf-main">
                 <header class="pf-topbar">
-                    <button class="pf-menu" type="button" aria-label="Open navigation" aria-controls="pf-sidebar" aria-expanded="false" onclick="const open=this.getAttribute('aria-expanded') !== 'true'; document.getElementById('pf-sidebar').classList.toggle('pf-sidebar-open', open); this.setAttribute('aria-expanded', String(open)); this.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation')"><img src="/assets/icons/menu-2.svg" alt=""/></button>
-                    <div class="pf-topbar-context"><span class="pf-kicker">Tailnet</span><strong>Local Funnel</strong><img src="/assets/icons/chevron-down.svg" alt=""/></div>
-                    <div class="pf-topbar-right"><span class="pf-health"><i class="pf-status-dot pf-status-ok"></i> Control plane online</span><span class="pf-identity"><img src="/assets/icons/user-circle.svg" alt=""/> Control node</span></div>
+                    <button class="pf-menu" type="button" aria-label="Open navigation" aria-controls="pf-sidebar" aria-expanded="false" onclick="const open=this.getAttribute('aria-expanded') !== 'true'; document.getElementById('pf-sidebar').classList.toggle('pf-sidebar-open', open); document.getElementById('pf-sidebar').inert=!open; this.setAttribute('aria-expanded', String(open)); this.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation')"><img src="/assets/icons/menu-2.svg" alt=""/></button>
+                    <div class="pf-topbar-context"><span class="pf-kicker">Control plane</span><strong>Local Funnel</strong></div>
+                    <div class="pf-topbar-right"><span class="pf-health"><i class="pf-status-dot pf-status-ok"></i> Control plane online</span><span class="pf-identity"><img src="/assets/icons/user-circle.svg" alt=""/> Tailnet-only management</span></div>
                 </header>
-                <main class="pf-content" id="page-content">@templ.Raw(body)</main>
-                <footer class="pf-footer"><span>Local Funnel · tailnet-only control plane</span><span><a href="/operations">Docs</a><a href="/settings">Settings</a></span></footer>
+                <main class="pf-content" id="page-content" tabindex="-1">@templ.Raw(body)</main>
+                <footer class="pf-footer"><span>Local Funnel · tailnet-only control plane</span><span><a href="https://github.com/tailscale-x/tailscale-private-funnel/blob/main/PRIVATE_FUNNEL.md">Docs</a><a href="/settings">Settings</a></span></footer>
             </div>
         </div>
         <script>
-        (function(){const path=window.location.pathname;document.querySelectorAll('[data-nav]').forEach(function(a){if(a.dataset.nav==='/'?path==='/':path===a.dataset.nav||path.startsWith(a.dataset.nav+'/'))a.classList.add('is-active')})})();
+        (function(){const path=window.location.pathname,parent=document.querySelector('[data-node-navigation]')?.dataset.nodeNavigation;document.querySelectorAll('[data-nav]').forEach(function(a){if(a.dataset.nav==='/'?path==='/':a.dataset.nav===parent||path===a.dataset.nav||path.startsWith(a.dataset.nav+'/')||(a.dataset.nav==='/exposures'&&path==='/tailnet-exposures')||(a.dataset.nav==='/loadbalancers'&&path==='/enroll/loadbalancer')||(a.dataset.nav==='/ingresses'&&path==='/enroll/ingress')){a.classList.add('is-active');a.setAttribute('aria-current','page')}})})();
+        const nav=document.getElementById('pf-sidebar'),navButton=document.querySelector('.pf-menu'),small=window.matchMedia('(max-width:1023px)');
+        function syncNavigation(){nav.inert=small.matches&&!nav.classList.contains('pf-sidebar-open')};syncNavigation();small.addEventListener('change',syncNavigation);
+        document.addEventListener('click',function(e){if(small.matches&&nav.classList.contains('pf-sidebar-open')&&!nav.contains(e.target)&&!navButton.contains(e.target)){nav.classList.remove('pf-sidebar-open');navButton.setAttribute('aria-expanded','false');navButton.setAttribute('aria-label','Open navigation');syncNavigation()}});
+        document.addEventListener('keydown',function(e){if(e.key==='Escape'){const sidebar=document.getElementById('pf-sidebar'),menu=document.querySelector('.pf-menu');if(sidebar.classList.contains('pf-sidebar-open')){sidebar.classList.remove('pf-sidebar-open');menu.setAttribute('aria-expanded','false');menu.setAttribute('aria-label','Open navigation');sidebar.inert=window.innerWidth<1024;menu.focus()}}});
         </script>
     </body>
     </html>
