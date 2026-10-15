@@ -117,4 +117,14 @@ func testEdgeHeaders(t *testing.T, clientIP string, direct bool) {
 			t.Fatalf("%s=%q want %q; response %v", key, got[key], want, got)
 		}
 	}
+	unknown, _ := http.NewRequest("GET", "http://"+addr+"/", nil)
+	unknown.Host = "withdrawn.example.test"
+	missing, err := http.DefaultClient.Do(unknown)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer missing.Body.Close()
+	if missing.StatusCode != http.StatusNotFound {
+		t.Fatalf("unconfigured hostname returned %d; want 404", missing.StatusCode)
+	}
 }

@@ -18,6 +18,8 @@ Fixed during review:
   same parent. Parent condition lookup and listener counts include namespace/section.
 - Backend request timeout wrappers preserve duplex upgraded response bodies, verified
   by a real HTTP upgrade test and public WebSocket echo with the timeout enabled.
+- The public edge retains its 404 catch-all even while named routes are configured;
+  regression tests reproduce and prevent empty 200 responses for unconfigured hosts.
 - Controller restore rejects a Secret missing the Tailscale machine key before writing
   runtime files. Direct Kubernetes identity clients have bounded request timeouts.
 - Regenerated drifted embedded CSS and templ output; a second build is reproducible.
@@ -34,7 +36,10 @@ This review does not claim a dependency-vulnerability-free build or Gateway API 
 
 Passed both Go suites, `go vet ./...`, targeted broker/gateway/Kubernetes race tests,
 Helm lint/render/package contracts, container startup, generated CSS/templ checks,
-relative documentation links, and diff checks. New tests cover the fixes above.
+relative documentation links, and diff checks. Chrome MCP checked all 14 control and
+provisioning screens at 1440px and 390px, with no horizontal overflow; gateway selection
+navigated to the correct form and inspected console logs contained no app errors.
+New tests cover the fixes above.
 Native Linux amd64/arm64 and macOS arm64 artifacts are also built by the tag workflow.
 No builds run on xvps or 5090.
 
@@ -43,6 +48,9 @@ No builds run on xvps or 5090.
 The locally built `v2.0.0` executable was packaged and tested as development image
 `ghcr.io/tailscale-x/tailscale-private-funnel:dev-v2-release-check-20261015`, digest
 `sha256:6d7df8655bc5b8782dab5c6a9b1f060f8f2483d5a2e2f2e560c8f7dd3d191d4d`.
+The load-balancer catch-all fix was then rebuilt and retested as
+`dev-v2-release-check-20261015-r2`, digest
+`sha256:de09ba781ca6dbb177c4e668efcb9117723f1b2243c96a7fb80a60e33d7850d9`.
 
 Updated control and the local gateway on the development PC, the public load balancer
 on xvps, and the 5090 controller/forwarder installation. All use the reviewed chart

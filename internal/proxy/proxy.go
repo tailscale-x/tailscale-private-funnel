@@ -145,9 +145,7 @@ func caddyfile(listen, email, dataDir, tailscaleBlock string, routes []Route) (s
 	// Keep an explicit catch-all for hosts that have no approved application;
 	// on-demand TLS still uses the local always-allow permission endpoint, but
 	// the request receives 404 until control supplies a route.
-	if len(routes) == 0 && len(grouped) == 0 {
-		sites.WriteString("\n:443 {\n\ttls {\n\t\ton_demand\n\t}\n\trespond 404\n}\n")
-	}
+	sites.WriteString("\n:443 {\n\ttls {\n\t\ton_demand\n\t}\n\trespond 404\n}\n")
 	emailOption := ""
 	if email != "" {
 		emailOption = "email " + caddyToken(email)
