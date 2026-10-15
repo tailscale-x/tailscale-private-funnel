@@ -3,9 +3,10 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
-	"net/http"
 )
 
 func (c *Control) renameResource(w http.ResponseWriter, r *http.Request, kind string) {
@@ -32,23 +33,9 @@ func (c *Control) renameResource(w http.ResponseWriter, r *http.Request, kind st
 	writeJSON(w, map[string]string{"id": id, "name": name})
 }
 func (c *Control) renameNode(w http.ResponseWriter, r *http.Request) {
-	n, err := c.Store.Node(chi.URLParam(r, "id"))
-	if err == nil && n.Mode == "ingress" {
-		http.Error(w, "Ingress nodes use their Tailscale hostname as their name", http.StatusBadRequest)
-		return
-	}
 	c.renameResource(w, r, "node")
 }
 func (c *Control) renameEnrollment(w http.ResponseWriter, r *http.Request) {
-	enrollments, err := c.Store.Enrollments("ingress")
-	if err == nil {
-		for _, e := range enrollments {
-			if e.ID == chi.URLParam(r, "id") {
-				http.Error(w, "Ingress enrollments use their node hostname as their name", http.StatusBadRequest)
-				return
-			}
-		}
-	}
 	c.renameResource(w, r, "enrollment")
 }
 func renameForm(kind, id, name string) string {
@@ -58,7 +45,7 @@ func renameForm(kind, id, name string) string {
 const renameScript = `<script>document.querySelectorAll('[data-rename]').forEach(f=>f.onsubmit=async e=>{e.preventDefault();const s=f.querySelector('[role=status]');try{const r=await fetch(f.dataset.rename,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:f.elements.name.value})});if(!r.ok)throw Error(await r.text());s.textContent='Name saved.';location.reload();}catch(e){s.textContent=e.message;}});</script>`
 
 // Resolve the edge strictly by internal ID. DNS names are operational values,
-// never accepted as resource references or supplied by an ingress report.
+// never accepted as resource references or supplied by an gateway report.
 func (c *Control) loadBalancerHostname(id string) (string, error) {
 	n, err := c.Store.Node(id)
 	if err != nil || n.Mode != "loadbalancer" || n.Revoked {
@@ -87,8 +74,6 @@ func (c *Control) nodeDisplayName(id string) string {
 	if err != nil {
 		return id
 	}
-	if n.Mode == "ingress" {
-		return n.Hostname
-	}
+
 	return n.Name + " · " + n.Hostname + " · " + id[:min(len(id), 6)]
 }

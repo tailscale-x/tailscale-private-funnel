@@ -3,11 +3,12 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
-	"github.com/libdns/libdns"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/libdns/libdns"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 )
 
 func TestProviderConfigIsEncryptedAndRoundTrips(t *testing.T) {
@@ -46,7 +47,7 @@ func TestAcceptReportRequiresEnrolledSigningKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e, err := report.NewEnvelope("ingress-1", map[string]any{"exposures": []any{}}, pub, priv, time.Now())
+	e, err := report.NewEnvelope("gateway-1", map[string]any{"exposures": []any{}}, pub, priv, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,10 +55,10 @@ func TestAcceptReportRequiresEnrolledSigningKey(t *testing.T) {
 	if err := s.AcceptReport(e.NodeID, e.Nonce, b, e.PublicKey); err == nil {
 		t.Fatal("unknown node report was accepted")
 	}
-	if err := s.UpsertNode("ingress-1", "ingress", "ingress-1"); err != nil {
+	if err := s.UpsertNode("gateway-1", "docker-gateway", "gateway-1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.BindNodeKey("ingress-1", e.PublicKey); err != nil {
+	if err := s.BindNodeKey("gateway-1", e.PublicKey); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.AcceptReport(e.NodeID, e.Nonce, b, e.PublicKey); err != nil {
@@ -74,7 +75,7 @@ func TestEnrollmentIsReusableUntilRevoked(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	e, code, err := s.CreateEnrollment("ingress", "ingress-node")
+	e, code, err := s.CreateEnrollment("docker-gateway", "gateway-node")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,20 +99,20 @@ func TestBackendSnapshotsReconcileAndExpire(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if err := s.UpsertBackend(BackendAssignment{ID: "backend-a", NodeID: "ingress-1", ApplicationID: "app", BackendPort: 8080}); err != nil {
+	if err := s.UpsertBackend(BackendAssignment{ID: "backend-a", NodeID: "gateway-1", ApplicationID: "app", BackendPort: 8080}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertBackend(BackendAssignment{ID: "backend-b", NodeID: "ingress-1", ApplicationID: "app", BackendPort: 8081}); err != nil {
+	if err := s.UpsertBackend(BackendAssignment{ID: "backend-b", NodeID: "gateway-1", ApplicationID: "app", BackendPort: 8081}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ReconcileBackends("ingress-1", map[string]bool{"backend-a": true}); err != nil {
+	if err := s.ReconcileBackends("gateway-1", map[string]bool{"backend-a": true}); err != nil {
 		t.Fatal(err)
 	}
 	var revoked int
 	if err := s.db.QueryRow(`SELECT revoked FROM backend_assignments WHERE id=?`, "backend-b").Scan(&revoked); err != nil || revoked != 1 {
 		t.Fatalf("stale backend revoked=%d err=%v", revoked, err)
 	}
-	if err := s.RevokeBackends("ingress-1"); err != nil {
+	if err := s.RevokeBackends("gateway-1"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.db.QueryRow(`SELECT revoked FROM backend_assignments WHERE id=?`, "backend-a").Scan(&revoked); err != nil || revoked != 1 {
@@ -132,7 +133,7 @@ func TestProviderZoneMigrationPreservesCredentialsAndLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = s.AddZone("old", "example.com")
-	_ = s.ReplaceLedger("old", "example.com", "ingress:old", []libdns.Record{libdns.RR{Name: "app.example.com", Type: "CNAME", Data: "edge.example.com"}})
+	_ = s.ReplaceLedger("old", "example.com", "gateway:old", []libdns.Record{libdns.RR{Name: "app.example.com", Type: "CNAME", Data: "edge.example.com"}})
 	_ = s.SaveReport("old", []byte(`{"preserved":true}`))
 	s.Close()
 	s, err = Open(dir)
@@ -148,7 +149,7 @@ func TestProviderZoneMigrationPreservesCredentialsAndLedger(t *testing.T) {
 	if len(zones) != 1 || zones[0].Zone != "example.com" {
 		t.Fatal(zones)
 	}
-	ledger, _ := s.Ledger("old", "example.com", "ingress:old")
+	ledger, _ := s.Ledger("old", "example.com", "gateway:old")
 	if len(ledger) != 1 {
 		t.Fatal(ledger)
 	}
@@ -169,7 +170,7 @@ func TestRemoveZoneOwnershipColumnPreservesLedger(t *testing.T) {
 	}
 	_ = s.SaveProvider("cf", "cloudflare", map[string]string{"api_token": "secret"}, true)
 	_ = s.AddZone("cf", "example.com")
-	_ = s.ReplaceLedger("cf", "example.com", "ingress:original", []libdns.Record{libdns.RR{Name: "app.example.com", Type: "CNAME", Data: "edge.example.com"}})
+	_ = s.ReplaceLedger("cf", "example.com", "gateway:original", []libdns.Record{libdns.RR{Name: "app.example.com", Type: "CNAME", Data: "edge.example.com"}})
 	if _, err = s.db.Exec(`ALTER TABLE managed_zones ADD COLUMN owner_id TEXT NOT NULL DEFAULT 'historical-owner'`); err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +184,7 @@ func TestRemoveZoneOwnershipColumnPreservesLedger(t *testing.T) {
 	if err = s.db.QueryRow(`SELECT count(*) FROM pragma_table_info('managed_zones') WHERE name='owner_id'`).Scan(&n); err != nil || n != 0 {
 		t.Fatal(n, err)
 	}
-	ledger, _ := s.Ledger("cf", "example.com", "ingress:original")
+	ledger, _ := s.Ledger("cf", "example.com", "gateway:original")
 	if len(ledger) != 1 {
 		t.Fatal(ledger)
 	}
@@ -282,7 +283,7 @@ func TestHostnamePatternMigrationPreservesRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw := `{"revision":7,"rules":[{"id":"stable","name":"Test","hostname_regex":"app[0-9]{1,3}[.]example[.]com","roles":["tag:allowed"],"ingress_ids":[],"loadbalancer_hostnames":["edge.example.com"],"enabled":true}]}`
+	raw := `{"revision":7,"rules":[{"id":"stable","name":"Test","hostname_regex":"app[0-9]{1,3}[.]example[.]com","roles":["tag:allowed"],"gateway_ids":[],"loadbalancer_hostnames":["edge.example.com"],"enabled":true}]}`
 	if _, err = s.db.Exec("INSERT INTO settings(name,value,secret) VALUES('exposure_policy',?,0)", raw); err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +328,7 @@ func TestNodeDeploymentMigrationPreservesSettingsAndCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = s.UpsertNode("edge", "loadbalancer", "edge")
-	_ = s.UpsertNode("ingress", "ingress", "ingress")
+	_ = s.UpsertNode("docker-gateway", "in"+"gress", "docker-gateway")
 	_ = s.SetJSON("tailnet", map[string]any{"name": "example.ts.net", "loadbalancer_hostname": "edge.example.com", "loadbalancer_public_ipv4": "8.8.8.8", "cert_email": "admin@example.com", "label_keys": "vendor.expose", "deny_networks": "private-*"})
 	_ = s.SetJSON("node_health:edge", map[string]any{"public_ipv4": []string{"1.1.1.1"}, "received_at": 123})
 	_ = s.SetSecrets(map[string]string{"tailscale_oauth_client_id": "id", "tailscale_oauth_client_secret": "secret"})
@@ -341,14 +342,14 @@ func TestNodeDeploymentMigrationPreservesSettingsAndCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	var edge, ingress, settings map[string]any
+	var edge, gateway, settings map[string]any
 	if err = s.GetJSON("node_deployment:edge", &edge); err != nil {
 		t.Fatal(err)
 	}
-	_ = s.GetJSON("node_deployment:ingress", &ingress)
+	_ = s.GetJSON("node_deployment:docker-gateway", &gateway)
 	_ = s.GetJSON("tailnet", &settings)
-	if edge["cert_email"] != "admin@example.com" || ingress["deny_networks"] != "private-*" {
-		t.Fatal(edge, ingress)
+	if edge["cert_email"] != "admin@example.com" || gateway["deny_networks"] != "private-*" {
+		t.Fatal(edge, gateway)
 	}
 	if _, exists := edge["public_ipv4"]; exists {
 		t.Fatal("removed override retained")

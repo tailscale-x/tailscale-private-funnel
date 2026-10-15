@@ -1,9 +1,10 @@
 package web
 
 import (
-	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 	"net/http"
 	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 )
 
 func (c *Control) tsClient(id, secret, tailnet string) tailscale.Client {

@@ -1,8 +1,31 @@
 package app
 
+import "tailscale.com/ipn"
+
 var BuildVersion = "dev"
 
 type Options struct {
+	DatabaseDir          string `json:"-"`
+	IdentitySecret       string
+	PersistentDir        string
+	TSStore              ipn.StateStore `json:"-"`
+	RequireJoined        bool
+	KubernetesService    string
+	KubeNamespace        string
+	Installation         string
+	ControllerName       string
+	BrokerURL            string
+	BrokerCAFile         string
+	BrokerTokenFile      string
+	KubernetesController bool
+
+	BootstrapSecretDir     string
+	InstallService         bool
+	Kubeconfig             string
+	GatewayClass           string
+	IngressClass           string
+	WatchNamespaces        []string
+	ProbeListen            string
 	BootstrapOnly          bool
 	Hostname               string
 	Tailnet                string

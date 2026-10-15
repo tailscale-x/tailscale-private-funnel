@@ -18,13 +18,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
 	dockerclient "github.com/docker/docker/client"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/ingress"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/gateway"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
@@ -37,7 +38,7 @@ import (
 func defaults(mode string, o Options) (Options, error) {
 	if o.Hostname == "" {
 		o.Hostname, _ = os.Hostname()
-		if mode == "ingress" || mode == "loadbalancer" {
+		if store.IsGateway(mode) || mode == "loadbalancer" {
 			o.Hostname = strings.SplitN(o.Hostname, ".", 2)[0] + "-" + mode
 		}
 	}
@@ -74,16 +75,18 @@ func defaults(mode string, o Options) (Options, error) {
 		o.LoginServer = "https://controlplane.tailscale.com"
 	}
 	requiredTag := map[string]string{
-		"control":      "tag:tailscale-private-funnel",
-		"loadbalancer": "tag:tailscale-private-funnel",
-		"ingress":      "tag:tailscale-private-funnel",
+		"control":         "tag:tailscale-private-funnel",
+		"loadbalancer":    "tag:tailscale-private-funnel",
+		"docker-gateway":  "tag:tailscale-private-funnel",
+		"tailnet-gateway": "tag:tailscale-private-funnel",
+		"k8s-gateway":     "tag:tailscale-private-funnel",
 	}[mode]
 	if requiredTag != "" {
 		if len(o.Tags) == 0 {
 			o.Tags = []string{requiredTag}
 		} else {
 			for _, tag := range o.Tags {
-				if tag != "tag:tailscale-private-funnel" && (mode != "ingress" || !strings.HasPrefix(tag, "tag:") || strings.ContainsAny(tag, " \t\n")) {
+				if tag != "tag:tailscale-private-funnel" && (!store.IsGateway(mode) || !strings.HasPrefix(tag, "tag:") || strings.ContainsAny(tag, " \t\n")) {
 					return o, fmt.Errorf("unsupported Tailscale tag %q; use tag:tailscale-private-funnel", tag)
 				}
 			}
@@ -93,7 +96,7 @@ func defaults(mode string, o Options) (Options, error) {
 		}
 	}
 	if mode != "control" && o.ManagementURL == "" && o.NonInteractive {
-		return o, errors.New("--management-url is required for loadbalancer and ingress deployment")
+		return o, errors.New("--management-url is required for loadbalancer and gateway deployment")
 	}
 	return o, nil
 }
@@ -120,6 +123,11 @@ func Setup(ctx context.Context, mode string, o Options) error {
 	o, err = defaults(mode, o)
 	if err != nil {
 		return err
+	}
+	if _, err := os.Stat(filepath.Join(o.StateDir, "joined")); err == nil {
+		if err := validatePersistentState(mode, o); err != nil {
+			return err
+		}
 	}
 	return Serve(ctx, mode, o)
 }
@@ -243,7 +251,7 @@ func authKey(ctx context.Context, mode string, o Options) (string, error) {
 }
 
 func controlOAuthAuthKey(ctx context.Context, o Options) (string, bool, error) {
-	st, err := store.Open(o.DataDir)
+	st, err := openRuntimeStore(o)
 	if err != nil {
 		return "", true, err
 	}
@@ -368,6 +376,31 @@ func Serve(ctx context.Context, mode string, o Options) error {
 	if err != nil {
 		return err
 	}
+	if o.RequireJoined {
+		if err := validatePersistentState(mode, o); err != nil {
+			return err
+		}
+	}
+	var runtimeReady atomic.Bool
+	if !o.BootstrapOnly && (mode == "control" || mode == "loadbalancer") && o.ProbeListen != "" {
+		ln, err := net.Listen("tcp", o.ProbeListen)
+		if err != nil {
+			return err
+		}
+		probes := &http.Server{ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/healthz" && r.URL.Path != "/readyz" {
+				http.NotFound(w, r)
+				return
+			}
+			if r.URL.Path == "/readyz" && !runtimeReady.Load() {
+				http.Error(w, "starting", 503)
+				return
+			}
+			w.WriteHeader(204)
+		})}
+		go probes.Serve(ln)
+		defer probes.Close()
+	}
 	if err := os.MkdirAll(o.DataDir, 0700); err != nil {
 		return err
 	}
@@ -379,7 +412,7 @@ func Serve(ctx context.Context, mode string, o Options) error {
 			o.ManagementURL = strings.TrimSpace(string(b))
 		}
 	}
-	st, err := store.Open(o.DataDir)
+	st, err := openRuntimeStore(o)
 	if err != nil {
 		return err
 	}
@@ -403,7 +436,9 @@ func Serve(ctx context.Context, mode string, o Options) error {
 		return err
 	}
 	key := ""
-	if _, statErr := os.Stat(filepath.Join(o.StateDir, "tailscaled.state")); statErr == nil {
+	if o.TSStore != nil {
+		key = ""
+	} else if _, statErr := os.Stat(filepath.Join(o.StateDir, "tailscaled.state")); statErr == nil {
 		// Do not mint or persist another auth key for an already enrolled
 		// persistent device. Tailscale loads the identity from StateDir.
 		key = ""
@@ -419,7 +454,7 @@ func Serve(ctx context.Context, mode string, o Options) error {
 	if err != nil {
 		return err
 	}
-	s := &tsnet.Server{Hostname: o.Hostname, Dir: o.StateDir, AuthKey: key, Ephemeral: false}
+	s := &tsnet.Server{Hostname: o.Hostname, Dir: o.StateDir, Store: o.TSStore, AuthKey: key, Ephemeral: false}
 	defer s.Close()
 	if _, err := s.Up(ctx); err != nil {
 		return fmt.Errorf("start tsnet: %w", err)
@@ -458,13 +493,6 @@ func Serve(ctx context.Context, mode string, o Options) error {
 	}
 	defer os.Remove(filepath.Join(o.DataDir, "serve.pid"))
 	if mode == "loadbalancer" {
-		proxy.SetPeerResolver(func(ctx context.Context, deviceID string, port uint16) (string, error) {
-			snapshot, err := ingressPeers(ctx, s)
-			if err != nil {
-				return "", err
-			}
-			return peerTarget(snapshot.Peers, deviceID, port)
-		})
 		_ = os.Setenv("FUNNEL_STATE_DIR", o.StateDir)
 		_ = os.Setenv("FUNNEL_HOSTNAME", o.Hostname)
 		_ = os.Setenv("FUNNEL_DATA_DIR", o.DataDir)
@@ -486,6 +514,10 @@ func Serve(ctx context.Context, mode string, o Options) error {
 			return err
 		}
 		defer proxy.Stop()
+		runtimeReady.Store(true)
+		if o.KubernetesService != "" {
+			go reportKubernetesEndpoint(ctx, s, o)
+		}
 		if o.ManagementURL != "" {
 			go reportLoadBalancerHealth(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.LoadBalancerHostname)
 			go reportLoadBalancerPeers(ctx, s, o)
@@ -507,6 +539,8 @@ func Serve(ctx context.Context, mode string, o Options) error {
 						}
 						if reloadErr := proxy.ReloadRoutes(config.Routes); reloadErr != nil {
 							slog.Error("load balancer route reload failed", "error", reloadErr)
+						} else {
+							_ = (gateway.HTTPResolver{BaseURL: o.ManagementURL, NodeID: loadBalancerNodeID(o.DataDir), Client: tsnetHTTPClient(s)}).Acknowledge(ctx, config.Revision, nil)
 						}
 						reportLoadBalancerHealth(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.LoadBalancerHostname)
 						go reportLoadBalancerPeers(ctx, s, o)
@@ -517,10 +551,17 @@ func Serve(ctx context.Context, mode string, o Options) error {
 		<-ctx.Done()
 		return nil
 	}
-	if mode == "ingress" {
+	if mode == "tailnet-gateway" {
+		return runTailnetGateway(ctx, o, s)
+	}
+	if mode == "k8s-gateway" {
+		controllerHTTP.Store(tsnetHTTPClient(s))
+		return runKubernetesGateway(ctx, o, s)
+	}
+	if mode == "docker-gateway" {
 		_ = os.Setenv("FUNNEL_LABEL_KEYS", strings.Join(o.LabelKeys, ","))
 		_ = os.Setenv("FUNNEL_DENY_NETWORKS", strings.Join(o.DenyNetworks, ","))
-		if err := runIngressSupervisor(ctx, o, s); err != nil {
+		if err := runGatewaySupervisor(ctx, o, s); err != nil {
 			return err
 		}
 		<-ctx.Done()
@@ -604,6 +645,7 @@ func Serve(ctx context.Context, mode string, o Options) error {
 	if mode != "control" {
 		return fmt.Errorf("unsupported serve mode %q", mode)
 	}
+	runtimeReady.Store(true)
 	return server.Serve(ln)
 }
 
@@ -686,39 +728,20 @@ func reportLoadBalancerPeers(ctx context.Context, s *tsnet.Server, o Options) {
 	}
 	client := tsnetHTTPClient(s)
 	agent := report.Agent{NodeID: nodeID, ManagementURL: o.ManagementURL, DataDir: o.DataDir, HTTPClient: client}
-	snapshot, err := ingressPeers(ctx, s)
-	if err != nil {
-		slog.Warn("load balancer peer discovery failed", "error", err)
-		return
-	}
-	snapshot.Sources = []string{"tailnet"}
-	if err = agent.SendSnapshot(ctx, "/api/node/peers", snapshot); err != nil {
-		slog.Warn("load balancer peer snapshot failed", "error", err)
-		return
-	}
 	config, err := fetchLoadBalancerConfig(ctx, client, o.ManagementURL, nodeID, o.ControlKey)
 	if err != nil {
 		slog.Warn("load balancer signed config failed", "error", err)
 		return
-	}
-	snapshot.Results = runProbes(ctx, s, snapshot.Peers, config.Probes)
-	if len(snapshot.Results) > 0 {
-		if err = agent.SendSnapshot(ctx, "/api/node/peers", snapshot); err != nil {
-			slog.Warn("load balancer probe report failed", "error", err)
-		}
 	}
 	var exposures []report.Exposure
 	for _, app := range config.Applications {
 		if !app.Enabled {
 			continue
 		}
-		target, targetErr := peerTarget(snapshot.Peers, app.BackendDeviceID, app.BackendPort)
-		if app.BackendSource != "tailnet" {
-			target = net.JoinHostPort(app.ServiceFQDN, strconv.Itoa(int(app.ServicePort)))
-			targetErr = nil
-		}
+		target := net.JoinHostPort(app.ServiceFQDN, strconv.Itoa(int(app.ServicePort)))
+		var targetErr error
 		reachable := false
-		backendIP, backendName := "", app.BackendDeviceID
+		backendIP, backendName := "", app.ServiceName
 		if targetErr == nil {
 			backendIP, _, _ = net.SplitHostPort(target)
 			probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -728,22 +751,25 @@ func reportLoadBalancerPeers(ctx context.Context, s *tsnet.Server, o Options) {
 				_ = conn.Close()
 			}
 			reachable = dialErr == nil
+			if len(app.HTTPRules) > 0 && len(app.HTTPBackends) == 0 {
+				reachable = true
+			}
 			if dialErr != nil {
-				slog.Warn("direct backend unavailable", "application", app.ID, "error", dialErr)
+				slog.Warn("application Service unavailable", "application", app.ID, "error", dialErr)
 			}
 		}
 		for _, host := range app.PublicHostnames {
-			exposures = append(exposures, report.Exposure{ApplicationID: app.ID, ServiceName: func() string {
-				if app.BackendSource != "tailnet" {
-					return app.ServiceName
-				}
-				return ""
-			}(), BackendDeviceID: app.BackendDeviceID, PublicHostname: host, BackendHostname: backendName, BackendIP: backendIP, Port: app.BackendPort, Protocol: "http", Reachable: reachable})
+			exposures = append(exposures, loadBalancerExposure(app, host, backendName, backendIP, reachable))
 		}
 	}
 	if err = agent.Send(ctx, exposures); err != nil {
-		slog.Warn("load balancer direct exposure report failed", "error", err)
+		slog.Warn("load balancer exposure report failed", "error", err)
 	}
+}
+
+// Every source is reached through an application Service, including tailnet backends.
+func loadBalancerExposure(app store.ApplicationRecord, host, backendName, backendIP string, reachable bool) report.Exposure {
+	return report.Exposure{ApplicationID: app.ID, ServiceName: app.ServiceName, PublicHostname: host, BackendHostname: backendName, BackendIP: backendIP, Port: app.BackendPort, Protocol: "http", Reachable: reachable}
 }
 
 func loadBalancerNodeID(dataDir string) string {
@@ -775,7 +801,7 @@ func reportLoadBalancerHealth(ctx context.Context, client *http.Client, manageme
 	}
 }
 
-func runIngressSupervisor(ctx context.Context, o Options, s *tsnet.Server) error {
+func runGatewaySupervisor(ctx context.Context, o Options, s *tsnet.Server) error {
 	var client *dockerclient.Client
 	var err error
 	client, err = dockerclient.NewClientWithOpts(dockerclient.FromEnv, dockerclient.WithAPIVersionNegotiation())
@@ -786,17 +812,17 @@ func runIngressSupervisor(ctx context.Context, o Options, s *tsnet.Server) error
 	nodeIDBytes, _ := os.ReadFile(filepath.Join(o.DataDir, "node-id"))
 	nodeID := strings.TrimSpace(string(nodeIDBytes))
 	var configRevision string
-	resolver := ingress.HTTPResolver{BaseURL: o.ManagementURL, NodeID: nodeID, ControlKey: o.ControlKey, Client: managementClient, Revision: &configRevision}
-	listenerManager := ingress.NewListenerManager(s)
+	resolver := gateway.HTTPResolver{BaseURL: o.ManagementURL, NodeID: nodeID, ControlKey: o.ControlKey, Client: managementClient, Revision: &configRevision}
+	listenerManager := gateway.NewListenerManager(s)
 	go func() { <-ctx.Done(); listenerManager.Close() }()
-	supervisor := ingress.Config{Docker: client, LabelKeys: o.LabelKeys, DenyNetworks: o.DenyNetworks, Resolver: resolver, ListenerManager: listenerManager, DeferListenerCleanup: true}
+	supervisor := gateway.Config{Docker: client, NodeID: nodeID, RelayImage: "ghcr.io/tailscale-x/tailscale-private-funnel:" + BuildVersion, LabelKeys: o.LabelKeys, DenyNetworks: o.DenyNetworks, Resolver: resolver, ListenerManager: listenerManager, DeferListenerCleanup: true}
 	var reconcileMu sync.Mutex
-	var lastDocker []ingress.Runtime
+	var lastDocker []gateway.Runtime
 	var lastDockerAt time.Time
 	reconcile := func() {
 		reconcileMu.Lock()
 		defer reconcileMu.Unlock()
-		var runtimes []ingress.Runtime
+		var runtimes []gateway.Runtime
 		if client != nil {
 			var err error
 			runtimes, err = supervisor.Reconcile(ctx)
@@ -815,47 +841,13 @@ func runIngressSupervisor(ctx context.Context, o Options, s *tsnet.Server) error
 		}
 		config, err := resolver.Configuration(ctx)
 		if err != nil {
-			slog.Warn("ingress configuration failed", "error", err)
+			slog.Warn("gateway configuration failed", "error", err)
 			return
 		}
 		configRevision = config.Revision
-		active := map[string]struct{}{}
-		names := []string{}
-		for _, runtime := range runtimes {
-			if !runtime.Reachable {
-				continue
-			}
-			key := fmt.Sprintf("%s:%d", runtime.Assignment.ServiceName, runtime.Assignment.ServicePort)
-			active[key] = struct{}{}
-			if !containsString(names, runtime.Assignment.ServiceName) {
-				names = append(names, runtime.Assignment.ServiceName)
-			}
-		}
-		listenerManager.Reconcile(active)
-		if err := resolver.Acknowledge(ctx, configRevision, names); err != nil {
-			slog.Warn("configuration acknowledgement failed", "error", err)
-		}
-		networkReports := make([]report.Exposure, 0, len(runtimes))
-		reachableCount := 0
-		for _, runtime := range runtimes {
-			networkIDs := make([]string, 0, len(runtime.Networks))
-			for _, selected := range runtime.Networks {
-				networkIDs = append(networkIDs, selected.ID)
-			}
-			backendHostname := runtime.BackendHostname
-			if backendHostname == "" {
-				backendHostname = nodeID
-			}
-			networkReports = append(networkReports, report.Exposure{BackendDeviceID: runtime.BackendDeviceID, ApplicationID: runtime.Assignment.ApplicationID, ServiceName: runtime.Assignment.ServiceName, ContainerID: runtime.ContainerID, PublicHostname: runtime.Spec.Hostname, BackendIP: runtime.BackendIP, BackendHostname: backendHostname, Port: runtime.Spec.Port, Protocol: runtime.Spec.Protocol, Networks: networkIDs, Reachable: runtime.Reachable})
-			if runtime.Reachable {
-				reachableCount++
-			}
-		}
-		if healthErr := resolver.ReportHealth(ctx, map[string]any{"backends": len(runtimes), "reachable": reachableCount, "at": time.Now().Unix()}); healthErr != nil {
-			slog.Warn("ingress health report failed", "error", healthErr)
-		}
-		if reportErr := (report.Agent{NodeID: nodeID, ManagementURL: o.ManagementURL, DataDir: o.DataDir, HTTPClient: managementClient}).Send(ctx, networkReports); reportErr != nil {
-			slog.Error("ingress report submission failed", "error", reportErr)
+		session := gateway.Session{Resolver: resolver, Listeners: listenerManager, Agent: report.Agent{NodeID: nodeID, ManagementURL: o.ManagementURL, DataDir: o.DataDir, HTTPClient: managementClient}}
+		if err := session.Publish(ctx, config, runtimes, nil); err != nil {
+			slog.Warn("gateway publish failed", "error", err)
 		}
 	}
 	// Docker discovery and Service listeners share the process-owned tsnet
@@ -900,6 +892,11 @@ func runIngressSupervisor(ctx context.Context, o Options, s *tsnet.Server) error
 			}
 		}
 	}()
+	<-ctx.Done()
+	cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	supervisor.Cleanup(cleanup)
+
 	return nil
 }
 
@@ -942,6 +939,11 @@ func Status(mode string, o Options) error {
 	if current, ok := readRuntimeStatus(o.DataDir); ok {
 		fmt.Printf("mode: %s\nhostname: %s\nstate: %s\nips: %v\nstate_dir: %s\ndata_dir: %s\n", current.Mode, current.Hostname, current.State, current.IPs, o.StateDir, o.DataDir)
 		printStoredNode(o.DataDir)
+		if store.IsGateway(mode) {
+			if b, err := os.ReadFile(filepath.Join(o.DataDir, "gateway-status.json")); err == nil {
+				fmt.Printf("gateway: %s\n", b)
+			}
+		}
 		if len(current.Health) > 0 {
 			fmt.Printf("health: %s\n", strings.Join(current.Health, "; "))
 		} else {
@@ -962,6 +964,7 @@ func printStoredNode(dataDir string) {
 	if readErr != nil {
 		return
 	}
+	fmt.Printf("node_id: %s\n", strings.TrimSpace(string(nodeIDBytes)))
 	st, storeErr := store.Open(dataDir)
 	if storeErr != nil {
 		return

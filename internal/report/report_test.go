@@ -13,7 +13,7 @@ func TestEnvelopeRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Unix(1700000000, 0)
-	e, err := NewEnvelope("ingress-1", map[string]any{"host": "app.example"}, pub, priv, now)
+	e, err := NewEnvelope("gateway-1", map[string]any{"host": "app.example"}, pub, priv, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestLoadOrCreateIdentityPersists(t *testing.T) {
 func TestEnvelopeRejectsTampering(t *testing.T) {
 	pub, priv, _ := GenerateKey()
 	now := time.Unix(1700000000, 0)
-	e, _ := NewEnvelope("ingress-1", map[string]any{"host": "app.example"}, pub, priv, now)
+	e, _ := NewEnvelope("gateway-1", map[string]any{"host": "app.example"}, pub, priv, now)
 	e.Payload = []byte(`{"host":"evil.example"}`)
 	if _, _, err := Verify(e, now, time.Minute); err == nil {
 		t.Fatal("tampered payload accepted")
@@ -54,7 +54,7 @@ func TestEnvelopeRejectsTampering(t *testing.T) {
 func TestEnvelopeRejectsStale(t *testing.T) {
 	pub, priv, _ := GenerateKey()
 	now := time.Unix(1700000000, 0)
-	e, _ := NewEnvelope("ingress-1", map[string]any{}, pub, priv, now)
+	e, _ := NewEnvelope("gateway-1", map[string]any{}, pub, priv, now)
 	if _, _, err := Verify(e, now.Add(2*time.Minute), time.Minute); err == nil {
 		t.Fatal("stale report accepted")
 	}

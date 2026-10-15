@@ -2,9 +2,10 @@ package web
 
 import (
 	"fmt"
+	"net/http"
+
 	"github.com/libdns/libdns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
-	"net/http"
 )
 
 func managedRecordViews(records []libdns.Record, ledger []dns.LedgerEntry, owner string) []map[string]any {

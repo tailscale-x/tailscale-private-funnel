@@ -7,15 +7,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/libdns/libdns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
 )
 
 // A failed read is not an empty desired policy. Preserve DNS and stored rules.
@@ -56,7 +57,7 @@ func (c *Control) policyLocked() policy.Document {
 	}
 	return d
 }
-func (c *Control) exposureAllowed(e dns.IngressExposure, ids, roles []string) bool {
+func (c *Control) exposureAllowed(e dns.GatewayExposure, ids, roles []string) bool {
 	return c.anyEdgeAllows(c.loadExposurePolicy(), e.PublicHostname, ids, roles)
 }
 func (c *Control) policyGet(w http.ResponseWriter, r *http.Request) {
@@ -118,17 +119,10 @@ func (c *Control) savePolicy(w http.ResponseWriter, r *http.Request, d policy.Do
 			return
 		}
 		d.Rules[i].Name = name
-		for _, id := range d.Rules[i].IngressIDs {
+		for _, id := range d.Rules[i].GatewayIDs {
 			n, err := c.Store.Node(id)
-			if err != nil || n.Mode != "ingress" {
-				http.Error(w, "Unknown ingress reference", 400)
-				return
-			}
-		}
-		for _, id := range d.Rules[i].LoadBalancerIDs {
-			n, err := c.Store.Node(id)
-			if err != nil || n.Mode != "loadbalancer" {
-				http.Error(w, "Unknown load balancer reference", 400)
+			if err != nil || !store.IsGateway(n.Mode) {
+				http.Error(w, "Unknown gateway reference", 400)
 				return
 			}
 		}
@@ -203,7 +197,7 @@ func (c *Control) policyRuleSave(w http.ResponseWriter, r *http.Request) {
 		rev = input.Revision
 	} else {
 		rev, _ = strconv.ParseUint(r.FormValue("revision"), 10, 64)
-		rule = policy.Rule{Name: r.FormValue("name"), HostnameRegexes: r.Form["hostname_regexes"], Roles: splitValues(r.FormValue("roles")), IngressIDs: splitValues(r.FormValue("ingress_ids")), LoadBalancerIDs: splitValues(r.FormValue("loadbalancer_ids")), Enabled: r.FormValue("enabled") == "on"}
+		rule = policy.Rule{Name: r.FormValue("name"), HostnameRegexes: r.Form["hostname_regexes"], Roles: splitValues(r.FormValue("roles")), GatewayIDs: splitValues(r.FormValue("gateway_ids")), Enabled: r.FormValue("enabled") == "on"}
 	}
 	if rev != d.Revision {
 		http.Error(w, "Policy changed. Reload before saving.", 409)
@@ -260,64 +254,54 @@ func (c *Control) policyRuleDelete(w http.ResponseWriter, r *http.Request) {
 	http.NotFound(w, r)
 }
 func (c *Control) policyTest(w http.ResponseWriter, r *http.Request) {
+	if r.FormValue("loadbalancer_id") != "" || r.FormValue("loadbalancer_ids") != "" {
+		http.Error(w, "load-balancer selection is control-managed", 400)
+		return
+	}
 	h := r.FormValue("hostname")
-	ok, name := c.loadExposurePolicy().Allows(h, r.FormValue("loadbalancer_id"), splitValues(r.FormValue("ingress_ids")), splitValues(r.FormValue("roles")))
+	ok, name := c.loadExposurePolicy().Allows(h, splitValues(r.FormValue("gateway_ids")), splitValues(r.FormValue("roles")))
 	writeJSON(w, map[string]any{"allowed": ok, "matched_rule": name, "hostname": h})
 }
 
 // Desired DNS and routes are reconstructed from signed, unexpired reports and
 // verified selectors saved by the report handler, never client supplied roles.
-func (c *Control) authorizedReports(d policy.Document) map[string][]dns.IngressExposure {
-	out := map[string][]dns.IngressExposure{}
+func (c *Control) authorizedReports(d policy.Document) map[string][]dns.GatewayExposure {
+	out := map[string][]dns.GatewayExposure{}
 	apps, err := c.Store.Applications()
 	if err != nil {
 		return out
 	}
-	for _, mode := range []string{"ingress", "loadbalancer"} {
-		nodes, err := c.Store.Nodes(mode)
-		if err != nil {
+	nodes, err := c.Store.Nodes("gateways")
+	if err != nil {
+		return out
+	}
+	for _, item := range nodes {
+		n, err := c.Store.Node(fmt.Sprint(item["id"]))
+		if err != nil || n.Revoked {
 			continue
 		}
-		for _, item := range nodes {
-			n, err := c.Store.Node(fmt.Sprint(item["id"]))
-			if err != nil || n.Revoked {
+		var roles []string
+		_ = c.Store.GetJSON("node_policy_roles:"+n.ID, &roles)
+		exposures := c.freshReport(n)
+		if n.Mode == "docker-gateway" {
+			exposures = c.expandDockerAliasesForPolicy(exposures, apps, n, roles, d)
+		}
+		for _, e := range exposures {
+			if !e.Reachable {
 				continue
 			}
-			var roles []string
-			_ = c.Store.GetJSON("node_policy_roles:"+n.ID, &roles)
-			exposures := c.freshReport(n)
-			if mode == "ingress" {
-				exposures = c.expandDockerAliasesForPolicy(exposures, apps, n, roles, d)
-			}
-			for _, e := range exposures {
-				if !e.Reachable {
+			for _, a := range apps {
+				if !applicationAllows(a, n) || a.ID != e.ApplicationID || !contains(a.PublicHostnames, e.PublicHostname) || a.ServiceName != e.ServiceName || a.BackendPort != e.Port {
 					continue
 				}
-				for _, app := range apps {
-					if !app.Enabled || app.ID != e.ApplicationID || !contains(app.PublicHostnames, e.PublicHostname) || app.BackendPort != e.Port {
-						continue
-					}
-					if _, err := c.managedZone(e.PublicHostname); err != nil {
-						continue
-					}
-					if mode == "ingress" {
-						if app.BackendSource == "tailnet" || !applicationAllows(app, n) || app.ServiceName != e.ServiceName {
-							continue
-						}
-						if !c.anyEdgeAllows(d, e.PublicHostname, []string{n.ID, n.TailnetID}, roles) {
-							continue
-						}
-					} else {
-						if app.BackendSource != "tailnet" || app.BackendDeviceID != e.BackendDeviceID || !c.selected(e.PublicHostname, n.ID) {
-							continue
-						}
-						if ok, _ := d.Allows(e.PublicHostname, n.ID, nil, roles); !ok {
-							continue
-						}
-					}
-					out[n.ID] = append(out[n.ID], e)
-					break
+				if _, err := c.managedZone(e.PublicHostname); err != nil {
+					continue
 				}
+				if ok, _ := d.Allows(e.PublicHostname, []string{n.ID, n.TailnetID}, roles); !ok {
+					continue
+				}
+				out[n.ID] = append(out[n.ID], e)
+				break
 			}
 		}
 	}

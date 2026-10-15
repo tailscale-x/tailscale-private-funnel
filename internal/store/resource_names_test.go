@@ -22,19 +22,19 @@ func oldNamesFixture(t *testing.T) (string, []byte, string) {
 	}
 	_ = s.SaveProvider("Cloudflare-dev", "cloudflare", map[string]string{"api_token": "private-token", "account_id": "account"}, true)
 	_ = s.AddZone("Cloudflare-dev", "example.com")
-	_ = s.ReplaceLedger("Cloudflare-dev", "example.com", "ingress:ingress-id", []libdns.Record{libdns.RR{Name: "app.example.com", Type: "CNAME", Data: "edge.example.com"}})
+	_ = s.ReplaceLedger("Cloudflare-dev", "example.com", "gateway:gateway-id", []libdns.Record{libdns.RR{Name: "app.example.com", Type: "CNAME", Data: "edge.example.com"}})
 	_ = s.UpsertNode("edge-id", "loadbalancer", "edge-host")
-	_ = s.UpsertNode("ingress-id", "ingress", "ingress-host")
+	_ = s.UpsertNode("gateway-id", "docker-gateway", "gateway-host")
 	_ = s.SetJSON("node_deployment:edge-id", map[string]string{"loadbalancer_hostname": "edge.example.com"})
-	_ = s.SetJSON("node_deployment:ingress-id", map[string]string{"loadbalancer_hostname": "edge.example.com"})
+	_ = s.SetJSON("node_deployment:gateway-id", map[string]string{"loadbalancer_hostname": "edge.example.com"})
 	_ = s.SetJSON("exposure_policy", map[string]any{"rules": []any{map[string]any{"name": "Allow", "loadbalancer_hostnames": []string{"edge.example.com"}}}})
 	_ = s.SetJSON("provider_test:Cloudflare-dev", "Verified")
 	_ = s.SetJSON("pending", map[string]string{"provider_id": "Cloudflare-dev"})
 	pub, key, _ := report.GenerateKey()
-	_ = s.BindNodeIdentity("ingress-id", base64.RawStdEncoding.EncodeToString(pub), "tailnode", nil)
-	env, _ := report.NewEnvelope("ingress-id", map[string]any{"exposures": []any{map[string]any{"loadbalancer_hostname": "edge.example.com", "public_hostname": "app.example.com"}}, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, key, time.Now())
+	_ = s.BindNodeIdentity("gateway-id", base64.RawStdEncoding.EncodeToString(pub), "tailnode", nil)
+	env, _ := report.NewEnvelope("gateway-id", map[string]any{"exposures": []any{map[string]any{"loadbalancer_hostname": "edge.example.com", "public_hostname": "app.example.com"}}, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, key, time.Now())
 	raw, _ := json.Marshal(env)
-	_ = s.AcceptReport("ingress-id", env.Nonce, raw, env.PublicKey)
+	_ = s.AcceptReport("gateway-id", env.Nonce, raw, env.PublicKey)
 	var cipher string
 	_ = s.db.QueryRow(`SELECT config FROM providers`).Scan(&cipher)
 	for _, q := range []string{`DROP INDEX managed_zones_id`, `ALTER TABLE managed_zones DROP COLUMN id`, `ALTER TABLE providers DROP COLUMN name`, `ALTER TABLE nodes DROP COLUMN name`, `ALTER TABLE enrollments DROP COLUMN name`, `ALTER TABLE applications DROP COLUMN name`, `ALTER TABLE reports DROP COLUMN snapshot`, `ALTER TABLE records DROP COLUMN zone_id`, `DELETE FROM schema_migrations WHERE version='009_resource_names'`} {
@@ -70,8 +70,8 @@ func TestResourceNameMigrationPreservesIdentityAndOwnership(t *testing.T) {
 	if len(zones) != 1 || zones[0].ID == "" || zones[0].ProviderID != id {
 		t.Fatal(zones)
 	}
-	ledger, _ := s.Ledger(id, "example.com", "ingress:ingress-id")
-	if len(ledger) != 1 || ledger[0].OwnerID != "ingress:ingress-id" {
+	ledger, _ := s.Ledger(id, "example.com", "gateway:gateway-id")
+	if len(ledger) != 1 || ledger[0].OwnerID != "gateway:gateway-id" {
 		t.Fatal(ledger)
 	}
 	var zid string
@@ -90,11 +90,11 @@ func TestResourceNameMigrationPreservesIdentityAndOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	reports, _ := s.Reports()
-	if !strings.Contains(reports["ingress-id"], `"loadbalancer_id":"edge-id"`) {
+	if !strings.Contains(reports["gateway-id"], `"loadbalancer_id":"edge-id"`) {
 		t.Fatal(reports)
 	}
 	var deployment map[string]string
-	_ = s.GetJSON("node_deployment:ingress-id", &deployment)
+	_ = s.GetJSON("node_deployment:gateway-id", &deployment)
 	if deployment["loadbalancer_id"] != "edge-id" || deployment["loadbalancer_hostname"] != "" {
 		t.Fatal(deployment)
 	}
@@ -110,11 +110,11 @@ func TestResourceNameMigrationPreservesIdentityAndOwnership(t *testing.T) {
 	if err = s.RenameResource("provider", id, "  家庭 DNS  "); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.RenameResource("node", "ingress-id", "Ingress alias"); err != nil {
+	if err = s.RenameResource("node", "gateway-id", "Gateway alias"); err != nil {
 		t.Fatal(err)
 	}
-	node, _ := s.Node("ingress-id")
-	if node.Hostname != "ingress-host" || node.TailnetID != "tailnode" || node.Name != "Ingress alias" {
+	node, _ := s.Node("gateway-id")
+	if node.Hostname != "gateway-host" || node.TailnetID != "tailnode" || node.Name != "Gateway alias" {
 		t.Fatal(node)
 	}
 	s.Close()
@@ -160,16 +160,16 @@ func TestResourceNameMigrationRollsBack(t *testing.T) {
 	}
 }
 
-func TestIngressNameMigrationPreservesIdentity(t *testing.T) {
+func TestGatewayNameMigrationPreservesIdentity(t *testing.T) {
 	dir := t.TempDir()
 	s, err := Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.UpsertNode("ingress-id", "ingress", "host-ingress"); err != nil {
+	if err = s.UpsertNode("gateway-id", "docker-gateway", "host-gateway"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.db.Exec(`UPDATE nodes SET name='Old alias',tailnet_id='stable-device',node_key='signing-key' WHERE id='ingress-id'; DELETE FROM schema_migrations WHERE version='012_ingress_hostname_names'`); err != nil {
+	if _, err = s.db.Exec(`UPDATE nodes SET name='Old alias',tailnet_id='stable-device',node_key='signing-key' WHERE id='gateway-id'; DELETE FROM schema_migrations WHERE version='012_gateway_hostname_names'`); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -178,8 +178,8 @@ func TestIngressNameMigrationPreservesIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	n, err := s.Node("ingress-id")
-	if err != nil || n.Name != "host-ingress" || n.Hostname != "host-ingress" || n.TailnetID != "stable-device" || n.PublicKey != "signing-key" {
+	n, err := s.Node("gateway-id")
+	if err != nil || n.Name != "Old alias" || n.Hostname != "host-gateway" || n.TailnetID != "stable-device" || n.PublicKey != "signing-key" {
 		t.Fatal(n, err)
 	}
 }

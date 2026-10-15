@@ -1,45 +1,35 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
-  <title id="title">Local Funnel network layers</title>
-  <desc id="desc">Public clients reach Caddy through owned DNS. Docker traffic crosses an approved Tailscale Service on ingress before reaching an isolated container network. Tailnet-machine traffic goes directly from the load balancer to the selected peer by device identity, without an application Service or ingress hop.</desc>
-  <defs>
-    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#2563eb"/></marker>
-    <style>
-      .bg{fill:#f7faff}.band{fill:#fff;stroke:#d8e4f1;stroke-width:2}.overlay{fill:#eefaf3;stroke:#56b985;stroke-width:2;stroke-dasharray:8 7}.docker{fill:#f2f5ff;stroke:#9aabed;stroke-width:2;stroke-dasharray:7 6}.box{fill:#fff;stroke:#bacce3;stroke-width:2}.heading{font:700 25px Inter,system-ui,sans-serif;fill:#142746}.label{font:700 18px Inter,system-ui,sans-serif;fill:#142746}.body{font:500 15px Inter,system-ui,sans-serif;fill:#526784}.small{font:600 13px Inter,system-ui,sans-serif;fill:#2763ad}.mono{font:600 14px ui-monospace,SFMono-Regular,Consolas,monospace;fill:#2763ad}.line{fill:none;stroke:#2563eb;stroke-width:3;marker-end:url(#arrow)}
-    </style>
-  </defs>
-  <rect width="1440" height="900" rx="26" class="bg"/>
-  <text x="54" y="53" class="heading">Local Funnel · network boundaries</text>
-  <text x="54" y="78" class="body">One funnel tag. Direct tailnet routes skip ingress; Docker routes use an approved Service and isolated networks.</text>
-
-  <rect x="32" y="105" width="1376" height="158" rx="18" class="band"/>
-  <text x="54" y="139" class="small">1 · PUBLIC INTERNET</text>
-  <rect x="288" y="159" width="214" height="72" rx="12" class="box"/><text x="313" y="188" class="label">Browser / API client</text><text x="313" y="212" class="body">HTTPS :443</text>
-  <rect x="622" y="159" width="214" height="72" rx="12" class="box"/><text x="648" y="188" class="label">Owned DNS records</text><text x="648" y="212" class="body">Exposure A records</text>
-  <rect x="956" y="159" width="248" height="72" rx="12" class="box"/><text x="982" y="188" class="label">Caddy load balancer</text><text x="982" y="212" class="body">Public TLS termination</text>
-  <path d="M502 195 H622 M836 195 H956" class="line"/>
-
-  <rect x="32" y="281" width="1376" height="186" rx="18" class="overlay"/>
-  <text x="54" y="315" class="small">2 · TAILSCALE OVERLAY · tag:tailscale-private-funnel</text>
-  <rect x="256" y="343" width="265" height="91" rx="12" class="box"/><text x="279" y="374" class="label">Load balancer tsnet</text><text x="279" y="401" class="body">Service or direct peer dial</text>
-  <rect x="624" y="343" width="230" height="91" rx="12" class="box"/><text x="648" y="374" class="label">Tailscale Service</text><text x="648" y="401" class="body">Approved ingress host</text>
-  <rect x="957" y="343" width="266" height="91" rx="12" class="box"/><text x="980" y="374" class="label">Ingress tsnet</text><text x="980" y="401" class="body">One persistent identity</text>
-  <text x="257" y="454" class="small">Direct tailnet machine: load balancer → backend device ID · externally granted · no Service or ingress</text>
-  <path d="M521 390 H624 M854 390 H957" class="line"/>
-  <text x="1110" y="454" class="small">Other nodes need explicit grants</text>
-
-  <rect x="32" y="485" width="1376" height="165" rx="18" class="band"/>
-  <text x="54" y="519" class="small">3 · HOST SERVICES · CONTROL AND INGRESS RUN SEPARATELY</text>
-  <rect x="303" y="545" width="331" height="77" rx="12" class="box"/><text x="329" y="575" class="label">Control plane</text><text x="329" y="601" class="body">Signed config, policy, DNS ledger</text>
-  <rect x="835" y="545" width="338" height="77" rx="12" class="box"/><text x="859" y="575" class="label">Ingress supervisor</text><text x="859" y="601" class="body">Only Docker API client</text>
-  <path d="M634 585 H835" class="line"/>
-  <text x="651" y="578" class="small">approve + report</text>
-
-  <rect x="32" y="668" width="1376" height="198" rx="18" class="band"/>
-  <text x="54" y="703" class="small">4 · LOCAL APPLICATION NETWORKS</text>
-  <rect x="243" y="732" width="409" height="103" rx="14" class="docker"/>
-  <text x="266" y="761" class="label">App 1 · selected Docker bridge</text><text x="266" y="789" class="mono">container IP:8080</text><text x="266" y="814" class="body">No published backend port</text>
-  <rect x="788" y="732" width="409" height="103" rx="14" class="docker"/>
-  <text x="811" y="761" class="label">App 2 · selected Docker bridge</text><text x="811" y="789" class="mono">container IP:5173</text><text x="811" y="814" class="body">No relay or Tailscale credential</text>
-  <path d="M922 622 V694 H448 V732 M1048 622 V694 H992 V732" class="line"/>
-  <text x="568" y="723" class="small">direct raw TCP after reachability check</text>
+<title id="title">Local Funnel network and trust boundaries</title>
+<desc id="desc">Public HTTPS terminates at Caddy. All backends are reached through approved Tailscale Services inside the shared Funnel tag policy. Docker gateways use isolated credential-free relays, tailnet gateways dial authorized peers, and Kubernetes forwarders select only ready Pods on their own node. Tailnet-only control owns policy, signed configuration and DNS ownership. The application never changes Tailscale ACLs.</desc>
+<defs>
+<marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#2563eb"/></marker>
+<style>.bg{fill:#f7faff}.band{fill:white;stroke:#d8e4f1;stroke-width:2}.overlay{fill:#eefaf3;stroke:#56b985;stroke-width:2;stroke-dasharray:8 7}.box{fill:white;stroke:#bacce3;stroke-width:2}.heading{font:700 26px system-ui,sans-serif;fill:#142746}.label{font:700 19px system-ui,sans-serif;fill:#142746}.body{font:500 16px system-ui,sans-serif;fill:#526784}.small{font:600 14px system-ui,sans-serif;fill:#2763ad}.line{fill:none;stroke:#2563eb;stroke-width:3;marker-end:url(#arrow)}.policy{fill:none;stroke:#56b985;stroke-width:2;stroke-dasharray:6 5;marker-end:url(#arrow)}</style>
+</defs>
+<rect width="1440" height="900" rx="26" class="bg"/>
+<text x="48" y="52" class="heading">Local Funnel · network and trust boundaries</text>
+<text x="48" y="82" class="body">One shared Funnel tag. Existing tailnet grants stay unchanged; additional backend access is explicitly granted by you.</text>
+<rect x="32" y="110" width="1376" height="150" rx="18" class="band"/>
+<text x="54" y="141" class="small">1 · PUBLIC INTERNET · ONLY THE LOAD BALANCER ACCEPTS PUBLIC TRAFFIC</text>
+<rect x="72" y="166" width="290" height="70" rx="12" class="box"/><text x="92" y="194" class="label">Browser / API client</text><text x="92" y="218" class="body">HTTPS :443 · HTTP redirects</text>
+<rect x="510" y="166" width="300" height="70" rx="12" class="box"/><text x="530" y="194" class="label">Owned public DNS</text><text x="530" y="218" class="body">Ready load-balancer A records</text>
+<rect x="958" y="166" width="370" height="70" rx="12" class="box"/><text x="978" y="194" class="label">Caddy load balancer</text><text x="978" y="218" class="body">TLS + trusted forwarding headers</text>
+<path d="M362 201 H510" class="policy"/>
+<path d="M217 236 V252 H1143 V236" class="line"/>
+<rect x="32" y="280" width="1376" height="330" rx="18" class="overlay"/>
+<text x="54" y="313" class="small">2 · ENCRYPTED TAILSCALE OVERLAY · tag:tailscale-private-funnel · NO ACL MUTATION</text>
+<rect x="72" y="342" width="360" height="100" rx="12" class="box"/><text x="92" y="372" class="label">Private control plane</text><text x="92" y="399" class="body">WhoIs authorization · signed reports</text><text x="92" y="424" class="body">Policy, enrollment, exact DNS ledger</text>
+<rect x="530" y="342" width="320" height="100" rx="12" class="box"/><text x="550" y="372" class="label">Approved application Services</text><text x="550" y="399" class="body">Exact device / Service approval</text><text x="550" y="424" class="body">Userspace tsnet · persistent identities</text>
+<path d="M1140 236 V328 H870 V390 H850" class="line"/>
+<path d="M432 392 H530" class="policy"/>
+<rect x="72" y="486" width="360" height="92" rx="12" class="box"/><text x="92" y="518" class="label">Docker gateway</text><text x="92" y="545" class="body">One identity · selected local networks</text>
+<rect x="530" y="486" width="360" height="92" rx="12" class="box"/><text x="550" y="518" class="label">Tailnet gateway</text><text x="550" y="545" class="body">One identity · verified peer dialer</text>
+<rect x="988" y="486" width="360" height="92" rx="12" class="box"/><text x="1008" y="518" class="label">Kubernetes forwarder</text><text x="1008" y="545" class="body">One fenced identity per selected node</text>
+<path d="M690 442 V464 H252 V486 M690 442 V464 H710 V486 M690 442 V464 H1168 V486" class="line"/>
+<rect x="32" y="630" width="1376" height="210" rx="18" class="band"/>
+<text x="54" y="664" class="small">3 · BACKEND ISOLATION · RAW TCP FORWARDING · NO SECOND HTTP PROXY</text>
+<rect x="72" y="694" width="360" height="110" rx="12" class="box"/><text x="92" y="726" class="label">Application Docker networks</text><text x="92" y="754" class="body">Credential-free relay per assignment</text><text x="92" y="780" class="body">No socket, Tailscale keys, or privileges</text>
+<rect x="530" y="694" width="360" height="110" rx="12" class="box"/><text x="550" y="726" class="label">Authorized tailnet machine</text><text x="550" y="754" class="body">Stable device ID + tested HTTP port</text><text x="550" y="780" class="body">Access requires your explicit grant</text>
+<rect x="988" y="694" width="360" height="110" rx="12" class="box"/><text x="1008" y="726" class="label">Ready same-node Pods</text><text x="1008" y="754" class="body">Verified Pod UID / IP / target port</text><text x="1008" y="780" class="body">No remote-node fallback or API token</text>
+<path d="M252 578 V694 M710 578 V694 M1168 578 V694" class="line"/>
+<text x="48" y="875" class="body">Kubernetes: one namespace per installation. Trusted control/broker manage state; forwarders cannot read Kubernetes Secrets.</text>
 </svg>

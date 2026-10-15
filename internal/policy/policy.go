@@ -1,4 +1,4 @@
-// Package policy contains the control-plane rules for ingress exposure.
+// Package policy contains the control-plane rules for gateway exposure.
 package policy
 
 import (
@@ -16,13 +16,12 @@ type Rule struct {
 	Name            string   `json:"name"`
 	HostnameRegexes []string `json:"hostname_regexes"`
 	Roles           []string `json:"roles"`
-	IngressIDs      []string `json:"ingress_ids"`
-	LoadBalancerIDs []string `json:"loadbalancer_ids"`
+	GatewayIDs      []string `json:"gateway_ids"`
 	Enabled         bool     `json:"enabled"`
 }
 
 // Document is persisted by the control service. An empty document denies all
-// ingress exposure, which makes adding a ingress safe until an administrator
+// gateway exposure, which makes adding a gateway safe until an administrator
 // explicitly creates a matching rule.
 type Document struct {
 	Revision uint64 `json:"revision"`
@@ -59,11 +58,11 @@ func (d Document) Validate() error {
 	return nil
 }
 
-// Allows returns whether one enabled rule authorizes this ingress, hostname,
-// and loadbalancer. Any matching role or ingress selector is sufficient. Empty principal selectors
-// allow any enrolled ingress; an empty loadbalancer list adds no restriction.
-func (d Document) Allows(hostname, loadbalancer string, ingressIDs, roles []string) (bool, string) {
-	if rule, ok := d.Match(hostname, loadbalancer, ingressIDs, roles); ok {
+// Allows returns whether one enabled rule authorizes this gateway and hostname.
+// Any matching role or gateway selector is sufficient. Empty principal selectors
+// allow any enrolled gateway. Load-balancer assignment is control-managed.
+func (d Document) Allows(hostname string, gatewayIDs, roles []string) (bool, string) {
+	if rule, ok := d.Match(hostname, gatewayIDs, roles); ok {
 		name := rule.Name
 		if name == "" {
 			name = strings.Join(rule.HostnameRegexes, " OR ")
@@ -74,16 +73,15 @@ func (d Document) Allows(hostname, loadbalancer string, ingressIDs, roles []stri
 }
 
 // Match returns the first matching rule; rule order makes the provider choice
-// deterministic. Ingress IDs are stable identifiers and remain case sensitive.
-func (d Document) Match(hostname, loadbalancer string, ingressIDs, roles []string) (Rule, bool) {
+// deterministic. Gateway IDs are stable identifiers and remain case sensitive.
+func (d Document) Match(hostname string, gatewayIDs, roles []string) (Rule, bool) {
 	hostname = normalize(hostname)
-	loadbalancer = strings.TrimSpace(loadbalancer)
 	if ValidateHostname(hostname) != nil {
 		return Rule{}, false
 	}
-	ingressSet := map[string]bool{}
-	for _, id := range ingressIDs {
-		ingressSet[strings.TrimSpace(id)] = true
+	gatewaySet := map[string]bool{}
+	for _, id := range gatewayIDs {
+		gatewaySet[strings.TrimSpace(id)] = true
 	}
 	roleSet := set(roles)
 	for _, rule := range d.Rules {
@@ -107,9 +105,6 @@ func (d Document) Match(hostname, loadbalancer string, ingressIDs, roles []strin
 		if invalid || !matched {
 			continue
 		}
-		if len(nonEmpty(rule.LoadBalancerIDs)) > 0 && !containsID(rule.LoadBalancerIDs, loadbalancer) {
-			continue
-		}
 		roleOK := false
 		for _, role := range nonEmpty(rule.Roles) {
 			if role == "*" || roleSet[normalize(role)] {
@@ -117,14 +112,14 @@ func (d Document) Match(hostname, loadbalancer string, ingressIDs, roles []strin
 				break
 			}
 		}
-		ingressOK := false
-		for _, id := range nonEmpty(rule.IngressIDs) {
-			if id == "*" || ingressSet[id] {
-				ingressOK = true
+		gatewayOK := false
+		for _, id := range nonEmpty(rule.GatewayIDs) {
+			if id == "*" || gatewaySet[id] {
+				gatewayOK = true
 				break
 			}
 		}
-		if roleOK || ingressOK || (len(nonEmpty(rule.Roles)) == 0 && len(nonEmpty(rule.IngressIDs)) == 0) {
+		if roleOK || gatewayOK || (len(nonEmpty(rule.Roles)) == 0 && len(nonEmpty(rule.GatewayIDs)) == 0) {
 			return rule, true
 		}
 	}

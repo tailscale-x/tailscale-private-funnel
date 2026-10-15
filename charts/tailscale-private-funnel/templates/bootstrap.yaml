@@ -1,0 +1,42 @@
+{{- if eq .Values.component "k8s-gateway" }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-bootstrap-{{ .Release.Revision }}
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ .Release.Name }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: bootstrap
+          image: {{ .Values.image.reference | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [k8s-gateway, controller, bootstrap, --namespace={{ .Release.Namespace }}, --installation={{ .Release.Name }}]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: bootstrap, mountPath: /bootstrap, readOnly: true}
+            - {name: runtime, mountPath: /var/lib/tailscale-private-funnel}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: bootstrap
+          secret:
+            secretName: {{ required "bootstrap.existingSecret is required" .Values.bootstrap.existingSecret }}
+            optional: true
+            defaultMode: 0440
+        - name: runtime
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+
+{{- end }}

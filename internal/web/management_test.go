@@ -5,17 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/libdns/libdns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
-	"time"
 )
 
 type fixtureDNS struct {
@@ -105,9 +106,9 @@ func requestManagement(c *Control, method, path string, body any, role string) *
 }
 func TestRuleCRUDRevisionAndReadOnly(t *testing.T) {
 	c, s := testControl(t)
-	_ = s.UpsertNode("ingress", "ingress", "ingress-host")
+	_ = s.UpsertNode("docker-gateway", "docker-gateway", "gateway-host")
 	_ = s.SetJSON("access_roles", AccessSettings{Roles: map[string][]string{"admin": {"node:admin"}, "viewer": {"node:viewer"}, "operator": {"node:operator"}}})
-	rule := policy.Rule{Name: "first", HostnameRegexes: []string{`.*[.]example[.]com`}, IngressIDs: []string{"ingress"}, Enabled: true}
+	rule := policy.Rule{Name: "first", HostnameRegexes: []string{`.*[.]example[.]com`}, GatewayIDs: []string{"docker-gateway"}, Enabled: true}
 	rev := c.loadExposurePolicy().Revision
 	w := requestManagement(c, "POST", "/api/policies/rule", map[string]any{"revision": rev, "rule": rule}, "owner")
 	if w.Code != 200 {
@@ -175,24 +176,24 @@ func TestMultiZoneRoutingAndIndependentCleanup(t *testing.T) {
 	}
 	desired := map[store.LedgerPartition][]libdns.Record{}
 	for _, z := range []string{"example.com", "example.net"} {
-		p := store.LedgerPartition{ProviderID: "fixture", Zone: z, OwnerID: "ingress:n"}
+		p := store.LedgerPartition{ProviderID: "fixture", Zone: z, OwnerID: "gateway:n"}
 		desired[p] = []libdns.Record{libdns.RR{Name: "app." + z, Type: "CNAME", Data: "edge.example.com", TTL: time.Minute}}
 	}
-	if err = c.reconcilePartitions(context.Background(), "ingress:n", desired); err != nil {
+	if err = c.reconcilePartitions(context.Background(), "gateway:n", desired); err != nil {
 		t.Fatal(err)
 	}
 	f.records["example.net"] = append(f.records["example.net"], libdns.RR{Name: "unrelated.example.net", Type: "TXT", Data: "keep"})
 	f.fail = "example.com"
-	if err = c.reconcilePartitions(context.Background(), "ingress:n", nil); err == nil {
+	if err = c.reconcilePartitions(context.Background(), "gateway:n", nil); err == nil {
 		t.Fatal("expected isolated failure")
 	}
-	netLedger, _ := s.Ledger("fixture", "example.net", "ingress:n")
-	comLedger, _ := s.Ledger("fixture", "example.com", "ingress:n")
+	netLedger, _ := s.Ledger("fixture", "example.net", "gateway:n")
+	comLedger, _ := s.Ledger("fixture", "example.com", "gateway:n")
 	if len(netLedger) != 0 || len(comLedger) != 1 || len(f.records["example.net"]) != 1 {
 		t.Fatal(netLedger, comLedger, f.records)
 	}
 	f.fail = ""
-	if err = c.reconcilePartitions(context.Background(), "ingress:n", nil); err != nil {
+	if err = c.reconcilePartitions(context.Background(), "gateway:n", nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -220,7 +221,7 @@ func TestProviderSecretsDiscoveryAndZoneGuards(t *testing.T) {
 	if len(zones) != 2 {
 		t.Fatal("discovery changed scope")
 	}
-	_ = s.ReplaceLedger("fixture", "example.com", "ingress:n", []libdns.Record{libdns.RR{Name: "app.example.com", Type: "CNAME", Data: "edge.example.com"}})
+	_ = s.ReplaceLedger("fixture", "example.com", "gateway:n", []libdns.Record{libdns.RR{Name: "app.example.com", Type: "CNAME", Data: "edge.example.com"}})
 	if err := s.AddZone("other", "example.com"); err == nil {
 		t.Fatal("provider changed with ledger")
 	}
@@ -231,18 +232,18 @@ func TestProviderSecretsDiscoveryAndZoneGuards(t *testing.T) {
 func TestPolicyWithdrawalOverlapAndRetry(t *testing.T) {
 	c, s := testControl(t)
 	f := installDNSFixture(t, s, "example.com")
-	_ = s.UpsertNodeEnrollment("ingress", "enrollment", "ingress", "node")
-	_ = s.SetJSON("node_deployment:ingress", nodeDeployment{})
+	_ = s.UpsertNodeEnrollment("docker-gateway", "enrollment", "docker-gateway", "node")
+	_ = s.SetJSON("node_deployment:docker-gateway", nodeDeployment{})
 	pub, priv, _ := report.GenerateKey()
-	_ = s.BindNodeIdentity("ingress", encodePublicKey(pub), "tailnode", nil)
-	_ = s.UpsertApplication(store.ApplicationRecord{ID: "app", ServiceName: "svc:app", ServiceFQDN: "svc:app", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"app.example.com"}, AllowedIngressNodes: []string{"ingress"}, Enabled: true})
-	rule := policy.Rule{ID: "one", Name: "First rule", HostnameRegexes: []string{`app[.]example[.]com`}, IngressIDs: []string{"ingress"}, Enabled: true}
+	_ = s.BindNodeIdentity("docker-gateway", encodePublicKey(pub), "tailnode", nil)
+	_ = s.UpsertApplication(store.ApplicationRecord{ID: "app", ServiceName: "svc:app", ServiceFQDN: "svc:app", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"app.example.com"}, AllowedGatewayNodes: []string{"docker-gateway"}, Enabled: true})
+	rule := policy.Rule{ID: "one", Name: "First rule", HostnameRegexes: []string{`app[.]example[.]com`}, GatewayIDs: []string{"docker-gateway"}, Enabled: true}
 	d := policy.Document{Revision: 1, Rules: []policy.Rule{rule, rule}}
 	d.Rules[1].ID = "two"
 	_ = s.SetJSON("exposure_policy", d)
-	env, _ := report.NewEnvelope("ingress", map[string]any{"exposures": []dns.IngressExposure{{ApplicationID: "app", PublicHostname: "app.example.com", ServiceName: "svc:app", Port: 8080, Reachable: true}}, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, priv, time.Now())
+	env, _ := report.NewEnvelope("docker-gateway", map[string]any{"exposures": []dns.GatewayExposure{{ApplicationID: "app", PublicHostname: "app.example.com", ServiceName: "svc:app", Port: 8080, Reachable: true}}, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, priv, time.Now())
 	raw, _ := json.Marshal(env)
-	_ = s.AcceptReport("ingress", env.Nonce, raw, env.PublicKey)
+	_ = s.AcceptReport("docker-gateway", env.Nonce, raw, env.PublicKey)
 	seedEdgeReport(t, s, "edge-id")
 	if err := c.ReconcilePolicy(context.Background()); err != nil {
 		t.Fatal(err)
@@ -305,23 +306,23 @@ func TestProviderAndZoneAdminOnly(t *testing.T) {
 func TestServiceHostWithdrawalPreservesSharedAuthorizedAssignment(t *testing.T) {
 	c, s := testControl(t)
 	installDNSFixture(t, s, "example.com")
-	_ = s.UpsertNodeEnrollment("ingress", "e", "ingress", "node")
-	_ = s.SetJSON("node_deployment:ingress", nodeDeployment{})
+	_ = s.UpsertNodeEnrollment("docker-gateway", "e", "docker-gateway", "node")
+	_ = s.SetJSON("node_deployment:docker-gateway", nodeDeployment{})
 	pub, priv, _ := report.GenerateKey()
-	_ = s.BindNodeIdentity("ingress", encodePublicKey(pub), "tailnode", nil)
-	app := store.ApplicationRecord{ID: "app", ServiceName: "svc:app", ServiceFQDN: "svc:app", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"one.example.com", "two.example.com"}, AllowedIngressNodes: []string{"ingress"}, Enabled: true}
+	_ = s.BindNodeIdentity("docker-gateway", encodePublicKey(pub), "tailnode", nil)
+	app := store.ApplicationRecord{ID: "app", ServiceName: "svc:app", ServiceFQDN: "svc:app", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"one.example.com", "two.example.com"}, AllowedGatewayNodes: []string{"docker-gateway"}, Enabled: true}
 	_ = s.UpsertApplication(app)
-	d := policy.Document{Revision: 1, Rules: []policy.Rule{{ID: "one", Name: "First rule", HostnameRegexes: []string{`one[.]example[.]com`}, IngressIDs: []string{"ingress"}, Enabled: true}, {ID: "two", Name: "Second rule", HostnameRegexes: []string{`two[.]example[.]com`}, IngressIDs: []string{"ingress"}, Enabled: true}}}
+	d := policy.Document{Revision: 1, Rules: []policy.Rule{{ID: "one", Name: "First rule", HostnameRegexes: []string{`one[.]example[.]com`}, GatewayIDs: []string{"docker-gateway"}, Enabled: true}, {ID: "two", Name: "Second rule", HostnameRegexes: []string{`two[.]example[.]com`}, GatewayIDs: []string{"docker-gateway"}, Enabled: true}}}
 	_ = s.SetJSON("exposure_policy", d)
-	exposures := []dns.IngressExposure{}
+	exposures := []dns.GatewayExposure{}
 	for _, h := range app.PublicHostnames {
-		exposures = append(exposures, dns.IngressExposure{ApplicationID: "app", PublicHostname: h, ServiceName: "svc:app", Port: 8080, Reachable: true})
+		exposures = append(exposures, dns.GatewayExposure{ApplicationID: "app", PublicHostname: h, ServiceName: "svc:app", Port: 8080, Reachable: true})
 	}
-	env, _ := report.NewEnvelope("ingress", map[string]any{"exposures": exposures, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, priv, time.Now())
+	env, _ := report.NewEnvelope("docker-gateway", map[string]any{"exposures": exposures, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, priv, time.Now())
 	raw, _ := json.Marshal(env)
-	_ = s.AcceptReport("ingress", env.Nonce, raw, env.PublicKey)
+	_ = s.AcceptReport("docker-gateway", env.Nonce, raw, env.PublicKey)
 	seedEdgeReport(t, s, "edge-id")
-	_ = s.SetJSON("node_config_ack:ingress", map[string]any{"services": []string{"svc:app"}, "at": time.Now().Unix()})
+	_ = s.SetJSON("node_config_ack:docker-gateway", map[string]any{"services": []string{"svc:app"}, "at": time.Now().Unix()})
 	_ = s.SetJSON("tailnet", map[string]any{"name": "example.ts.net", "loadbalancer_hostname": "edge.example.com"})
 	_ = s.SetSecret("tailscale_oauth_client_id", "id")
 	_ = s.SetSecret("tailscale_oauth_client_secret", "secret")
@@ -375,15 +376,15 @@ func TestServiceHostWithdrawalPreservesSharedAuthorizedAssignment(t *testing.T) 
 func TestSignedReportReconcilesIndependentZones(t *testing.T) {
 	c, s := testControl(t)
 	f := installDNSFixture(t, s, "example.com", "example.net")
-	_ = s.UpsertNodeEnrollment("ingress", "e", "ingress", "node")
-	_ = s.SetJSON("node_deployment:ingress", nodeDeployment{})
+	_ = s.UpsertNodeEnrollment("docker-gateway", "e", "docker-gateway", "node")
+	_ = s.SetJSON("node_deployment:docker-gateway", nodeDeployment{})
 	pub, priv, _ := report.GenerateKey()
-	_ = s.BindNodeIdentity("ingress", encodePublicKey(pub), "tailnode", nil)
-	_ = s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{HostnameRegexes: []string{`app[.]example[.](com|net)`}, IngressIDs: []string{"ingress"}, Enabled: true}}})
-	_ = s.UpsertApplication(store.ApplicationRecord{ID: "app", ServiceName: "svc:app", ServiceFQDN: "svc:app", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"app.example.com", "app.example.net"}, AllowedIngressNodes: []string{"ingress"}, Enabled: true})
+	_ = s.BindNodeIdentity("docker-gateway", encodePublicKey(pub), "tailnode", nil)
+	_ = s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{HostnameRegexes: []string{`app[.]example[.](com|net)`}, GatewayIDs: []string{"docker-gateway"}, Enabled: true}}})
+	_ = s.UpsertApplication(store.ApplicationRecord{ID: "app", ServiceName: "svc:app", ServiceFQDN: "svc:app", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"app.example.com", "app.example.net"}, AllowedGatewayNodes: []string{"docker-gateway"}, Enabled: true})
 	seedEdgeReport(t, s, "edge-id")
 	f.fail = "example.com"
-	env, _ := report.NewEnvelope("ingress", map[string]any{"exposures": []dns.IngressExposure{{ApplicationID: "app", PublicHostname: "app.example.com", ServiceName: "svc:app", Port: 8080, Reachable: true}, {ApplicationID: "app", PublicHostname: "app.example.net", ServiceName: "svc:app", Port: 8080, Reachable: true}}, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, priv, time.Now())
+	env, _ := report.NewEnvelope("docker-gateway", map[string]any{"exposures": []dns.GatewayExposure{{ApplicationID: "app", PublicHostname: "app.example.com", ServiceName: "svc:app", Port: 8080, Reachable: true}, {ApplicationID: "app", PublicHostname: "app.example.net", ServiceName: "svc:app", Port: 8080, Reachable: true}}, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, priv, time.Now())
 	raw, _ := json.Marshal(env)
 	r := httptest.NewRequest("POST", "/api/reports", bytes.NewReader(raw))
 	r = WithPrincipal(r, Principal{NodeID: "tailnode"})
@@ -472,15 +473,15 @@ func TestDisabledProviderCleansLoadBalancerOwnedPartition(t *testing.T) {
 func TestAutomaticNodeOwnershipAndRemovedFields(t *testing.T) {
 	c, s := testControl(t)
 	f := installDNSFixture(t, s, "example.com")
-	_ = s.UpsertNode("node", "ingress", "ingress")
-	_ = s.UpsertNode("other", "ingress", "other")
+	_ = s.UpsertNode("node", "docker-gateway", "docker-gateway")
+	_ = s.UpsertNode("other", "docker-gateway", "other")
 	record := map[string]any{"name": "app.example.com", "type": "CNAME", "data": "edge.example.com", "ttl": 60}
 	body := map[string]any{"provider_id": "fixture", "zone_id": testZoneID(t, s, "example.com"), "node_id": "node", "records": []any{record}}
 	w := requestManagement(c, "POST", "/api/sync", body, "owner")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	ledger, _ := s.Ledger("fixture", "example.com", "ingress:node")
+	ledger, _ := s.Ledger("fixture", "example.com", "gateway:node")
 	if len(ledger) != 1 {
 		t.Fatal("ownership not derived", ledger)
 	}
@@ -622,7 +623,7 @@ func TestUnreadablePolicyPreservesRulesAndOwnedDNS(t *testing.T) {
 	f := installDNSFixture(t, s, "example.com")
 	record := libdns.RR{Name: "app.example.com", Type: "CNAME", Data: "edge.example.com"}
 	f.records["example.com"] = []libdns.Record{record}
-	_ = s.ReplaceLedger("fixture", "example.com", "ingress:node", []libdns.Record{record})
+	_ = s.ReplaceLedger("fixture", "example.com", "gateway:node", []libdns.Record{record})
 	_ = s.SetJSON("exposure_policy", "unreadable policy")
 	_ = c.loadExposurePolicy()
 	var original string
@@ -632,7 +633,7 @@ func TestUnreadablePolicyPreservesRulesAndOwnedDNS(t *testing.T) {
 	if err := c.ReconcilePolicy(context.Background()); err == nil {
 		t.Fatal("unreadable policy accepted")
 	}
-	ledger, _ := s.Ledger("fixture", "example.com", "ingress:node")
+	ledger, _ := s.Ledger("fixture", "example.com", "gateway:node")
 	if len(ledger) != 1 || len(f.records["example.com"]) != 1 {
 		t.Fatal("DNS withdrawn on read failure")
 	}
@@ -682,7 +683,7 @@ func TestZoneSelectionFreshDiscoveryAndRemovedFields(t *testing.T) {
 	if w := requestManagement(c, "POST", "/api/zones", body, "owner"); w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	_ = s.ReplaceLedger("fixture", "example.net", "ingress:node", []libdns.Record{libdns.RR{Name: "app.example.net", Type: "A", Data: "192.0.2.1"}})
+	_ = s.ReplaceLedger("fixture", "example.net", "gateway:node", []libdns.Record{libdns.RR{Name: "app.example.net", Type: "A", Data: "192.0.2.1"}})
 	if err := s.DeleteZone("fixture", "example.net"); err == nil {
 		t.Fatal("removed zone with ledger")
 	}
@@ -716,7 +717,7 @@ func TestUnrestrictedExposureRuleAndPrettyJSON(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	if ok, _ := c.loadExposurePolicy().Allows("app.example.com", "", []string{"any-enrolled-node"}, nil); !ok {
+	if ok, _ := c.loadExposurePolicy().Allows("app.example.com", []string{"any-enrolled-node"}, nil); !ok {
 		t.Fatal("optional selectors rejected")
 	}
 	w = requestManagement(c, "GET", "/api/policies", nil, "owner")
@@ -724,7 +725,7 @@ func TestUnrestrictedExposureRuleAndPrettyJSON(t *testing.T) {
 		t.Fatal("JSON response not formatted", w.Body.String())
 	}
 	w = requestManagement(c, "GET", "/policies", nil, "owner")
-	for _, text := range []string{"All enrolled ingress nodes", "All load balancers", "optional, comma-separated", "Format JSON", "JSON.stringify(d,null,2)"} {
+	for _, text := range []string{"All enrolled gateway nodes", "All enrolled gateway nodes", "optional, comma-separated", "Format JSON", "JSON.stringify(d,null,2)"} {
 		if !strings.Contains(w.Body.String(), text) {
 			t.Fatal("missing policy guidance or formatting", text)
 		}
@@ -752,7 +753,7 @@ func TestMultiplePatternRuleAPI(t *testing.T) {
 	if len(d.Rules) != 1 || len(d.Rules[0].HostnameRegexes) != 1 {
 		t.Fatal("edit duplicated or retained pattern", d)
 	}
-	if ok, _ := d.Allows("app12.example.net", "", nil, nil); ok {
+	if ok, _ := d.Allows("app12.example.net", nil, nil); ok {
 		t.Fatal("removed pattern still authorized")
 	}
 	for _, value := range []any{"scalar", []string{"["}, []string{}} {

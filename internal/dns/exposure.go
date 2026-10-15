@@ -9,7 +9,7 @@ import (
 	"github.com/libdns/libdns"
 )
 
-type IngressExposure struct {
+type GatewayExposure struct {
 	BackendDeviceID string   `json:"backend_device_id,omitempty"`
 	ApplicationID   string   `json:"application_id,omitempty"`
 	ServiceName     string   `json:"service_name,omitempty"`
@@ -22,7 +22,7 @@ type IngressExposure struct {
 	Reachable       bool     `json:"reachable"`
 }
 
-// IngressRecords contains only the public records that control owns for an
+// GatewayRecords contains only the public records that control owns for an
 // application Service. Tailscale Service discovery is private; no public SRV
 // record or backend A record is emitted.
 type LoadBalancerEndpoint struct {

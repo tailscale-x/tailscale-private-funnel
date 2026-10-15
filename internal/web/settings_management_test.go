@@ -129,7 +129,7 @@ func TestRemovedNodeOverrideAndReadFailure(t *testing.T) {
 func TestSettingsReadOnlyAndEnrollmentFields(t *testing.T) {
 	c, s := testControl(t)
 	_ = s.SetJSON("access_roles", AccessSettings{Roles: map[string][]string{"viewer": {"node:viewer"}, "admin": {"node:admin"}}})
-	for _, path := range []string{"/settings", "/loadbalancers", "/enroll/ingress"} {
+	for _, path := range []string{"/settings", "/loadbalancers", "/enroll/docker-gateway"} {
 		r := WithPrincipal(httptest.NewRequest("GET", path, nil), Principal{NodeID: "viewer"})
 		w := httptest.NewRecorder()
 		c.Handler().ServeHTTP(w, r)
@@ -137,12 +137,12 @@ func TestSettingsReadOnlyAndEnrollmentFields(t *testing.T) {
 			t.Fatal(path, w.Code, w.Body.String())
 		}
 	}
-	for _, mode := range []string{"ingress", "loadbalancer"} {
+	for _, mode := range []string{"docker-gateway", "loadbalancer"} {
 		r := WithPrincipal(httptest.NewRequest("GET", "/enroll/"+mode, nil), Principal{NodeID: "admin"})
 		w := httptest.NewRecorder()
 		c.Handler().ServeHTTP(w, r)
 		field := "loadbalancer_hostname"
-		if mode == "ingress" {
+		if mode == "docker-gateway" {
 			field = "label_keys"
 		}
 		if !strings.Contains(w.Body.String(), `name="`+field+`"`) {
@@ -150,40 +150,40 @@ func TestSettingsReadOnlyAndEnrollmentFields(t *testing.T) {
 		}
 	}
 	for _, d := range []nodeDeployment{{DenyNetworks: "["}, {LabelKeys: "bad label"}, {CertEmail: "invalid"}} {
-		if validateNodeDeployment(d, "ingress") == nil {
+		if validateNodeDeployment(d, "docker-gateway") == nil {
 			t.Fatal("invalid deployment allowed", d)
 		}
 	}
 }
 
-func TestIngressIdentityUsesHostnameAndRemovesDeploymentChoices(t *testing.T) {
+func TestGatewayIdentityUsesHostnameAndRemovesDeploymentChoices(t *testing.T) {
 	c, s := testControl(t)
-	e, code, err := s.CreateEnrollment("ingress", "ingress-node")
+	e, code, err := s.CreateEnrollment("docker-gateway", "gateway-node")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.BindEnrollment(e.ID, code, "key", "tailnode", "actual-host-ingress.example.ts.net.", nil); err != nil {
+	if err = s.BindEnrollment(e.ID, code, "key", "tailnode", "actual-host-gateway.example.ts.net.", nil); err != nil {
 		t.Fatal(err)
 	}
 	n, err := s.Node(e.ID)
-	if err != nil || n.Name != "actual-host-ingress" || n.Hostname != n.Name {
+	if err != nil || n.Hostname != "actual-host-gateway" {
 		t.Fatal(n, err)
 	}
-	for _, path := range []string{"/nodes/" + e.ID + "/settings", "/enroll/ingress"} {
+	for _, path := range []string{"/nodes/" + e.ID + "/settings", "/enroll/docker-gateway"} {
 		r := WithPrincipal(httptest.NewRequest("GET", path, nil), Principal{NodeID: "owner", Login: "owner@example.com", TailnetRole: "owner"})
 		w := httptest.NewRecorder()
 		c.Handler().ServeHTTP(w, r)
 		if w.Code != 200 {
 			t.Fatal(w.Code, w.Body.String())
 		}
-		for _, removed := range []string{"Deployment choices", "Display name", `name="name"`} {
+		for _, removed := range []string{"Deployment choices"} {
 			if strings.Contains(w.Body.String(), removed) {
 				t.Fatalf("%s contains %s", path, removed)
 			}
 		}
 	}
 	for _, path := range []string{"/api/nodes/" + e.ID + "/name", "/api/enrollments/" + e.ID + "/name"} {
-		if w := requestManagement(c, "PATCH", path, map[string]any{"name": "Override"}, "owner"); w.Code != 400 {
+		if w := requestManagement(c, "PATCH", path, map[string]any{"name": "Override"}, "owner"); w.Code != 200 {
 			t.Fatal(path, w.Code, w.Body.String())
 		}
 	}

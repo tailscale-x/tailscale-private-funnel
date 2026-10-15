@@ -7,7 +7,7 @@ templ Shell(title string, body string) {
         <meta charset="utf-8"/>
         <meta name="viewport" content="width=device-width, initial-scale=1"/>
         <meta name="color-scheme" content="light"/>
-        <meta name="description" content="Tailnet-only control plane for private HTTPS exposure, signed ingress reports, and ownership-scoped DNS."/>
+        <meta name="description" content="Tailnet-only control plane for private HTTPS exposure, signed gateway reports, and ownership-scoped DNS."/>
         <title>{ title } · Local Funnel</title>
         <link rel="icon" type="image/png" href="/assets/brand/local-funnel-logo.png"/>
         <link rel="stylesheet" href="/assets/app.css"/>
@@ -24,7 +24,7 @@ templ Shell(title string, body string) {
                     <a href="/exposures" data-nav="/exposures"><img src="/assets/icons/world.svg" alt=""/>Exposures</a>
                     <p class="pf-nav-label">Infrastructure</p>
                     <a href="/loadbalancers" data-nav="/loadbalancers"><img src="/assets/icons/server-2.svg" alt=""/>Load balancers</a>
-                    <a href="/ingresses" data-nav="/ingresses"><img src="/assets/icons/route.svg" alt=""/>Ingress nodes</a>
+                    <a href="/gateways" data-nav="/gateways"><img src="/assets/icons/route.svg" alt=""/>Gateways</a>
                     <a href="/applications" data-nav="/applications"><img src="/assets/icons/server-2.svg" alt=""/>Applications</a>
                     <a href="/providers" data-nav="/providers"><img src="/assets/icons/database.svg" alt=""/>DNS providers</a>
                     <a href="/zones" data-nav="/zones"><img src="/assets/icons/link.svg" alt=""/>Zones</a>
@@ -48,7 +48,7 @@ templ Shell(title string, body string) {
             </div>
         </div>
         <script>
-        (function(){const path=window.location.pathname,parent=document.querySelector('[data-node-navigation]')?.dataset.nodeNavigation;document.querySelectorAll('[data-nav]').forEach(function(a){if(a.dataset.nav==='/'?path==='/':a.dataset.nav===parent||path===a.dataset.nav||path.startsWith(a.dataset.nav+'/')||(a.dataset.nav==='/exposures'&&path==='/tailnet-exposures')||(a.dataset.nav==='/loadbalancers'&&path==='/enroll/loadbalancer')||(a.dataset.nav==='/ingresses'&&path==='/enroll/ingress')){a.classList.add('is-active');a.setAttribute('aria-current','page')}})})();
+        (function(){const path=window.location.pathname,parent=document.querySelector('[data-node-navigation]')?.dataset.nodeNavigation;document.querySelectorAll('[data-nav]').forEach(function(a){if(a.dataset.nav==='/'?path==='/':a.dataset.nav===parent||path===a.dataset.nav||path.startsWith(a.dataset.nav+'/')||(a.dataset.nav==='/exposures'&&path==='/tailnet-exposures')||(a.dataset.nav==='/loadbalancers'&&path==='/enroll/loadbalancer')||(a.dataset.nav==='/gateways'&&path.startsWith('/enroll/')&&path!=='/enroll/loadbalancer')){a.classList.add('is-active');a.setAttribute('aria-current','page')}})})();
         const nav=document.getElementById('pf-sidebar'),navButton=document.querySelector('.pf-menu'),small=window.matchMedia('(max-width:1023px)');
         function syncNavigation(){nav.inert=small.matches&&!nav.classList.contains('pf-sidebar-open')};syncNavigation();small.addEventListener('change',syncNavigation);
         document.addEventListener('click',function(e){if(small.matches&&nav.classList.contains('pf-sidebar-open')&&!nav.contains(e.target)&&!navButton.contains(e.target)){nav.classList.remove('pf-sidebar-open');navButton.setAttribute('aria-expanded','false');navButton.setAttribute('aria-label','Open navigation');syncNavigation()}});

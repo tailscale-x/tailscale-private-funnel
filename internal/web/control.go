@@ -9,6 +9,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/netip"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/libdns/libdns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
@@ -19,22 +30,15 @@ import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/web/ui"
-	"io/fs"
-	"log/slog"
-	"net/http"
-	"net/netip"
-	"regexp"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
 type Control struct {
+	PublicLookup    func(context.Context, string) ([]net.IPAddr, error)
 	BuildVersion    string
 	Store           *store.Store
 	TailscaleClient *tailscale.Client
 	ReleaseCheck    func(context.Context, string) error
+	endpointMu      sync.Mutex
 	settingsMu      sync.Mutex
 	policyMu        sync.Mutex
 	cleanupMu       sync.Mutex
@@ -81,7 +85,7 @@ func identityFromRequest(r *http.Request) string {
 }
 
 // RoleSelectors exposes the stable Tailscale identity values that can be used
-// by both UI authorization and ingress exposure policy. Groups are supplied by
+// by both UI authorization and gateway exposure policy. Groups are supplied by
 // WhoIs, while tags are supplied by the node identity.
 func (p Principal) RoleSelectors() []string {
 	seen := map[string]bool{}
@@ -180,6 +184,8 @@ func (c *Control) Handler() http.Handler {
 	r.Get("/", c.dashboard)
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	r.Get("/settings", c.settings)
+	r.Get("/kubernetes/control", c.kubernetesControlPage)
+	r.Get("/api/kubernetes/control-install", c.kubernetesControlInstructions)
 	r.Post("/settings", c.saveSettings)
 	r.Get("/nodes/{id}/settings", c.nodeSettings)
 	r.Post("/api/settings/bootstrap", c.saveBootstrap)
@@ -221,6 +227,11 @@ func (c *Control) Handler() http.Handler {
 	r.Post("/api/node/config", c.provisionApplication)
 	r.Post("/api/node/config/ack", c.nodeConfigAck)
 	r.Post("/api/node/health", c.nodeHealth)
+	r.Post("/api/node/public-endpoint", c.publicEndpoint)
+	r.Post("/api/node/kubernetes", c.kubernetesDesired)
+	r.Post("/api/node/forwarders", c.enrollForwarder)
+	r.Get("/api/node/forwarders", c.forwarderInventory)
+	r.Post("/api/node/bind", c.bindForwarder)
 	r.Post("/api/node/peers", c.nodePeers)
 	r.Get("/api/nodes/{id}/peers", c.peersGet)
 	r.Post("/api/nodes/{id}/probes", c.probeCreate)
@@ -232,7 +243,6 @@ func (c *Control) Handler() http.Handler {
 	r.Post("/api/node/shutdown", c.nodeShutdown)
 	r.Get("/api/applications", c.applicationList)
 	r.Post("/api/applications/{id}/aliases", c.applicationAlias)
-	r.Put("/api/exposures/{id}/loadbalancers", c.exposureLoadBalancers)
 	r.Patch("/api/nodes/{id}/name", c.renameNode)
 	r.Patch("/api/enrollments/{id}/name", c.renameEnrollment)
 	r.Post("/api/applications", c.applicationSave)
@@ -245,12 +255,16 @@ func (c *Control) Handler() http.Handler {
 	r.Post("/api/enrollments/{id}/revoke", c.enrollmentRevoke)
 	r.Post("/api/enrollments/{id}/signing-key", c.enrollmentSigningKey)
 	r.Get("/loadbalancers", c.nodes)
-	r.Get("/ingresses", c.nodes)
+	r.Get("/gateways", c.gateways)
+	r.Get("/gateways/new", c.addGateway)
 	r.Get("/exposures", c.exposures)
 	r.Get("/api/exposures", c.exposureMappingList)
-	r.Get("/api/nodes/{mode}", c.nodeList)
+	r.Get("/api/nodes", c.nodeList)
+	r.Get("/api/nodes/{id}", c.nodeGet)
 	r.Post("/api/nodes/{id}/revoke", c.nodeRevoke)
-	r.Post("/api/nodes/{id}/replace", c.replaceIngress)
+	r.Post("/api/nodes/{id}/public-service", c.bindPublicService)
+	r.Post("/api/nodes/{id}/cleanup", c.nodeCleanup)
+	r.Post("/api/nodes/{id}/replace", c.replaceGateway)
 	r.Get("/enroll/{mode}", c.enroll)
 	return r
 }
@@ -268,7 +282,7 @@ func (c *Control) BootstrapHandler() http.Handler {
 func (c *Control) dashboard(w http.ResponseWriter, r *http.Request) {
 	providers, _ := c.Store.Providers()
 	loadbalancers, _ := c.Store.Nodes("loadbalancer")
-	ingresses, _ := c.Store.Nodes("ingress")
+	gatewayes, _ := c.Store.Nodes("gateways")
 	reports, _ := c.Store.Reports()
 	audit, _ := c.Store.AuditEvents(6)
 	zones, _ := c.Store.Zones()
@@ -282,10 +296,10 @@ func (c *Control) dashboard(w http.ResponseWriter, r *http.Request) {
 		nextTitle, nextCopy, nextHref = "Create a loadbalancer", "The loadbalancer is the public edge for your tailnet services.", "/enroll/loadbalancer"
 	}
 	if len(loadbalancers) > 0 {
-		nextTitle, nextCopy, nextHref = "Add an exposure policy", "Policies keep ingress hostnames scoped to the right node and domain.", "/policies"
+		nextTitle, nextCopy, nextHref = "Add an exposure policy", "Policies keep gateway hostnames scoped to the right node and domain.", "/policies"
 	}
-	if len(ingresses) > 0 {
-		nextTitle, nextCopy, nextHref = "Review ingress exposures", "Inspect the latest signed reports and publish only approved routes.", "/exposures"
+	if len(gatewayes) > 0 {
+		nextTitle, nextCopy, nextHref = "Review gateway exposures", "Inspect the latest signed reports and publish only approved routes.", "/exposures"
 	}
 	loadbalancerLabel, loadbalancerTone := "No nodes", "neutral"
 	if len(loadbalancers) > 0 {
@@ -297,12 +311,12 @@ func (c *Control) dashboard(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	ingressLabel, ingressTone := "No nodes", "neutral"
-	if len(ingresses) > 0 {
-		ingressLabel, ingressTone = "Awaiting reports", "warn"
-		for _, node := range ingresses {
+	gatewayLabel, gatewayTone := "No nodes", "neutral"
+	if len(gatewayes) > 0 {
+		gatewayLabel, gatewayTone = "Awaiting reports", "warn"
+		for _, node := range gatewayes {
 			if value, ok := node["last_report"].(int64); ok && value > 0 {
-				ingressLabel, ingressTone = "Reporting", "ok"
+				gatewayLabel, gatewayTone = "Reporting", "ok"
 				break
 			}
 		}
@@ -322,7 +336,7 @@ func (c *Control) dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	latestReport := int64(0)
-	for _, node := range append(loadbalancers, ingresses...) {
+	for _, node := range append(loadbalancers, gatewayes...) {
 		if value, ok := node["last_report"].(int64); ok && value > latestReport {
 			latestReport = value
 		}
@@ -332,13 +346,13 @@ func (c *Control) dashboard(w http.ResponseWriter, r *http.Request) {
 		controlLabel, controlTone = "Operational", "ok"
 	}
 	var b strings.Builder
-	b.WriteString(pageIntro("Control plane", "Dashboard", "A calm view of your private edge. Follow the topology from control to loadbalancer, ingress, and the services you have approved."))
+	b.WriteString(pageIntro("Control plane", "Dashboard", "A calm view of your private edge. Follow the topology from control to loadbalancer, gateway, and the services you have approved."))
 	b.WriteString(`<div class="pf-stat-grid">`)
 	fmt.Fprintf(&b, `<a class="pf-stat" href="/loadbalancers"><span class="pf-stat-top"><span class="pf-stat-label">Load balancers</span>%s</span><strong class="pf-stat-value">%d</strong><span class="pf-stat-note">public edge nodes</span></a>`, pill(loadbalancerLabel, loadbalancerTone), len(loadbalancers))
-	fmt.Fprintf(&b, `<a class="pf-stat" href="/ingresses"><span class="pf-stat-top"><span class="pf-stat-label">Ingress nodes</span>%s</span><strong class="pf-stat-value">%d</strong><span class="pf-stat-note">reporting nodes</span></a>`, pill(ingressLabel, ingressTone), len(ingresses))
+	fmt.Fprintf(&b, `<a class="pf-stat" href="/gateways"><span class="pf-stat-top"><span class="pf-stat-label">Gateways</span>%s</span><strong class="pf-stat-value">%d</strong><span class="pf-stat-note">reporting nodes</span></a>`, pill(gatewayLabel, gatewayTone), len(gatewayes))
 	fmt.Fprintf(&b, `<a class="pf-stat" href="/exposures"><span class="pf-stat-top"><span class="pf-stat-label">Exposures</span>%s</span><strong class="pf-stat-value">%d</strong><span class="pf-stat-note">policy-scoped routes</span></a>`, pill("Owned", "ok"), exposureCount)
 	fmt.Fprintf(&b, `<a class="pf-stat" href="/providers"><span class="pf-stat-top"><span class="pf-stat-label">DNS providers</span>%s</span><strong class="pf-stat-value">%d</strong><span class="pf-stat-note">%d managed zones</span></a>`, pill(providerLabel, providerTone), len(providers), len(zones))
-	b.WriteString(`</div><div class="pf-dashboard-grid"><section class="pf-surface pf-topology"><div class="pf-section-heading"><div><p class="pf-kicker">Live topology</p><h2>How traffic moves</h2></div><a class="pf-text-link" href="/exposures">View exposures <span aria-hidden="true">→</span></a></div><div class="pf-topology-flow"><div class="pf-topology-node"><img src="/assets/icons/shield-check.svg" alt="" class="pf-icon"><strong>Control plane</strong><small>policy + DNS ownership</small><span class="pf-node-state">` + safeText(tailnet.Name) + `</span></div><span class="pf-topology-connector" aria-hidden="true">→</span><div class="pf-topology-node"><img src="/assets/icons/server-2.svg" alt="" class="pf-icon"><strong>Load balancers</strong><small>public TLS edge</small><span class="pf-node-state">` + fmt.Sprintf("%d nodes", len(loadbalancers)) + `</span></div><span class="pf-topology-connector" aria-hidden="true">→</span><div class="pf-topology-node"><img src="/assets/icons/route.svg" alt="" class="pf-icon"><strong>Ingress / direct peers</strong><small>Docker Services or backend machines</small><span class="pf-node-state">` + fmt.Sprintf("%d reporting", len(ingresses)) + `</span></div><span class="pf-topology-connector" aria-hidden="true">→</span><div class="pf-topology-node"><img src="/assets/icons/world.svg" alt="" class="pf-icon"><strong>Exposures</strong><small>approved hostnames</small><span class="pf-node-state">` + fmt.Sprintf("%d active", exposureCount) + `</span></div></div></section><aside class="pf-surface pf-next-step"><p class="pf-kicker">Next step</p><h2>` + safeText(nextTitle) + `</h2><p>` + safeText(nextCopy) + `</p><a class="pf-button" href="` + safeText(nextHref) + `">Open next step <span aria-hidden="true">→</span></a><div class="pf-next-meta"><span class="pf-status-dot pf-status-ok"></span><span>Changes stay within your ownership ledger.</span></div></aside></div>`)
+	b.WriteString(`</div><div class="pf-dashboard-grid"><section class="pf-surface pf-topology"><div class="pf-section-heading"><div><p class="pf-kicker">Live topology</p><h2>How traffic moves</h2></div><a class="pf-text-link" href="/exposures">View exposures <span aria-hidden="true">→</span></a></div><div class="pf-topology-flow"><div class="pf-topology-node"><img src="/assets/icons/shield-check.svg" alt="" class="pf-icon"><strong>Control plane</strong><small>policy + DNS ownership</small><span class="pf-node-state">` + safeText(tailnet.Name) + `</span></div><span class="pf-topology-connector" aria-hidden="true">→</span><div class="pf-topology-node"><img src="/assets/icons/server-2.svg" alt="" class="pf-icon"><strong>Load balancers</strong><small>public TLS edge</small><span class="pf-node-state">` + fmt.Sprintf("%d nodes", len(loadbalancers)) + `</span></div><span class="pf-topology-connector" aria-hidden="true">→</span><div class="pf-topology-node"><img src="/assets/icons/route.svg" alt="" class="pf-icon"><strong>Gateway / direct peers</strong><small>Docker Services or backend machines</small><span class="pf-node-state">` + fmt.Sprintf("%d reporting", len(gatewayes)) + `</span></div><span class="pf-topology-connector" aria-hidden="true">→</span><div class="pf-topology-node"><img src="/assets/icons/world.svg" alt="" class="pf-icon"><strong>Exposures</strong><small>approved hostnames</small><span class="pf-node-state">` + fmt.Sprintf("%d active", exposureCount) + `</span></div></div></section><aside class="pf-surface pf-next-step"><p class="pf-kicker">Next step</p><h2>` + safeText(nextTitle) + `</h2><p>` + safeText(nextCopy) + `</p><a class="pf-button" href="` + safeText(nextHref) + `">Open next step <span aria-hidden="true">→</span></a><div class="pf-next-meta"><span class="pf-status-dot pf-status-ok"></span><span>Changes stay within your ownership ledger.</span></div></aside></div>`)
 	b.WriteString(`<div class="pf-dashboard-lower"><section class="pf-surface"><div class="pf-section-heading"><div><p class="pf-kicker">Recent activity</p><h2>Audit events</h2></div><a class="pf-text-link" href="/operations#audit">View all</a></div>`)
 	if len(audit) == 0 {
 		b.WriteString(`<div class="pf-empty"><strong>No events yet</strong><span>Mutations and policy decisions will appear here.</span></div>`)
@@ -423,6 +437,9 @@ func (c *Control) sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	owner := node.Mode + ":" + node.ID
+	if store.IsGateway(node.Mode) {
+		owner = "gateway:" + node.ID
+	}
 	if !in.DryRun && !requestAccess(r).Admin {
 		http.Error(w, "administrator access required to apply DNS changes", 403)
 		return
@@ -456,7 +473,7 @@ func (c *Control) syncNode(id string, cleanup bool) (store.NodeRecord, error) {
 	if err != nil {
 		return node, fmt.Errorf("unknown node")
 	}
-	if node.Mode != "ingress" && node.Mode != "loadbalancer" {
+	if !store.IsGateway(node.Mode) && node.Mode != "loadbalancer" {
 		return node, fmt.Errorf("node mode cannot manage exposures")
 	}
 	if node.Revoked && !cleanup {
@@ -619,7 +636,7 @@ type exposureInput struct {
 	DryRun        bool   `json:"dry_run"`
 	AllowUnowned  bool   `json:"allow_unowned"`
 	ApprovalToken string `json:"approval_token"`
-	dns.IngressExposure
+	dns.GatewayExposure
 	LoadBalancer dns.LoadBalancerEndpoint `json:"loadbalancer"`
 }
 
@@ -647,6 +664,9 @@ func (c *Control) exposureSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	owner := node.Mode + ":" + node.ID
+	if store.IsGateway(node.Mode) {
+		owner = "gateway:" + node.ID
+	}
 	if !in.DryRun && !requestAccess(r).Admin {
 		http.Error(w, "administrator access required to apply DNS changes", 403)
 		return
@@ -665,7 +685,7 @@ func (c *Control) exposureSync(w http.ResponseWriter, r *http.Request) {
 			records = []libdns.Record{record}
 		}
 	} else {
-		err = fmt.Errorf("kind must be loadbalancer or ingress")
+		err = fmt.Errorf("kind must be loadbalancer or gateway")
 	}
 	if err != nil {
 		http.Error(w, err.Error(), 400)
@@ -730,17 +750,23 @@ func (c *Control) callerNode(r *http.Request, mode string) (store.NodeRecord, er
 			return node, err
 		}
 	}
+	if node.ParentID != "" {
+		parent, e := c.Store.Node(node.ParentID)
+		if e != nil || parent.Revoked {
+			return node, fmt.Errorf("controller revoked")
+		}
+	}
 	return node, nil
 }
 func applicationAllows(app store.ApplicationRecord, node store.NodeRecord) bool {
-	return app.Enabled && !node.Revoked && node.Mode == "ingress" && (len(app.AllowedIngressNodes) == 0 || contains(app.AllowedIngressNodes, node.ID))
+	return app.Enabled && !node.Revoked && store.IsGateway(node.Mode) && (app.BackendSource != "tailnet" || len(app.AllowedGatewayNodes) == 1) && (app.BackendSource == store.BackendSource(node.Mode) || (app.BackendSource == "" && node.Mode == "docker-gateway")) && (len(app.AllowedGatewayNodes) == 0 || contains(app.AllowedGatewayNodes, node.ID) || node.ParentID != "" && contains(app.AllowedGatewayNodes, node.ParentID))
 }
 func (c *Control) nodeConfig(w http.ResponseWriter, r *http.Request) {
 	if n, err := c.callerNode(r, "loadbalancer"); err == nil && n.Mode == "loadbalancer" {
 		c.loadBalancerConfig(w, r)
 		return
 	}
-	node, err := c.callerNode(r, "ingress")
+	node, err := c.callerGateway(r)
 	id := node.ID
 	if err != nil {
 		http.Error(w, err.Error(), 403)
@@ -760,7 +786,7 @@ func (c *Control) nodeConfig(w http.ResponseWriter, r *http.Request) {
 	settings := struct{ LabelKeys string }{deployment.LabelKeys}
 	filtered := make([]store.ApplicationRecord, 0)
 	for _, app := range apps {
-		if app.BackendSource == "tailnet" {
+		if store.BackendSource(node.Mode) != app.BackendSource && !(node.Mode == "docker-gateway" && app.BackendSource == "") {
 			continue
 		}
 		if !applicationAllows(app, node) {
@@ -768,7 +794,7 @@ func (c *Control) nodeConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		hosts := make([]string, 0)
 		for _, host := range app.PublicHostnames {
-			if c.anyEdgeAllows(c.loadExposurePolicy(), host, []string{id, node.TailnetID}, principal(r).RoleSelectors()) {
+			if c.anyEdgeAllows(c.loadExposurePolicy(), host, []string{id, node.TailnetID, node.ParentID}, principal(r).RoleSelectors()) {
 				if _, err := c.managedZone(host); err != nil {
 					continue
 				}
@@ -782,6 +808,14 @@ func (c *Control) nodeConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	config := nodeconfig.Configuration{NodeID: id, Applications: filtered, LabelAliases: splitValues(settings.LabelKeys)}
+	_ = c.Store.GetJSON("node_probes:"+node.ID, &config.Probes)
+	config.PublishedHostnames = c.publishedGatewayHosts()
+	for _, edge := range c.loadBalancers() {
+		if c.edgeFresh(edge) {
+			ips, _ := c.edgeIPs(edge)
+			config.PublishedAddresses = append(config.PublishedAddresses, ips...)
+		}
+	}
 	config.Revision = nodeconfig.Revision(config)
 	config.IssuedAt = time.Now().Unix()
 	pub, key, err := c.Store.ConfigurationKey()
@@ -834,6 +868,7 @@ func (c *Control) nodeHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(health, "public_ipv4")
 	health["received_at"] = time.Now().Unix()
+	health["effective_tags"] = principal(r).Tags
 	if err := c.Store.TouchNodeReport(id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -869,29 +904,10 @@ func (c *Control) nodeShutdown(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = c.Store.RevokeBackends(node.ID)
 	_ = c.Store.DeleteReport(node.ID)
-	if client, clientErr := c.tailscaleRuntimeClient(); clientErr == nil {
-		if services, listErr := client.ListServices(r.Context()); listErr == nil {
-			for _, service := range services {
-				hosts, hostsErr := client.ListServiceHosts(r.Context(), service.Name)
-				if hostsErr != nil {
-					continue
-				}
-				for _, host := range hosts {
-					if host.NodeID == node.TailnetID {
-						_, _ = client.ApproveServiceDevice(r.Context(), service.Name, host.NodeID, false)
-					}
-				}
-			}
-		}
-		if devices, listErr := client.ListDevices(r.Context()); listErr == nil {
-			for _, device := range devices {
-				if device.NodeID == node.TailnetID {
-					if deleteErr := client.DeleteDevice(r.Context(), device.ID); deleteErr != nil {
-						_ = c.Store.Audit("node.cleanup.error:"+node.ID, deleteErr.Error())
-					}
-				}
-			}
-		}
+	node.Revoked = true
+	if err := c.cleanupRevokedNode(r.Context(), node); err != nil {
+		writeJSON(w, map[string]any{"revoked": true, "pending": true, "error": err.Error()})
+		return
 	}
 	_ = c.Store.Audit("node.shutdown:"+node.ID, "node:"+principal(r).NodeID)
 	w.WriteHeader(http.StatusNoContent)
@@ -955,6 +971,17 @@ func (c *Control) reconcileLoadBalancerNode(ctx context.Context, node store.Node
 	stale := node.Revoked || healthErr != nil || health.ReceivedAt <= 0 || time.Since(time.Unix(health.ReceivedAt, 0)) > freshness
 	if stale {
 		return c.reconcilePartitions(ctx, ownerID, nil)
+	}
+	if deployment.AddressSource == "kubernetes" {
+		ips, err := c.kubernetesAddresses(ctx, node, deployment)
+		if err != nil {
+			return err
+		}
+		records := []libdns.Record{}
+		for _, ip := range ips {
+			records = append(records, libdns.RR{Name: settings.Hostname, Type: "A", Data: ip, TTL: time.Minute})
+		}
+		return c.reconcilePartitions(ctx, ownerID, map[store.LedgerPartition][]libdns.Record{{ZoneID: provider.ID, ProviderID: provider.ProviderID, Zone: provider.Zone, OwnerID: ownerID}: records})
 	}
 	client, err := c.tailscaleRuntimeClient()
 	if err != nil {
@@ -1038,7 +1065,7 @@ func (c *Control) applications(w http.ResponseWriter, r *http.Request) {
 	if len(apps) == 0 {
 		b.WriteString(`<div class="pf-empty"><strong>No applications yet</strong><span>Add a Docker exposure label covered by an enabled exposure policy.</span></div>`)
 	} else {
-		b.WriteString(`<div class="pf-table-wrap"><table class="pf-table"><thead><tr><th>Application</th><th>Service</th><th>Public hostnames</th><th>Ports</th><th>Ingress allowlist</th><th>State</th></tr></thead><tbody>`)
+		b.WriteString(`<div class="pf-table-wrap"><table class="pf-table"><thead><tr><th>Application</th><th>Service</th><th>Public hostnames</th><th>Ports</th><th>Gateway allowlist</th><th>State</th></tr></thead><tbody>`)
 		for _, app := range apps {
 
 			state, tone := "Disabled", "neutral"
@@ -1046,20 +1073,20 @@ func (c *Control) applications(w http.ResponseWriter, r *http.Request) {
 				state, tone = "Enabled", "ok"
 			}
 			allowlist := ""
-			for _, id := range app.AllowedIngressNodes {
+			for _, id := range app.AllowedGatewayNodes {
 				if allowlist != "" {
 					allowlist += ", "
 				}
 				allowlist += c.nodeDisplayName(id)
 			}
 			if allowlist == "" {
-				allowlist = "Any enrolled ingress"
+				allowlist = "Any enrolled gateway"
 			}
 			advertisements := strings.Join(hostState[app.ServiceName], ", ")
 			if advertisements == "" {
 				advertisements = "no advertisements"
 			}
-			fmt.Fprintf(&b, `<tr><td data-label="Application"><strong>%s</strong><small class="pf-muted">policy rev %d</small></td><td data-label="Service"><code>%s</code><small class="pf-muted">target · %s</small><small class="pf-muted">hosts · %s</small></td><td data-label="Public hostnames"><code>%s</code></td><td data-label="Ports"><code>%d → %d</code></td><td data-label="Ingress allowlist"><span class="pf-muted">%s</span></td><td data-label="State">%s</td></tr>`, safeText(app.Name), app.PolicyRevision, safeText(app.ServiceName), safeText(app.ServiceFQDN), safeText(advertisements), safeText(strings.Join(app.PublicHostnames, ", ")), app.BackendPort, app.ServicePort, safeText(allowlist), pill(state, tone))
+			fmt.Fprintf(&b, `<tr><td data-label="Application"><strong>%s</strong><small class="pf-muted">policy rev %d</small></td><td data-label="Service"><code>%s</code><small class="pf-muted">target · %s</small><small class="pf-muted">hosts · %s</small></td><td data-label="Public hostnames"><code>%s</code></td><td data-label="Ports"><code>%d → %d</code></td><td data-label="Gateway allowlist"><span class="pf-muted">%s</span></td><td data-label="State">%s</td></tr>`, safeText(app.Name), app.PolicyRevision, safeText(app.ServiceName), safeText(app.ServiceFQDN), safeText(advertisements), safeText(strings.Join(app.PublicHostnames, ", ")), app.BackendPort, app.ServicePort, safeText(allowlist), pill(state, tone))
 		}
 		b.WriteString(`</tbody></table></div>`)
 	}
@@ -1137,23 +1164,18 @@ func (c *Control) loadBalancerConfig(w http.ResponseWriter, r *http.Request) {
 			}
 			eligible := false
 			healthy := false
-			if app.BackendSource == "tailnet" {
-				eligible, _ = c.loadExposurePolicy().Allows(host, node.ID, nil, principal(r).RoleSelectors())
-				healthy = c.edgeReported(node, app, host)
-			} else {
-				for id, exposures := range authorized {
-					ing, err := c.Store.Node(id)
-					if err != nil || ing.Mode != "ingress" {
-						continue
-					}
-					var roles []string
-					_ = c.Store.GetJSON("node_policy_roles:"+id, &roles)
-					for _, e := range exposures {
-						if e.ApplicationID == app.ID && e.PublicHostname == host {
-							if ok, _ := c.loadExposurePolicy().Allows(host, node.ID, []string{id, ing.TailnetID}, roles); ok {
-								eligible = true
-								healthy = c.edgeReported(node, app, host)
-							}
+			for id, exposures := range authorized {
+				ing, err := c.Store.Node(id)
+				if err != nil || !store.IsGateway(ing.Mode) {
+					continue
+				}
+				var roles []string
+				_ = c.Store.GetJSON("node_policy_roles:"+id, &roles)
+				for _, e := range exposures {
+					if e.ApplicationID == app.ID && e.PublicHostname == host {
+						if ok, _ := c.loadExposurePolicy().Allows(host, []string{id, ing.TailnetID}, roles); ok {
+							eligible = true
+							healthy = c.edgeReported(node, app, host)
 						}
 					}
 				}
@@ -1163,11 +1185,7 @@ func (c *Control) loadBalancerConfig(w http.ResponseWriter, r *http.Request) {
 			}
 			hosts = append(hosts, host)
 			if healthy && c.edgeFresh(node) {
-				if app.BackendSource == "tailnet" {
-					routes = append(routes, proxy.Route{Hostname: host, BackendDeviceID: app.BackendDeviceID, Port: app.BackendPort})
-				} else {
-					routes = append(routes, proxy.Route{Hostname: host, Service: app.ServiceFQDN, Port: app.ServicePort})
-				}
+				routes = append(routes, proxy.Route{Hostname: host, Service: app.ServiceFQDN, Port: app.ServicePort, Rules: app.HTTPRules})
 			}
 		}
 		if len(hosts) > 0 {
@@ -1180,6 +1198,7 @@ func (c *Control) loadBalancerConfig(w http.ResponseWriter, r *http.Request) {
 	_ = c.Store.GetJSON("node_probes:"+node.ID, &config.Probes)
 	config.Revision = nodeconfig.Revision(config)
 	config.IssuedAt = time.Now().Unix()
+	_ = c.Store.SetJSON("node_sent_config:"+node.ID, map[string]any{"revision": config.Revision, "routes": routes})
 	pub, key, err := c.Store.ConfigurationKey()
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -1205,7 +1224,7 @@ func (c *Control) applicationSave(w http.ResponseWriter, r *http.Request) {
 		app.ServiceName = r.FormValue("service_name")
 		app.ServiceFQDN = r.FormValue("service_fqdn")
 		app.PublicHostnames = splitValues(r.FormValue("public_hostnames"))
-		app.AllowedIngressNodes = splitValues(r.FormValue("allowed_ingress_nodes"))
+		app.AllowedGatewayNodes = splitValues(r.FormValue("allowed_gateway_nodes"))
 		app.BackendPort = uint16(parsePositiveInt(r.FormValue("backend_port")))
 		app.ServicePort = uint16(parsePositiveInt(r.FormValue("service_port")))
 	} else if json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10)).Decode(&app) != nil {
@@ -1420,7 +1439,7 @@ func (c *Control) serviceApprove(w http.ResponseWriter, r *http.Request) {
 		allowed = c.serviceHostAllowed(r.Context(), client, application, deviceID)
 	}
 	if !applicationFound || (input.Approved && !allowed) {
-		http.Error(w, "Service host is not an approved ingress assignment", http.StatusForbidden)
+		http.Error(w, "Service host is not an approved gateway assignment", http.StatusForbidden)
 		return
 	}
 	approved, err := (c.tsClient(clientID, clientSecret, settings.Name)).ApproveServiceDevice(r.Context(), serviceName, deviceID, input.Approved)
@@ -1436,50 +1455,56 @@ func (c *Control) serviceApprove(w http.ResponseWriter, r *http.Request) {
 
 // ReconcileServiceApprovals is intentionally conservative. It only approves a
 // pending host when the Service is an application created in this control
-// store, the device is an enrolled non-revoked ingress node, and the
+// store, the device is an enrolled non-revoked gateway node, and the
 // application explicitly allows that node. Unknown advertisements are left
 // pending for an administrator to inspect.
 func (c *Control) ReconcileServiceApprovals(ctx context.Context) error {
-	settings := struct {
-		Name string `json:"name"`
-	}{}
-	if c.Store.GetJSON("tailnet", &settings) != nil || settings.Name == "" {
-		return nil
-	}
-	clientID, err := c.Store.GetSecret("tailscale_oauth_client_id")
+	c.retryNodeCleanup(ctx)
+	client, err := c.tailscaleRuntimeClient()
 	if err != nil {
 		return nil
 	}
-	clientSecret, err := c.Store.GetSecret("tailscale_oauth_client_secret")
-	if err != nil {
-		return nil
-	}
-	client := c.tsClient(clientID, clientSecret, settings.Name)
 	apps, err := c.Store.Applications()
 	if err != nil {
 		return err
 	}
+	groups := map[string][]store.ApplicationRecord{}
 	for _, app := range apps {
-		if app.BackendSource == "tailnet" {
+		if len(app.HTTPBackends) == 0 {
+			groups[app.ServiceName] = append(groups[app.ServiceName], app)
+		} else {
+			for _, b := range app.HTTPBackends {
+				copy := app
+				copy.ServiceName = b.ServiceName
+				groups[b.ServiceName] = append(groups[b.ServiceName], copy)
+			}
+		}
+	}
+	failures := []string{}
+	for service, owners := range groups {
+		if !strings.HasPrefix(service, "svc:") {
 			continue
 		}
-		hosts, listErr := client.ListServiceHosts(ctx, app.ServiceName)
-		if listErr != nil {
-			return listErr
+		hosts, e := client.ListServiceHosts(ctx, service)
+		if e != nil {
+			if strings.Contains(e.Error(), "404") {
+				continue
+			}
+			failures = append(failures, e.Error())
+			continue
 		}
 		for _, host := range hosts {
-			allowed := app.Enabled && c.serviceHostAllowed(ctx, client, app, host.NodeID)
+			allowed := false
+			for _, app := range owners {
+				allowed = allowed || (app.Enabled && c.serviceHostAllowed(ctx, client, app, host.NodeID))
+			}
 			approved := host.ApprovalLevel == "approved:auto" || host.ApprovalLevel == "approved:manual"
-			if allowed && !approved {
-				if _, err := client.ApproveServiceDevice(ctx, app.ServiceName, host.NodeID, true); err != nil {
-					return err
+			if allowed != approved {
+				if _, e := client.ApproveServiceDevice(ctx, service, host.NodeID, allowed); e != nil {
+					failures = append(failures, e.Error())
+					continue
 				}
-				approved = true
-			} else if !allowed && approved {
-				if _, err := client.ApproveServiceDevice(ctx, app.ServiceName, host.NodeID, false); err != nil {
-					return err
-				}
-				approved = false
+				approved = allowed
 			}
 			state := "pending"
 			if approved {
@@ -1488,23 +1513,68 @@ func (c *Control) ReconcileServiceApprovals(ctx context.Context) error {
 			if !allowed {
 				state = "rejected"
 			}
-			if err := c.Store.UpsertServiceHost(store.ServiceHostRecord{ServiceName: app.ServiceName, DeviceID: host.NodeID, Approved: approved && allowed, ApprovalState: state}); err != nil {
-				return err
+			if e = c.Store.UpsertServiceHost(store.ServiceHostRecord{ServiceName: service, DeviceID: host.NodeID, Approved: approved && allowed, ApprovalState: state}); e != nil {
+				return e
 			}
 		}
+		unused := strings.HasPrefix(service, "svc:tpf-k8s-")
+		for _, app := range owners {
+			unused = unused && !app.Enabled && app.BackendSource == "kubernetes"
+		}
+		if unused && c.provisionMu.TryLock() {
+			current, readErr := c.Store.Applications()
+			if readErr != nil {
+				c.provisionMu.Unlock()
+				return readErr
+			}
+			for _, app := range current {
+				if !app.Enabled {
+					continue
+				}
+				for _, b := range app.HTTPBackends {
+					if b.ServiceName == service {
+						unused = false
+					}
+				}
+			}
+			if !unused {
+				c.provisionMu.Unlock()
+				continue
+			}
+			if e = client.DeleteService(ctx, service); e != nil && !strings.Contains(e.Error(), "404") {
+				failures = append(failures, e.Error())
+			}
+			c.provisionMu.Unlock()
+		}
+	}
+	if len(failures) > 0 {
+		_ = c.Store.Audit("service.reconcile.pending", strings.Join(failures, "; "))
+		return fmt.Errorf("%s", strings.Join(failures, "; "))
 	}
 	return nil
 }
 
-// Service advertisements belong to the enrolled ingress device itself.
+// Service advertisements belong to the enrolled gateway device itself.
 func (c *Control) serviceHostAllowed(ctx context.Context, client tailscale.Client, app store.ApplicationRecord, deviceID string) bool {
 	node, err := c.Store.NodeByTailnetID(deviceID)
 	if err != nil || !applicationAllows(app, node) {
 		return false
 	}
+	if node.Mode == "k8s-gateway" {
+		children, e := c.Store.Forwarders(node.ID)
+		if e != nil || len(children) > 0 {
+			return false
+		}
+	}
+	if node.ParentID != "" {
+		parent, e := c.Store.Node(node.ParentID)
+		if e != nil || parent.Revoked {
+			return false
+		}
+	}
 	active := false
-	for _, exposure := range c.authorizedReports(c.loadExposurePolicy())[node.ID] {
-		if exposure.ServiceName == app.ServiceName {
+	for _, exposure := range c.freshReport(node) {
+		if exposure.ApplicationID == app.ID {
 			active = true
 			break
 		}
@@ -1523,7 +1593,7 @@ func (c *Control) serviceHostAllowed(ctx context.Context, client tailscale.Clien
 	if err == nil {
 		allowed := false
 		for _, host := range app.PublicHostnames {
-			allowed = allowed || c.anyEdgeAllows(c.loadExposurePolicy(), host, []string{node.ID, node.TailnetID}, device.Tags)
+			allowed = allowed || c.anyEdgeAllows(c.loadExposurePolicy(), host, []string{node.ID, node.TailnetID, node.ParentID}, device.Tags)
 		}
 		if !allowed {
 			return false
@@ -1550,7 +1620,7 @@ func (c *Control) ExpireReports(ctx context.Context, maxAge time.Duration) (int,
 	var failures []string
 	for _, id := range ids {
 		_ = c.Store.RevokeBackends(id)
-		if err := c.reconcilePartitions(ctx, "ingress:"+id, nil); err != nil {
+		if err := c.reconcilePartitions(ctx, "gateway:"+id, nil); err != nil {
 			failures = append(failures, err.Error())
 			continue
 		}
@@ -1572,37 +1642,17 @@ func (c *Control) CleanupStaleNodes(ctx context.Context, maxAge time.Duration) (
 	if err != nil {
 		return 0, err
 	}
-	client, clientErr := c.tailscaleRuntimeClient()
 	removed := 0
 	for _, node := range nodes {
-		if clientErr == nil {
-			if services, listErr := client.ListServices(ctx); listErr == nil {
-				for _, service := range services {
-					hosts, hostsErr := client.ListServiceHosts(ctx, service.Name)
-					if hostsErr != nil {
-						continue
-					}
-					for _, host := range hosts {
-						if host.NodeID == node.TailnetID {
-							_, _ = client.ApproveServiceDevice(ctx, service.Name, host.NodeID, false)
-						}
-					}
-				}
-			}
-			if devices, listErr := client.ListDevices(ctx); listErr == nil {
-				for _, device := range devices {
-					if device.NodeID == node.TailnetID {
-						_ = client.DeleteDevice(ctx, device.ID)
-					}
-				}
-			}
-		}
-		_ = c.Store.RevokeNode(node.ID)
+		_ = c.Store.SetJSON("node_offline:"+node.ID, map[string]any{"offline": true, "last_report": node.LastReport})
 		_ = c.Store.RevokeBackends(node.ID)
 		_ = c.Store.DeleteReport(node.ID)
-		_ = c.Store.Audit("node.sweeper.cleanup:"+node.ID, "stale heartbeat")
 		removed++
 	}
+	// Persistent devices survive outages. Only explicit reset or revocation
+	// deletes an identity; report expiry still withdraws routes and owned DNS.
+	_ = c.reconcileExposures(ctx)
+
 	return removed, nil
 }
 
@@ -1644,9 +1694,16 @@ func (c *Control) saveReport(w http.ResponseWriter, r *http.Request) {
 		c.saveDirectReport(w, r, envelope, node)
 		return
 	}
-	if p.NodeID == "" || nodeErr != nil || node.Mode != "ingress" || node.TailnetID == "" || node.TailnetID != p.NodeID {
+	if p.NodeID == "" || nodeErr != nil || !store.IsGateway(node.Mode) || node.TailnetID == "" || node.TailnetID != p.NodeID {
 		http.Error(w, fmt.Sprintf("report node does not match enrolled tailnet identity (report=%s whois=%s stored=%s err=%v)", envelope.NodeID, p.NodeID, node.TailnetID, nodeErr), 403)
 		return
+	}
+	if node.ParentID != "" {
+		parent, e := c.Store.Node(node.ParentID)
+		if e != nil || parent.Revoked {
+			http.Error(w, "controller revoked", 403)
+			return
+		}
 	}
 	revoked, err := c.Store.NodeRevoked(strings.TrimSpace(envelope.NodeID))
 	if err != nil {
@@ -1666,14 +1723,14 @@ func (c *Control) saveReport(w http.ResponseWriter, r *http.Request) {
 	}
 	var reportPayload struct {
 		ProviderID string                `json:"provider_id"`
-		Exposures  []dns.IngressExposure `json:"exposures"`
+		Exposures  []dns.GatewayExposure `json:"exposures"`
 	}
 	if err := json.Unmarshal(envelope.Payload, &reportPayload); err != nil {
 		http.Error(w, "invalid report payload", http.StatusBadRequest)
 		return
 	}
 	var zoneFailures []string
-	ingressIDs := []string{node.ID}
+	gatewayIDs := []string{node.ID, node.ParentID}
 	roles := p.RoleSelectors()
 	applications, applicationsErr := c.Store.Applications()
 	if applicationsErr != nil {
@@ -1688,8 +1745,8 @@ func (c *Control) saveReport(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "exposure does not match an enabled application Service", http.StatusForbidden)
 			return
 		}
-		if application.BackendSource == "tailnet" {
-			http.Error(w, "tailnet routes must be reported by their load balancer", 403)
+		if store.BackendSource(node.Mode) != application.BackendSource && !(node.Mode == "docker-gateway" && application.BackendSource == "") {
+			http.Error(w, "gateway backend source mismatch", 403)
 			return
 		}
 		if !exposure.Reachable {
@@ -1697,8 +1754,8 @@ func (c *Control) saveReport(w http.ResponseWriter, r *http.Request) {
 		}
 		exposure.ApplicationID = application.ID
 		exposure.ServiceName = application.ServiceName
-		if !c.applicationAnyEdgeAllowed(application, ingressIDs, roles) {
-			http.Error(w, "ingress exposure is not allowed by the control policy", 403)
+		if !c.applicationAnyEdgeAllowed(application, gatewayIDs, roles) {
+			http.Error(w, "gateway exposure is not allowed by the control policy", 403)
 			return
 		}
 		if _, err := c.managedZone(exposure.PublicHostname); err != nil {
@@ -1738,6 +1795,12 @@ func (c *Control) saveReport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Child heartbeats must not serialize external DNS calls per cluster node.
+	// The control reconciliation loop applies the aggregate on its next tick.
+	if node.Mode == "k8s-forwarder" {
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
 	if err := c.reconcileExposures(r.Context()); err != nil {
 		zoneFailures = append(zoneFailures, err.Error())
 	}
@@ -1748,14 +1811,14 @@ func (c *Control) saveReport(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
-func backendRecordID(nodeID string, exposure dns.IngressExposure) string {
+func backendRecordID(nodeID string, exposure dns.GatewayExposure) string {
 	return strings.Join([]string{nodeID, exposure.ServiceName, exposure.PublicHostname, fmt.Sprintf("%d", exposure.Port)}, ":")
 }
 
-func approvedApplication(applications []store.ApplicationRecord, exposure dns.IngressExposure) (store.ApplicationRecord, bool) {
+func approvedApplication(applications []store.ApplicationRecord, exposure dns.GatewayExposure) (store.ApplicationRecord, bool) {
 	hostname := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(exposure.PublicHostname), "."))
 	for _, application := range applications {
-		if !application.Enabled || application.BackendSource == "tailnet" || application.ID != exposure.ApplicationID || application.ServiceName != strings.TrimSpace(exposure.ServiceName) || application.BackendPort != exposure.Port {
+		if !application.Enabled || application.ID != exposure.ApplicationID || application.ServiceName != strings.TrimSpace(exposure.ServiceName) || application.BackendPort != exposure.Port {
 			continue
 		}
 		for _, publicHostname := range application.PublicHostnames {
@@ -1768,20 +1831,20 @@ func approvedApplication(applications []store.ApplicationRecord, exposure dns.In
 }
 func (c *Control) nodes(w http.ResponseWriter, r *http.Request) {
 	mode := "loadbalancer"
-	if r.URL.Path == "/ingresses" {
-		mode = "ingress"
+	if r.URL.Path == "/gateways" {
+		mode = "docker-gateway"
 	}
 	nodes, _ := c.Store.Nodes(mode)
-	title, kicker, description, href := "Load balancers", "Infrastructure", "The public edge terminates TLS, connects to Docker Services through ingress, and routes tailnet machines directly by verified device identity.", "/enroll/loadbalancer"
-	if mode == "ingress" {
-		title, description, href = "Ingress nodes", "Ingress nodes expose policy-approved Docker HTTP backends through Tailscale Services and report signed desired state to control.", "/enroll/ingress"
+	title, kicker, description, href := "Load balancers", "Infrastructure", "The public edge terminates TLS, connects to Docker Services through gateway, and routes tailnet machines directly by verified device identity.", "/enroll/loadbalancer"
+	if mode == "docker-gateway" {
+		title, description, href = "Gateways", "Gateways expose policy-approved Docker HTTP backends through Tailscale Services and report signed desired state to control.", "/enroll/docker-gateway"
 	}
 	var b strings.Builder
 	b.WriteString(pageIntro(kicker, title, description))
 	if requestAccess(r).Admin {
 		b.WriteString(`<div class="pf-action-row"><a class="pf-button" href="` + href + `">Create enrollment</a></div>`)
 	}
-	b.WriteString(`<div class="pf-action-row"><a class="pf-text-link" href="/api/nodes/` + mode + `">View technical details (JSON)</a></div><section class="pf-surface"><div class="pf-section-heading"><div><p class="pf-kicker">Node inventory</p><h2>Connected ` + strings.ToLower(title) + `</h2></div><span class="pf-pill pf-pill-neutral">` + fmt.Sprintf("%d total", len(nodes)) + `</span></div>`)
+	b.WriteString(`<div class="pf-action-row"><a class="pf-text-link" href="/api/nodes?mode=` + mode + `">View technical details (JSON)</a></div><section class="pf-surface"><div class="pf-section-heading"><div><p class="pf-kicker">Node inventory</p><h2>Connected ` + strings.ToLower(title) + `</h2></div><span class="pf-pill pf-pill-neutral">` + fmt.Sprintf("%d total", len(nodes)) + `</span></div>`)
 	if len(nodes) == 0 {
 		b.WriteString(`<div class="pf-empty"><strong>No ` + strings.ToLower(title) + ` enrolled</strong><span>Use the generated deployment script to provision a node, then return here to confirm its identity and report state.</span></div>`)
 	} else {
@@ -1821,7 +1884,7 @@ func (c *Control) nodes(w http.ResponseWriter, r *http.Request) {
 		if len(enrollments) > 0 {
 			b.WriteString(`<section class="pf-surface"><h2>Enrollments</h2>`)
 			for _, enrollment := range enrollments {
-				if mode == "ingress" {
+				if mode == "docker-gateway" {
 					b.WriteString(`<p><code>` + safeText(enrollment.Hostname) + `</code></p>`)
 				} else {
 					b.WriteString(renameForm("enrollments", enrollment.ID, enrollment.Name))
@@ -1830,8 +1893,8 @@ func (c *Control) nodes(w http.ResponseWriter, r *http.Request) {
 			b.WriteString(`</section>` + renameScript)
 		}
 	}
-	if mode == "ingress" {
-		b.WriteString(`<section class="pf-surface"><div class="pf-section-heading"><div><p class="pf-kicker">Ingress guidance</p><h2>Keep the route private</h2></div></div><p class="pf-muted">The supervisor automatically selects user-defined networks on each labeled target; set local deny patterns for sensitive networks. Use <code>tailscale-private-funnel.expose=PORT:hostname:http</code> labels. The ingress supervisor forwards approved Services directly to reachable container addresses on locally allowed Docker networks. A hostname must match an enabled policy rule before DNS changes.</p></section>`)
+	if mode == "docker-gateway" {
+		b.WriteString(`<section class="pf-surface"><div class="pf-section-heading"><div><p class="pf-kicker">Gateway guidance</p><h2>Keep the route private</h2></div></div><p class="pf-muted">The supervisor automatically selects user-defined networks on each labeled target; set local deny patterns for sensitive networks. Use <code>tailscale-private-funnel.expose=PORT:hostname:http</code> labels. The gateway supervisor forwards approved Services directly to reachable container addresses on locally allowed Docker networks. A hostname must match an enabled policy rule before DNS changes.</p></section>`)
 	}
 	render(w, title, b.String())
 }
@@ -1842,12 +1905,16 @@ func (c *Control) enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mode := chi.URLParam(r, "mode")
-	if mode != "loadbalancer" && mode != "ingress" {
+	if store.IsGateway(mode) {
+		c.gatewayEnrollment(w, r)
+		return
+	}
+	if mode != "loadbalancer" && !store.IsGateway(mode) {
 		http.Error(w, "invalid mode", 400)
 		return
 	}
-	description := "The generated deployment script downloads the verified binary, joins Tailscale, installs a system service, persists identity, and starts the loadbalancer."
-	if mode == "ingress" {
+	description := "Enroll a persistent load balancer using a native Linux service or the Kubernetes Helm chart. Each node has its own identity and certificate storage."
+	if mode == "docker-gateway" {
 		description = "The generated deployment script joins Tailscale, installs a system service, and starts Docker discovery. Docker socket access is required. Every public hostname must satisfy exposure policy."
 	}
 	var defaults map[string]any
@@ -1856,23 +1923,24 @@ func (c *Control) enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fields := `<label class="pf-field"><span class="pf-label">Load-balancer DNS hostname</span><input class="pf-input" name="loadbalancer_hostname" value="` + safeText(stringValue(defaults, "loadbalancer_hostname", "")) + `" required><small class="pf-help">Select the public edge hostname for this node.</small></label>`
-	if mode == "ingress" {
+	if mode == "docker-gateway" {
 		fields = ""
 	}
 	if mode == "loadbalancer" {
-		fields += `<label class="pf-field"><span class="pf-label">Certificate email (optional)</span><input class="pf-input" type="email" name="cert_email" value="` + safeText(stringValue(defaults, "cert_email", "")) + `"></label><p class="pf-help">Public IPv4 is discovered automatically from the enrolled Tailscale device. Missing or ambiguous endpoints preserve the previous owned A record.</p>`
+		fields += `<label class="pf-field"><span class="pf-label">Deployment</span><select class="pf-input" name="deployment_target" id="lb-target"><option value="native">Native Linux service</option><option value="kubernetes">Kubernetes · Helm</option></select></label><fieldset id="lb-kubernetes" class="pf-field-wide pf-form-grid" hidden disabled><label class="pf-field"><span class="pf-label">Installation</span><input class="pf-input" name="installation_name" value="main" maxlength="31"></label><label class="pf-field"><span class="pf-label">Helm release (optional)</span><input class="pf-input" name="helm_release" placeholder="Generated unique release"></label><p class="pf-help">Shares tailscale-private-funnel-&lt;installation&gt;-system with trusted control and gateways. Requires an existing Kubernetes LoadBalancer implementation; identity persists in a Secret; Caddy storage persists on a dedicated PVC.</p></fieldset><script>document.addEventListener('DOMContentLoaded',()=>{const s=document.getElementById('lb-target'),f=document.getElementById('lb-kubernetes');s.onchange=()=>{f.hidden=s.value!=='kubernetes';f.disabled=f.hidden}})</script>`
+		fields += `<label class="pf-field"><span class="pf-label">Certificate email (optional)</span><input class="pf-input" type="email" name="cert_email" value="` + safeText(stringValue(defaults, "cert_email", "")) + `"></label><p class="pf-help">Native deployment uses Tailscale endpoint discovery. Kubernetes uses its public LoadBalancer Service address. Unavailable addresses preserve previous owned records.</p>`
 	} else {
-		fields += `<label class="pf-field"><span class="pf-label">Additional Docker label keys (optional, comma-separated)</span><input class="pf-input" name="label_keys"></label><label class="pf-field"><span class="pf-label">Local Docker deny patterns (optional, comma-separated)</span><input class="pf-input" name="deny_networks"></label><p class="pf-help">These are local ingress deployment choices. The generated script persists them; they do not hot-reload from global settings.</p>`
+		fields += `<label class="pf-field"><span class="pf-label">Additional Docker label keys (optional, comma-separated)</span><input class="pf-input" name="label_keys"></label><label class="pf-field"><span class="pf-label">Local Docker deny patterns (optional, comma-separated)</span><input class="pf-input" name="deny_networks"></label><p class="pf-help">These are local gateway deployment choices. The generated script persists them; they do not hot-reload from global settings.</p>`
 	}
 	enrollmentTitle, inventoryPath, inventoryTitle := "Load balancer", "/loadbalancers", "load balancers"
-	if mode == "ingress" {
-		enrollmentTitle, inventoryPath, inventoryTitle = "Ingress", "/ingresses", "ingress nodes"
+	if mode == "docker-gateway" {
+		enrollmentTitle, inventoryPath, inventoryTitle = "Gateway", "/gateways", "gateway nodes"
 	}
 	identityFields := `<label class="pf-field"><span class="pf-label">Name</span><input class="pf-input" name="name" required maxlength="128"></label><label class="pf-field"><span class="pf-label">Node hostname</span><input class="pf-input" name="hostname" placeholder="Target host hostname + -loadbalancer"></label>`
-	if mode == "ingress" {
-		identityFields = `<label class="pf-field"><span class="pf-label">Node hostname (optional)</span><input class="pf-input" name="hostname" placeholder="Target host hostname + -ingress"><small class="pf-help">Leave blank to use the target machine’s hostname followed by -ingress. The installer resolves it on that machine; this is also the node’s display name.</small></label>`
+	if mode == "docker-gateway" {
+		identityFields = `<label class="pf-field"><span class="pf-label">Node hostname (optional)</span><input class="pf-input" name="hostname" placeholder="Target host hostname + -gateway"><small class="pf-help">Leave blank to use the target machine’s hostname followed by -gateway. The installer resolves it on that machine; this is also the node’s display name.</small></label>`
 	}
-	render(w, "Enrollment", pageIntro("Infrastructure", enrollmentTitle+" enrollment", description)+fmt.Sprintf(`<div class="pf-alert pf-alert-info"><strong>One-use enrollment.</strong> The bootstrap key expires in 15 minutes. The joined identity survives reboot; only reset or revocation removes it. OAuth credentials stay in the control service.</div><section class="pf-surface pf-form-surface"><div class="pf-section-heading"><div><p class="pf-kicker">Step 1 · Identity</p><h2>Choose a node hostname</h2></div><span class="pf-pill pf-pill-neutral">1 of 2</span></div><form id="enrollment-form" class="pf-form-grid">`+identityFields+fields+`<div class="pf-form-actions"><button class="pf-button" type="submit">Generate deployment script <span aria-hidden="true">→</span></button></div></form></section><section class="pf-surface"><div class="pf-section-heading"><div><p class="pf-kicker">Step 2 · Deploy</p><h2>One-copy native deployment</h2></div><span class="pf-pill pf-pill-neutral">Linux + systemd</span></div><p class="pf-muted">The script downloads a verified release binary, enrolls the node, installs a system-level systemd service, and starts it. It checks loadbalancer ports or ingress Docker access before changing anything.</p><pre class="pf-command" id="enrollment-result" aria-live="polite">Complete the hostname step to generate a deployment script.</pre></section><p><a class="pf-text-link" href="%s">Back to %s <span aria-hidden="true">→</span></a></p><script>document.getElementById('enrollment-form').onsubmit=async function(e){e.preventDefault();const result=document.getElementById('enrollment-result');const r=await fetch('/api/enrollments/%s',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(this)))});const text=await r.text();if(!r.ok){result.textContent=text;return}let data;try{data=JSON.parse(text)}catch(_){result.textContent=text;return}const lines=['Enrollment created. Keep the code private until the target node has joined.','','Steps:',...(data.instructions||[]).map((step,i)=>(i+1)+'. '+step),'','One-copy deployment script:',data.deployment_script||'','', 'Ingress label example:',data.label_example||'','', 'Exposure policy:',data.policy_url||'/policies'];result.textContent=lines.join('\n')}</script>`, inventoryPath, inventoryTitle, mode))
+	render(w, "Enrollment", pageIntro("Infrastructure", enrollmentTitle+" enrollment", description)+fmt.Sprintf(`<div class="pf-alert pf-alert-info"><strong>One-use enrollment.</strong> The bootstrap key expires in 15 minutes. The joined identity survives reboot; only reset or revocation removes it. OAuth credentials stay in the control service.</div><section class="pf-surface pf-form-surface"><div class="pf-section-heading"><div><p class="pf-kicker">Step 1 · Identity</p><h2>Choose a node hostname</h2></div><span class="pf-pill pf-pill-neutral">1 of 2</span></div><form id="enrollment-form" class="pf-form-grid">`+identityFields+fields+`<div class="pf-form-actions"><button class="pf-button" type="submit">Generate deployment script <span aria-hidden="true">→</span></button></div></form></section><section class="pf-surface"><div class="pf-section-heading"><div><p class="pf-kicker">Step 2 · Deploy</p><h2>Generated deployment</h2></div><span class="pf-pill pf-pill-neutral">Linux + systemd</span></div><p class="pf-muted">Native deployment installs a verified binary and system service. Kubernetes deployment creates a short-lived bootstrap Secret and installs the pinned OCI Helm chart.</p><pre class="pf-command" id="enrollment-result" aria-live="polite">Complete the hostname step to generate a deployment script.</pre></section><p><a class="pf-text-link" href="%s">Back to %s <span aria-hidden="true">→</span></a></p><script>document.getElementById('enrollment-form').onsubmit=async function(e){e.preventDefault();const result=document.getElementById('enrollment-result');const r=await fetch('/api/enrollments/%s',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(this)))});const text=await r.text();if(!r.ok){result.textContent=text;return}let data;try{data=JSON.parse(text)}catch(_){result.textContent=text;return}const lines=['Enrollment created. Keep the code private until the target node has joined.','','Steps:',...(data.instructions||[]).map((step,i)=>(i+1)+'. '+step),'','One-copy deployment script:',data.deployment_script||'','', 'Gateway label example:',data.label_example||'','', 'Exposure policy:',data.policy_url||'/policies'];result.textContent=lines.join('\n')}</script>`, inventoryPath, inventoryTitle, mode))
 }
 func requiredNodeTag(mode string) string {
 	return "tag:tailscale-private-funnel"
@@ -1880,7 +1948,7 @@ func requiredNodeTag(mode string) string {
 
 func (c *Control) enrollmentCreate(w http.ResponseWriter, r *http.Request) {
 	mode := chi.URLParam(r, "mode")
-	if mode != "loadbalancer" && mode != "ingress" {
+	if mode != "loadbalancer" && !store.IsGateway(mode) {
 		http.Error(w, "invalid mode", 400)
 		return
 	}
@@ -1897,6 +1965,9 @@ func (c *Control) enrollmentCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
+		input.DeploymentTarget = r.FormValue("deployment_target")
+		input.InstallationName = r.FormValue("installation_name")
+		input.HelmRelease = r.FormValue("helm_release")
 		input.Name = r.FormValue("name")
 		input.Hostname = r.FormValue("hostname")
 		input.LoadBalancerHostname = r.FormValue("loadbalancer_hostname")
@@ -1913,11 +1984,11 @@ func (c *Control) enrollmentCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to read enrollment defaults", 503)
 		return
 	}
-	if mode == "ingress" && input.LoadBalancerHostname != "" {
-		http.Error(w, "ingress does not accept load-balancer deployment fields", 400)
+	if store.IsGateway(mode) && input.LoadBalancerHostname != "" {
+		http.Error(w, "gateway does not accept load-balancer deployment fields", 400)
 		return
 	}
-	if mode == "ingress" || strings.TrimSpace(input.Name) == "" {
+	if strings.TrimSpace(input.Name) == "" {
 		input.Name = input.Hostname
 	}
 	name, nameErr := store.ValidateName(input.Name)
@@ -2007,6 +2078,12 @@ func (c *Control) enrollmentCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	deployArgs := fmt.Sprintf("%s join --management-url %s --hostname %s --enrollment-id %s --enrollment-code-file \"$code_file\" --advertise-tags %s --state-dir /var/lib/tailscale-private-funnel/%s/state --data-dir /var/lib/tailscale-private-funnel/%s/data", mode, shellQuote(managementURL), shellQuote(e.Hostname), shellQuote(e.ID), shellQuote(requiredNodeTag(mode)), mode, mode)
+	if input.StateDir != "" {
+		deployArgs = strings.Replace(deployArgs, "--state-dir /var/lib/tailscale-private-funnel/"+mode+"/state", "--state-dir "+shellQuote(input.StateDir), 1)
+	}
+	if input.DataDir != "" {
+		deployArgs = strings.Replace(deployArgs, "--data-dir /var/lib/tailscale-private-funnel/"+mode+"/data", "--data-dir "+shellQuote(input.DataDir), 1)
+	}
 	if useHostDefault {
 		deployArgs = strings.Replace(deployArgs, " --hostname "+shellQuote(e.Hostname), ` --hostname "$(hostname -s)-`+mode+`"`, 1)
 	}
@@ -2014,7 +2091,7 @@ func (c *Control) enrollmentCreate(w http.ResponseWriter, r *http.Request) {
 	if settings.CertEmail != "" {
 		deployArgs += " --cert-email " + shellQuote(settings.CertEmail)
 	}
-	if mode == "ingress" {
+	if mode == "docker-gateway" {
 	}
 	if mode == "loadbalancer" && settings.LoadBalancerHost != "" {
 		deployArgs += " --loadbalancer-hostname " + shellQuote(settings.LoadBalancerHost)
@@ -2028,6 +2105,17 @@ func (c *Control) enrollmentCreate(w http.ResponseWriter, r *http.Request) {
 	if settings.DenyNetworks != "" {
 		for _, pattern := range splitValues(settings.DenyNetworks) {
 			deployArgs += " --deny-network " + shellQuote(pattern)
+		}
+	}
+	if mode == "k8s-gateway" || mode == "loadbalancer" && input.DeploymentTarget == "kubernetes" {
+		if input.HelmRelease == "" {
+			sum := sha256.Sum256([]byte(e.ID))
+			input.HelmRelease = fmt.Sprintf("%s-%x", mode, sum[:6])
+		}
+		input.nodeDeployment = resolveKubernetesDeployment(input.nodeDeployment)
+		if mode == "loadbalancer" {
+			input.AddressSource = "kubernetes"
+			input.PublicService = input.HelmRelease + "-public"
 		}
 	}
 	if err := c.Store.SetJSON("node_deployment:"+e.ID, input.nodeDeployment); err != nil {
@@ -2053,15 +2141,24 @@ func (c *Control) enrollmentCreate(w http.ResponseWriter, r *http.Request) {
 	if mode == "loadbalancer" {
 		instructions = append(instructions, "Publish TCP ports 80 and 443 only on this loadbalancer. Control reconciles its owned A record from the enrolled Tailscale device endpoint.")
 	} else {
-		instructions = append(instructions, "Docker discovery requires host Docker socket permissions. The ingress process validates selected application networks and dials the backend container directly; no relay container is started.")
+		instructions = append(instructions, "Docker discovery requires host Docker socket permissions. The gateway validates selected user-defined application networks and creates isolated TCP relay containers. Relays have no Docker socket, Tailscale identity, or credentials.")
 		instructions = append(instructions, "Every public hostname must match an enabled exposure rule and a managed DNS zone before control provisions routing and owned DNS.")
 	}
+	if mode == "k8s-gateway" {
+		deploymentScript = helmEnrollmentScript(e.ID, code, bootstrapKey, base64.RawStdEncoding.EncodeToString(controlPub), managementURL, e.Hostname, settings.Image, input.nodeDeployment)
+		instructions = []string{"Install the pinned Gateway API Standard CRDs first. Create a short-lived bootstrap Secret using the script, then install the matching version-pinned OCI Helm chart. The Secret is referenced by name, never stored in Helm values. Delete it once the controller joins. Keep the persistent volume for reboot-safe identity."}
+	} else if mode == "loadbalancer" && input.DeploymentTarget == "kubernetes" {
+		deploymentScript = loadBalancerHelmScript(e.ID, code, bootstrapKey, base64.RawStdEncoding.EncodeToString(controlPub), managementURL, e.Hostname, settings.Image, input.nodeDeployment)
+		instructions = []string{"Install the OCI Helm chart using the generated short-lived Secret. Keep the PVC for identity and certificate persistence.", "The cluster's existing LoadBalancer implementation must allocate a routable address. Control uses signed Service-status observations, never the Pod's egress address.", "Delete the bootstrap Secret after enrollment. Additional load balancers use separate releases and PVCs in the same installation namespace."}
+	} else if mode == "tailnet-gateway" {
+		instructions = []string{"Run the native systemd installer; Docker is not required.", "Assign any additional backend-access tags and grants in Tailscale. Then choose this gateway in Expose a tailnet machine and run a connectivity test.", "Keep state and data persistent. Status diagnoses the node; reset and control revocation are explicit."}
+	}
 	labelExample := ""
-	if mode == "ingress" {
+	if mode == "docker-gateway" {
 		labelExample = "tailscale-private-funnel.expose=8080:app.dev.example.com:http"
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"enrollment": e, "code": code, "deployment_script": deploymentScript, "image": settings.Image, "instructions": instructions, "policy_url": "/policies", "label_example": labelExample})
+	_ = json.NewEncoder(w).Encode(map[string]any{"enrollment": e, "code": code, "deployment_script": deploymentScript, "image": settings.Image, "instructions": instructions, "policy_url": "/policies", "label_example": labelExample, "backend_example": selectedGatewayExample(mode, input.nodeDeployment)})
 }
 
 func releaseTagFromImage(image string) string {
@@ -2155,8 +2252,11 @@ func (c *Control) enrollmentSigningKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Control) nodeList(w http.ResponseWriter, r *http.Request) {
-	mode := chi.URLParam(r, "mode")
-	if mode != "loadbalancer" && mode != "ingress" {
+	mode := r.URL.Query().Get("mode")
+	if mode == "" {
+		mode = "gateways"
+	}
+	if mode != "loadbalancer" && mode != "gateways" && !store.IsGateway(mode) {
 		http.Error(w, "invalid mode", 400)
 		return
 	}
@@ -2175,9 +2275,10 @@ func (c *Control) nodeRevoke(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	_ = c.Store.RevokeBackends(id)
 	_ = c.Store.Audit("node.revoke:"+id, identityFromRequest(r))
-	w.WriteHeader(http.StatusNoContent)
+	node, _ := c.Store.Node(id)
+	err := c.cleanupRevokedNode(r.Context(), node)
+	writeJSON(w, map[string]any{"revoked": true, "pending": err != nil, "message": fmt.Sprint(err)})
 }
 func render(w http.ResponseWriter, title, body string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

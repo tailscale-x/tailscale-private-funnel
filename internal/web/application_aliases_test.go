@@ -15,10 +15,10 @@ func TestApplicationAliasSharesApprovedBackend(t *testing.T) {
 	c, s := testControl(t)
 	installDNSFixture(t, s, "example.com")
 	installTestEdge(t, s)
-	_ = s.UpsertNode("ingress", "ingress", "host-ingress")
-	_ = s.SetJSON("node_deployment:ingress", nodeDeployment{})
+	_ = s.UpsertNode("docker-gateway", "docker-gateway", "host-gateway")
+	_ = s.SetJSON("node_deployment:docker-gateway", nodeDeployment{})
 	_ = s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "allowed", HostnameRegexes: []string{`^.*[.]example[.]com$`}, Enabled: true}}})
-	app := store.ApplicationRecord{ID: "app", ServiceName: "svc:app", ServiceFQDN: "100.64.0.5", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"original.example.com"}, AllowedIngressNodes: []string{"ingress"}, Enabled: true}
+	app := store.ApplicationRecord{ID: "app", ServiceName: "svc:app", ServiceFQDN: "100.64.0.5", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"original.example.com"}, AllowedGatewayNodes: []string{"docker-gateway"}, Enabled: true}
 	_ = s.UpsertApplication(app)
 	for _, role := range []string{"viewer", "operator"} {
 		r := WithPrincipal(httptest.NewRequest("POST", "/api/applications/app/aliases", strings.NewReader(`{"hostname":"alias.example.com"}`)), Principal{NodeID: role, TailnetRole: role})
@@ -34,9 +34,9 @@ func TestApplicationAliasSharesApprovedBackend(t *testing.T) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	apps, _ := s.Applications()
-	node, _ := s.Node("ingress")
-	e := dns.IngressExposure{ApplicationID: "app", ServiceName: "svc:app", PublicHostname: "original.example.com", Port: 8080, Reachable: true}
-	expanded := c.expandDockerAliases([]dns.IngressExposure{e}, apps, node, nil)
+	node, _ := s.Node("docker-gateway")
+	e := dns.GatewayExposure{ApplicationID: "app", ServiceName: "svc:app", PublicHostname: "original.example.com", Port: 8080, Reachable: true}
+	expanded := c.expandDockerAliases([]dns.GatewayExposure{e}, apps, node, nil)
 	if len(expanded) != 2 || expanded[1].ServiceName != e.ServiceName || expanded[1].PublicHostname != "alias.example.com" {
 		t.Fatal(expanded)
 	}
@@ -44,7 +44,7 @@ func TestApplicationAliasSharesApprovedBackend(t *testing.T) {
 		t.Fatal("alias became active without backend report")
 	}
 	e.ServiceName = "svc:spoofed"
-	if got := c.expandDockerAliases([]dns.IngressExposure{e}, apps, node, nil); len(got) != 1 {
+	if got := c.expandDockerAliases([]dns.GatewayExposure{e}, apps, node, nil); len(got) != 1 {
 		t.Fatal("alias trusted mismatched service")
 	}
 	if w = requestManagement(c, "POST", "/api/applications/app/aliases", map[string]any{"hostname": "alias.example.com"}, "owner"); w.Code != 409 {
@@ -52,7 +52,7 @@ func TestApplicationAliasSharesApprovedBackend(t *testing.T) {
 	}
 	_ = s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "original only", HostnameRegexes: []string{`^original[.]example[.]com$`}, Enabled: true}}})
 	e.ServiceName = "svc:app"
-	if got := c.expandDockerAliases([]dns.IngressExposure{e}, apps, node, nil); len(got) != 1 {
+	if got := c.expandDockerAliases([]dns.GatewayExposure{e}, apps, node, nil); len(got) != 1 {
 		t.Fatal("denied alias still expanded")
 	}
 	r := WithPrincipal(httptest.NewRequest("GET", "/applications", nil), Principal{NodeID: "admin", TailnetRole: "owner"})

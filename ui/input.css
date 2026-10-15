@@ -198,3 +198,6 @@ button:disabled { opacity:.5; cursor:not-allowed; }
 
 .pf-dialog h3 { font-weight:700; margin:1.2rem 0 .7rem; }
 @media(min-width:640px) { .pf-dns-dialog .pf-table td code { white-space:nowrap; overflow-wrap:normal; } }
+
+/* Operational IDs and revisions must wrap inside narrow diagnostic panels. */
+.pf-surface code { overflow-wrap:anywhere; word-break:break-word; }

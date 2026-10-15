@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	cloudflare "github.com/libdns/cloudflare"
-	godaddy "github.com/libdns/godaddy"
-	"github.com/libdns/libdns"
-	route53 "github.com/libdns/route53"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	cloudflare "github.com/libdns/cloudflare"
+	godaddy "github.com/libdns/godaddy"
+	"github.com/libdns/libdns"
+	route53 "github.com/libdns/route53"
 )
 
 type Record struct {

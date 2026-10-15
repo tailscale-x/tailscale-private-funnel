@@ -108,7 +108,7 @@ func (c *Control) authorize(next http.Handler) http.Handler {
 				}
 			}
 		}
-		if (r.Method == http.MethodPost && (r.URL.Path == "/api/reports" || strings.HasPrefix(r.URL.Path, "/api/enrollments/") && strings.HasSuffix(r.URL.Path, "/signing-key") || strings.HasPrefix(r.URL.Path, "/api/node/"))) || (r.Method == http.MethodGet && r.URL.Path == "/api/node/config") {
+		if (r.Method == http.MethodPost && (r.URL.Path == "/api/reports" || strings.HasPrefix(r.URL.Path, "/api/enrollments/") && strings.HasSuffix(r.URL.Path, "/signing-key") || strings.HasPrefix(r.URL.Path, "/api/node/"))) || (r.Method == http.MethodGet && (r.URL.Path == "/api/node/config" || r.URL.Path == "/api/node/forwarders")) {
 			next.ServeHTTP(w, r)
 			return
 		}

@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 )
 
 type savedConfig struct {
@@ -105,14 +107,41 @@ func readEnrollmentCode(o Options) (string, error) {
 }
 
 func Deploy(ctx context.Context, mode string, o Options) error {
-	if mode != "loadbalancer" && mode != "ingress" {
-		return errors.New("deploy is available for loadbalancer and ingress only")
+	if mode != "loadbalancer" && !store.IsGateway(mode) {
+		return errors.New("deploy is available for loadbalancer and gateway only")
 	}
-	o.NonInteractive = true
+	o.NonInteractive = o.BootstrapSecretDir == ""
 	var err error
 	o, err = defaults(mode, o)
 	if err != nil {
 		return err
+	}
+	if o.BootstrapSecretDir != "" {
+		if mode != "k8s-gateway" && mode != "loadbalancer" {
+			return errors.New("bootstrap Secret requires a Kubernetes gateway or load balancer")
+		}
+		if _, err := os.Stat(filepath.Join(o.DataDir, "node-id")); err == nil {
+			return validatePersistentState(mode, o)
+		}
+		read := func(name string) string {
+			b, _ := os.ReadFile(filepath.Join(o.BootstrapSecretDir, name))
+			return strings.TrimSpace(string(b))
+		}
+		o.ManagementURL = read("management-url")
+		o.EnrollmentID = read("enrollment-id")
+		o.ControlKey = read("control-key")
+		o.Hostname = read("hostname")
+		o.EnrollmentCodeFile = filepath.Join(o.BootstrapSecretDir, "code")
+		if mode == "loadbalancer" {
+			o.CertEmail = read("cert-email")
+			o.LoadBalancerHostname = read("loadbalancer-hostname")
+		}
+		key := read("auth-key")
+		if key == "" {
+			return errors.New("bootstrap Secret missing auth-key; create a fresh enrollment")
+		}
+		_ = os.Setenv("TS_AUTHKEY", key)
+		defer os.Unsetenv("TS_AUTHKEY")
 	}
 	if u, parseErr := url.Parse(o.ManagementURL); parseErr != nil || u.Scheme == "" || u.Host == "" {
 		return errors.New("a valid --management-url is required")
@@ -125,12 +154,14 @@ func Deploy(ctx context.Context, mode string, o Options) error {
 		return errors.New("enrollment code is empty")
 	}
 	o.EnrollmentCode = code
-	if mode == "loadbalancer" {
+	if mode == "loadbalancer" && o.InstallService {
 		if err := loadbalancerPreflight(); err != nil {
 			return err
 		}
-	} else if err := ingressPreflight(); err != nil {
-		return err
+	} else if mode == "docker-gateway" {
+		if err := gatewayPreflight(); err != nil {
+			return err
+		}
 	}
 	if err := os.MkdirAll(o.StateDir, 0700); err != nil {
 		return err
@@ -150,6 +181,9 @@ func Deploy(ctx context.Context, mode string, o Options) error {
 	o.BootstrapOnly = true
 	if err := Serve(ctx, mode, o); err != nil {
 		return fmt.Errorf("initial enrollment: %w", err)
+	}
+	if !o.InstallService {
+		return nil
 	}
 	if err := installService(mode, o); err != nil {
 		return err
@@ -173,12 +207,12 @@ func loadbalancerPreflight() error {
 	return nil
 }
 
-func ingressPreflight() error {
+func gatewayPreflight() error {
 	if _, err := exec.LookPath("docker"); err != nil {
-		return errors.New("ingress deploy requires Docker CLI")
+		return errors.New("gateway deploy requires Docker CLI")
 	}
 	if err := exec.Command("docker", "info").Run(); err != nil {
-		return errors.New("ingress deploy cannot access Docker; add the user to the docker group or fix the socket permissions")
+		return errors.New("gateway deploy cannot access Docker; add the user to the docker group or fix the socket permissions")
 	}
 	return nil
 }
@@ -214,8 +248,8 @@ func installService(mode string, o Options) error {
 }
 
 func Service(mode, action string, o Options) error {
-	if mode != "loadbalancer" && mode != "ingress" {
-		return errors.New("service management is available for loadbalancer and ingress only")
+	if mode != "loadbalancer" && !store.IsGateway(mode) {
+		return errors.New("service management is available for loadbalancer and gateway only")
 	}
 	if action == "" {
 		return errors.New("service action is required")
@@ -245,12 +279,14 @@ func Doctor(mode string, o Options) error {
 	if err != nil {
 		return err
 	}
-	if mode == "loadbalancer" {
+	if mode == "loadbalancer" && o.InstallService {
 		if err := loadbalancerPreflight(); err != nil {
 			return err
 		}
-	} else if err := ingressPreflight(); err != nil {
-		return err
+	} else if mode == "docker-gateway" {
+		if err := gatewayPreflight(); err != nil {
+			return err
+		}
 	}
 	if _, err := os.Stat(filepath.Join(o.StateDir, "state.json")); err != nil && !os.IsNotExist(err) {
 		return err

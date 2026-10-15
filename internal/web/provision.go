@@ -12,10 +12,10 @@ import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 )
 
-// provisionApplication turns a verified ingress label into a signed assignment.
+// provisionApplication turns a verified gateway label into a signed assignment.
 // Policy and zone authorization are checked before any Service API mutation.
 func (c *Control) provisionApplication(w http.ResponseWriter, r *http.Request) {
-	node, err := c.callerNode(r, "ingress")
+	node, err := c.callerNode(r, "docker-gateway")
 	if err != nil {
 		http.Error(w, err.Error(), 403)
 		return
@@ -24,7 +24,9 @@ func (c *Control) provisionApplication(w http.ResponseWriter, r *http.Request) {
 		Hostname    string `json:"hostname"`
 		BackendPort uint16 `json:"backend_port"`
 	}
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&input) != nil || input.BackendPort == 0 {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&input) != nil || input.BackendPort == 0 {
 		http.Error(w, "hostname and valid backend_port are required", 400)
 		return
 	}
@@ -60,7 +62,7 @@ func (c *Control) provisionApplication(w http.ResponseWriter, r *http.Request) {
 		for _, host := range app.PublicHostnames {
 			if strings.EqualFold(strings.TrimSuffix(host, "."), input.Hostname) {
 				if app.BackendSource == "tailnet" || !applicationAllows(app, node) || app.BackendPort != input.BackendPort {
-					http.Error(w, "hostname already assigned to a different ingress or backend port", 409)
+					http.Error(w, "hostname already assigned to a different gateway or backend port", 409)
 					return
 				}
 				c.nodeConfig(w, r)
@@ -69,7 +71,7 @@ func (c *Control) provisionApplication(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	id := fmt.Sprintf("auto-%x", sha256.Sum256([]byte(node.ID+":"+input.Hostname+fmt.Sprintf(":%d", input.BackendPort))))[:25]
-	app := store.ApplicationRecord{ID: id, ServiceName: "svc:tailscale-private-funnel-app-" + id, ServicePort: input.BackendPort, BackendPort: input.BackendPort, PublicHostnames: []string{input.Hostname}, AllowedIngressNodes: []string{node.ID}, Enabled: true}
+	app := store.ApplicationRecord{ID: id, ServiceName: "svc:tailscale-private-funnel-app-" + id, ServicePort: input.BackendPort, BackendPort: input.BackendPort, PublicHostnames: []string{input.Hostname}, AllowedGatewayNodes: []string{node.ID}, Enabled: true}
 	clientID, err := c.Store.GetSecret("tailscale_oauth_client_id")
 	if err != nil {
 		http.Error(w, "configure Tailscale OAuth first", 428)
@@ -92,4 +94,15 @@ func (c *Control) provisionApplication(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = c.Store.Audit("application.autoprovision:"+input.Hostname, "node:"+node.TailnetID)
 	c.nodeConfig(w, r)
+}
+
+func (c *Control) callerGateway(r *http.Request) (store.NodeRecord, error) {
+	n, err := c.callerNode(r, "")
+	if err != nil {
+		return n, err
+	}
+	if !store.IsGateway(n.Mode) {
+		return n, fmt.Errorf("enrolled gateway required")
+	}
+	return n, nil
 }

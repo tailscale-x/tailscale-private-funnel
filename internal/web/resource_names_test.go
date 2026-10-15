@@ -62,7 +62,7 @@ func TestResourceRenamesPreserveEnrollmentAndService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w := requestManagement(c, "PATCH", "/api/enrollments/"+e.ID+"/name", map[string]any{"name": "Friendly ingress"}, "owner")
+	w := requestManagement(c, "PATCH", "/api/enrollments/"+e.ID+"/name", map[string]any{"name": "Friendly gateway"}, "owner")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -70,7 +70,7 @@ func TestResourceRenamesPreserveEnrollmentAndService(t *testing.T) {
 		t.Fatal(err)
 	}
 	n, _ := s.Node(e.ID)
-	if n.Name != "Friendly ingress" || n.Hostname != "actual-host" {
+	if n.Name != "Friendly gateway" || n.Hostname != "actual-host" {
 		t.Fatal(n)
 	}
 	app := store.ApplicationRecord{ID: "app-id", Name: "First name", ServiceName: "svc:actual-service", ServiceFQDN: "actual.example.ts.net", BackendPort: 8080, ServicePort: 8080, Enabled: true}

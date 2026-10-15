@@ -1,0 +1,193 @@
+{{- if or (eq .Values.component "control") (eq .Values.component "loadbalancer") }}
+{{- include "funnel.namespaceIsolation" . }}
+{{- $control := eq .Values.component "control" }}
+{{- $identity := default (printf "%s-identity" .Release.Name) .Values.identity.existingSecret }}
+{{- $claim := default (printf "%s-data" .Release.Name) .Values.persistence.existingClaim }}
+{{- if not .Values.persistence.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $claim }}
+  annotations: {helm.sh/resource-policy: keep}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass | quote }}
+  {{- end }}
+  resources: {requests: {storage: {{ .Values.persistence.size }}}}
+---
+{{- end }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-{{ .Values.component }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-{{ .Values.component }}
+  labels:
+    app.kubernetes.io/part-of: tailscale-private-funnel
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    tailscale-private-funnel.io/installation: {{ .Values.installation }}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: {{ .Values.component }}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: {{ .Values.component }}, tailscale-private-funnel.io/installation: {{ .Values.installation }}}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-{{ .Values.component }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      initContainers:
+        - name: bootstrap
+          image: {{ .Values.image.reference | quote }}
+          args:
+            - {{ .Values.component }}
+            - kubernetes
+            - bootstrap
+            - --namespace={{ .Release.Namespace }}
+            - --identity-secret={{ $identity }}
+            - --persistent-dir=/persistent
+            - --bootstrap-secret-dir=/bootstrap
+            {{- if $control }}
+            - --hostname={{ .Values.control.hostname }}
+            - --tailnet={{ .Values.control.tailnet }}
+            {{- end }}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - {name: runtime, mountPath: /var/lib/tailscale-private-funnel}
+            - {name: data, mountPath: /persistent}
+            - {name: tmp, mountPath: /tmp}
+            - {name: bootstrap, mountPath: /bootstrap, readOnly: true}
+            - {name: api, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+      containers:
+        - name: {{ .Values.component }}
+          image: {{ .Values.image.reference | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - {{ .Values.component }}
+            - kubernetes
+            - serve
+            - --namespace={{ .Release.Namespace }}
+            - --identity-secret={{ $identity }}
+            - --persistent-dir=/persistent
+            - --probe-listen=:9090
+            {{- if not $control }}
+            - --kubernetes-service={{ .Release.Name }}-public
+            {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+              {{- if not $control }}
+              add: [NET_BIND_SERVICE]
+              {{- end }}
+          ports:
+            - {name: health, containerPort: 9090}
+            {{- if not $control }}
+            - {name: http, containerPort: 80}
+            - {name: https, containerPort: 443}
+            {{- end }}
+          startupProbe: {httpGet: {path: /readyz, port: health}, failureThreshold: 60, periodSeconds: 5}
+          readinessProbe: {httpGet: {path: /readyz, port: health}}
+          livenessProbe: {httpGet: {path: /healthz, port: health}}
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - {name: runtime, mountPath: /var/lib/tailscale-private-funnel}
+            - {name: data, mountPath: /persistent}
+            - {name: tmp, mountPath: /tmp}
+            - {name: api, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+        - {name: runtime, emptyDir: {}}
+        - {name: data, persistentVolumeClaim: {claimName: {{ $claim }}}}
+        - name: bootstrap
+          secret:
+            secretName: {{ required "bootstrap.existingSecret is required" .Values.bootstrap.existingSecret }}
+            optional: true
+            defaultMode: 0440
+        - name: api
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken: {path: token, expirationSeconds: 600}
+              - configMap:
+                  name: kube-root-ca.crt
+                  items: [{key: ca.crt, path: ca.crt}]
+              - downwardAPI:
+                  items: [{path: namespace, fieldRef: {fieldPath: metadata.namespace}}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: {{ .Release.Name }}-identity}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [{{ $identity | quote }}]
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: {{ .Release.Name }}-identity}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ .Release.Name }}-identity}
+subjects: [{kind: ServiceAccount, name: {{ .Release.Name }}-{{ .Values.component }}, namespace: {{ .Release.Namespace }}}]
+{{- if not $control }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-public
+  annotations: {{ toYaml .Values.loadbalancer.service.annotations | nindent 4 }}
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: {{ .Values.loadbalancer.service.externalTrafficPolicy }}
+  {{- if .Values.loadbalancer.service.loadBalancerClass }}
+  loadBalancerClass: {{ .Values.loadbalancer.service.loadBalancerClass | quote }}
+  {{- end }}
+  {{- if .Values.loadbalancer.service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges: {{ toYaml .Values.loadbalancer.service.loadBalancerSourceRanges | nindent 4 }}
+  {{- end }}
+  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: loadbalancer}
+  ports: [{name: http, port: 80, targetPort: http}, {name: https, port: 443, targetPort: https}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: {{ .Release.Name }}-public-service}
+rules:
+  - apiGroups: [""]
+    resources: [services]
+    resourceNames: [{{ .Release.Name }}-public]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: {{ .Release.Name }}-public-service}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ .Release.Name }}-public-service}
+subjects: [{kind: ServiceAccount, name: {{ .Release.Name }}-loadbalancer, namespace: {{ .Release.Namespace }}}]
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: {{ .Release.Name }}-node}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: {{ .Values.component }}, tailscale-private-funnel.io/installation: {{ .Values.installation }}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    {{- if $control }} []
+    {{- else }}
+    - ports: [{protocol: TCP, port: 80}, {protocol: TCP, port: 443}]
+    {{- end }}
+  egress:
+    - ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 6443}, {protocol: UDP, port: 53}, {protocol: TCP, port: 53}, {protocol: UDP, port: 1, endPort: 65535}]
+{{- end }}
+{{- end }}

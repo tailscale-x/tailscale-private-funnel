@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/libdns/libdns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
@@ -45,7 +44,7 @@ func (c *Control) mapping(host string) (store.ExposureRecord, bool) {
 }
 func (c *Control) selected(host, id string) bool {
 	e, ok := c.mapping(host)
-	return ok && e.Active && (e.LoadBalancerIDs == nil || containsExact(e.LoadBalancerIDs, id))
+	return ok && e.Active
 }
 func containsExact(ids []string, id string) bool {
 	for _, v := range ids {
@@ -55,17 +54,12 @@ func containsExact(ids []string, id string) bool {
 	}
 	return false
 }
-func (c *Control) anyEdgeAllows(d policy.Document, host string, ingressIDs, roles []string) bool {
-	for _, edge := range c.loadBalancers() {
-		e, exists := c.mapping(host)
-		if exists && (!e.Active || (e.LoadBalancerIDs != nil && !containsExact(e.LoadBalancerIDs, edge.ID))) {
-			continue
-		}
-		if ok, _ := d.Allows(host, edge.ID, ingressIDs, roles); ok {
-			return true
-		}
+func (c *Control) anyEdgeAllows(d policy.Document, host string, gatewayIDs, roles []string) bool {
+	if e, exists := c.mapping(host); exists && !e.Active {
+		return false
 	}
-	return false
+	ok, _ := d.Allows(host, gatewayIDs, roles)
+	return ok
 }
 func (c *Control) edgeFresh(n store.NodeRecord) bool {
 	var h loadBalancerHealth
@@ -80,7 +74,21 @@ func (c *Control) edgeFresh(n store.NodeRecord) bool {
 }
 
 // Signed reports have already passed WhoIs, signature and nonce checks on write.
-func (c *Control) freshReport(n store.NodeRecord) []dns.IngressExposure {
+func (c *Control) freshReport(n store.NodeRecord) []dns.GatewayExposure {
+	if n.Mode == "k8s-gateway" && !n.Revoked {
+		children, e := c.Store.Forwarders(n.ID)
+		if e != nil {
+			return nil
+		}
+		if len(children) > 0 {
+			out := []dns.GatewayExposure{}
+			for _, child := range children {
+				out = append(out, c.freshReport(child)...)
+			}
+			return out
+		}
+	}
+
 	reports, err := c.Store.Reports()
 	if err != nil {
 		return nil
@@ -98,7 +106,7 @@ func (c *Control) freshReport(n store.NodeRecord) []dns.IngressExposure {
 	}
 	var env report.Envelope
 	var p struct {
-		Exposures []dns.IngressExposure `json:"exposures"`
+		Exposures []dns.GatewayExposure `json:"exposures"`
 		ExpiresAt int64                 `json:"expires_at"`
 	}
 	if json.Unmarshal([]byte(raw), &env) != nil || json.Unmarshal(env.Payload, &p) != nil || p.ExpiresAt <= time.Now().Unix() {
@@ -109,11 +117,7 @@ func (c *Control) freshReport(n store.NodeRecord) []dns.IngressExposure {
 func (c *Control) edgeReported(n store.NodeRecord, app store.ApplicationRecord, host string) bool {
 	for _, e := range c.freshReport(n) {
 		if e.Reachable && e.ApplicationID == app.ID && e.PublicHostname == host && e.Port == app.BackendPort {
-			if app.BackendSource == "tailnet" {
-				if e.BackendDeviceID == app.BackendDeviceID {
-					return true
-				}
-			} else if e.ServiceName == app.ServiceName {
+			if e.ServiceName == app.ServiceName {
 				return true
 			}
 		}
@@ -126,7 +130,8 @@ func (c *Control) edgeIPs(n store.NodeRecord) ([]string, bool) {
 		CheckedAt  int64    `json:"checked_at"`
 	}
 	_ = c.Store.GetJSON("node_endpoints:"+n.ID, &endpoints)
-	if len(endpoints.PublicIPv4) == 1 && endpoints.CheckedAt > time.Now().Add(-5*time.Minute).Unix() {
+	d, _ := c.nodeDeployment(n.ID)
+	if (len(endpoints.PublicIPv4) == 1 || d.AddressSource == "kubernetes" && len(endpoints.PublicIPv4) > 0) && endpoints.CheckedAt > time.Now().Add(-5*time.Minute).Unix() {
 		return endpoints.PublicIPv4, false
 	}
 	// An ambiguous lookup retains only this edge's last owned public address.
@@ -174,26 +179,22 @@ func (c *Control) exposureDesired(e store.ExposureRecord, d policy.Document) ([]
 		var roles []string
 		_ = c.Store.GetJSON("node_policy_roles:"+edge.ID, &roles)
 		policyOK := false
-		if app.BackendSource == "tailnet" {
-			policyOK, _ = d.Allows(e.Hostname, edge.ID, nil, roles)
-		} else {
-			for id, exposures := range authorized {
-				n, er := c.Store.Node(id)
-				if er != nil || n.Mode != "ingress" {
-					continue
-				}
-				var r []string
-				_ = c.Store.GetJSON("node_policy_roles:"+id, &r)
-				for _, x := range exposures {
-					if x.ApplicationID == app.ID && x.PublicHostname == e.Hostname {
-						if ok, _ := d.Allows(e.Hostname, edge.ID, []string{id, n.TailnetID}, r); ok {
-							policyOK = true
-						}
+		for id, exposures := range authorized {
+			n, er := c.Store.Node(id)
+			if er != nil || !store.IsGateway(n.Mode) {
+				continue
+			}
+			var r []string
+			_ = c.Store.GetJSON("node_policy_roles:"+id, &r)
+			for _, x := range exposures {
+				if x.ApplicationID == app.ID && x.PublicHostname == e.Hostname {
+					if ok, _ := d.Allows(e.Hostname, []string{id, n.TailnetID}, r); ok {
+						policyOK = true
 					}
 				}
 			}
 		}
-		selected := e.LoadBalancerIDs == nil || containsExact(e.LoadBalancerIDs, edge.ID)
+		selected := true
 		fresh := c.edgeFresh(edge)
 		backend := c.edgeReported(edge, app, e.Hostname)
 		ips, degraded := c.edgeIPs(edge)
@@ -263,48 +264,6 @@ func (c *Control) reconcileExposures(ctx context.Context) error {
 	}
 	return nil
 }
-func (c *Control) exposureLoadBalancers(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		IDs json.RawMessage `json:"loadbalancer_ids"`
-	}
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16384))
-	dec.DisallowUnknownFields()
-	if dec.Decode(&input) != nil || len(input.IDs) == 0 {
-		http.Error(w, "loadbalancer_ids must be null or a nonempty ID array", 400)
-		return
-	}
-	var ids []string
-	if json.Unmarshal(input.IDs, &ids) != nil || ids != nil && len(ids) == 0 {
-		http.Error(w, "select at least one load balancer or use null for all", 400)
-		return
-	}
-	seen := map[string]bool{}
-	for _, id := range ids {
-		n, err := c.Store.Node(id)
-		if err != nil || n.Mode != "loadbalancer" || n.Revoked || n.TailnetID == "" || seen[id] {
-			http.Error(w, "unknown, revoked, duplicate, or unenrolled load balancer", 400)
-			return
-		}
-		seen[id] = true
-	}
-	c.cleanupMu.Lock()
-	defer c.cleanupMu.Unlock()
-	e, err := c.Store.Exposure(chi.URLParam(r, "id"))
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	if err = c.Store.SetExposureLoadBalancers(e.ID, ids); err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	_ = c.Store.Audit("exposure.loadbalancers:"+e.ID, identityFromRequest(r))
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	err = c.reconcileExposures(ctx)
-	writeJSON(w, map[string]any{"id": e.ID, "loadbalancer_ids": ids, "pending": err != nil, "message": "Nodes apply routing on their next signed configuration poll; DNS reconciliation retries automatically"})
-}
-
 func (c *Control) exposureMappingList(w http.ResponseWriter, r *http.Request) {
 	es, err := c.Store.Exposures()
 	if err != nil {
@@ -344,6 +303,9 @@ func reportHasRemovedEdgeField(payload json.RawMessage) bool {
 	}
 	for _, e := range p.Exposures {
 		if _, ok := e["loadbalancer_id"]; ok {
+			return true
+		}
+		if _, ok := e["loadbalancer_ids"]; ok {
 			return true
 		}
 	}

@@ -1,0 +1,76 @@
+{{- if eq .Values.component "k8s-gateway" }}
+{{- include "funnel.namespaceIsolation" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-controller
+  labels: {app.kubernetes.io/part-of: tailscale-private-funnel, tailscale-private-funnel.io/installation: {{ .Values.installation }}, app.kubernetes.io/instance: {{ .Release.Name }}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {tailscale-private-funnel.io/installation: {{ .Values.installation }}, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: controller}
+  template:
+    metadata:
+      labels: {tailscale-private-funnel.io/installation: {{ .Values.installation }}, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: controller}
+    spec:
+      serviceAccountName: {{ .Release.Name }}
+      securityContext:
+        seccompProfile: {type: RuntimeDefault}
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        - name: controller
+          image: {{ .Values.image.reference | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - k8s-gateway
+            - controller
+            - serve
+            - --namespace={{ .Release.Namespace }}
+            - --installation={{ .Release.Name }}
+            - --controller-name={{ include "funnel.controllerName" . }}
+            - --gateway-class={{ .Values.gatewayClass }}
+            - --ingress-class={{ .Values.ingressClass }}
+            {{- if .Values.watchNamespaces }}
+            {{- range uniq (append .Values.watchNamespaces .Release.Namespace) }}
+            - --watch-namespace={{ . }}
+            {{- end }}
+            {{- end }}
+          securityContext: &security
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          ports: [{name: broker, containerPort: 9443}]
+          readinessProbe:
+            httpGet: {path: /readyz, port: broker, scheme: HTTPS}
+          livenessProbe:
+            httpGet: {path: /healthz, port: broker, scheme: HTTPS}
+          startupProbe:
+            httpGet: {path: /healthz, port: broker, scheme: HTTPS}
+            failureThreshold: 60
+            periodSeconds: 5
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - {name: runtime, mountPath: /var/lib/tailscale-private-funnel}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: runtime
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-broker
+spec:
+  selector:
+    tailscale-private-funnel.io/installation: {{ .Values.installation }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: controller
+  ports: [{name: https, port: 9443, targetPort: broker}]
+
+{{- end }}

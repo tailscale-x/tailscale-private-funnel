@@ -4,9 +4,10 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"testing"
 	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 )
 
 func TestVerifyRequiresPinnedControlKey(t *testing.T) {
@@ -14,7 +15,7 @@ func TestVerifyRequiresPinnedControlKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := Configuration{NodeID: "ingress-1", Revision: "rev-1", IssuedAt: time.Now().Unix()}
+	config := Configuration{NodeID: "gateway-1", Revision: "rev-1", IssuedAt: time.Now().Unix()}
 	e, err := report.NewEnvelope(config.NodeID, config, pub, priv, time.Now())
 	if err != nil {
 		t.Fatal(err)

@@ -16,14 +16,15 @@ import (
 )
 
 func TestTailnetExposureWorkflow(t *testing.T) {
-	c, s := testControl(t)
+	_, s := testControl(t)
+	c := enrollmentTestControl(t, s)
 	installDNSFixture(t, s, "example.com")
 	secret, _ := s.GetSecret("test-edge-key")
 	keyBytes, _ := base64.RawStdEncoding.DecodeString(secret)
 	priv := ed25519.PrivateKey(keyBytes)
 	pub := priv.Public().(ed25519.PublicKey)
 	public := base64.RawStdEncoding.EncodeToString(pub)
-	_ = s.UpsertNodeEnrollment("edge-id", "enrolled", "loadbalancer", "edge")
+	_ = s.UpsertNodeEnrollment("edge-id", "enrolled", "tailnet-gateway", "edge")
 	_ = s.SetJSON("node_deployment:edge-id", nodeDeployment{})
 	_ = s.BindNodeIdentity("edge-id", public, "edge-tailnet", nil)
 	_ = s.SetJSON("node_deployment:edge-id", nodeDeployment{})
@@ -68,7 +69,7 @@ func TestTailnetExposureWorkflow(t *testing.T) {
 	if w, _ = send(snapshot, "edge-tailnet"); w.Code != 204 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	input := map[string]any{"discovery_loadbalancer_id": "edge-id", "device_id": "backend", "hostname": "app.example.com", "port": 8080, "enabled": true, "probe_id": probe.ID}
+	input := map[string]any{"gateway_id": "edge-id", "device_id": "backend", "hostname": "app.example.com", "port": 8080, "enabled": true, "probe_id": probe.ID}
 	denied := map[string]any{}
 	for k, v := range input {
 		denied[k] = v

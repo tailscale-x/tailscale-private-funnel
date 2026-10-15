@@ -23,12 +23,11 @@ type ProbeResult struct {
 	CheckedAt int64  `json:"checked_at"`
 }
 type PeerSnapshot struct {
-	Sources        []string      `json:"sources"`
-	Roles          []string      `json:"roles,omitempty"`
-	LoadBalancerID string        `json:"loadbalancer_id,omitempty"`
-	Peers          []Peer        `json:"peers"`
-	Tags           []string      `json:"tags"`
-	Results        []ProbeResult `json:"results"`
-	ExpiresAt      int64         `json:"expires_at"`
-	ReceivedAt     int64         `json:"received_at"`
+	Sources    []string      `json:"sources"`
+	Roles      []string      `json:"roles,omitempty"`
+	Peers      []Peer        `json:"peers"`
+	Tags       []string      `json:"tags"`
+	Results    []ProbeResult `json:"results"`
+	ExpiresAt  int64         `json:"expires_at"`
+	ReceivedAt int64         `json:"received_at"`
 }

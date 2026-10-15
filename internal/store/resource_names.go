@@ -221,13 +221,13 @@ func (s *Store) migrateResourceNames() error {
 			if mode == "" {
 				_ = tx.QueryRow(`SELECT mode FROM enrollments WHERE id=?`, strings.TrimPrefix(v.key, "node_deployment:")).Scan(&mode)
 			}
-			if mode == "ingress" {
+			if mode == "docker-gateway" {
 				m := data.(map[string]any)
 				host, _ := m["loadbalancer_hostname"].(string)
 				if host != "" {
 					id, ok := lbIDs[host]
 					if !ok {
-						return fmt.Errorf("unresolved ingress edge %s", host)
+						return fmt.Errorf("unresolved gateway edge %s", host)
 					}
 					m["loadbalancer_id"] = id
 					delete(m, "loadbalancer_hostname")
@@ -319,8 +319,8 @@ func (s *Store) ZoneByID(id string) (ManagedZone, error) {
 }
 
 // Run after resource names have been introduced, including on fresh databases.
-func (s *Store) migrateIngressNames() error {
-	const version = "012_ingress_hostname_names"
+func (s *Store) migrateGatewayNames() error {
+	const version = "012_gateway_hostname_names"
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -333,7 +333,7 @@ func (s *Store) migrateIngressNames() error {
 	if done != 0 {
 		return nil
 	}
-	for _, q := range []string{`UPDATE nodes SET name=hostname WHERE mode='ingress'`, `UPDATE enrollments SET name=hostname WHERE mode='ingress'`} {
+	for _, q := range []string{`UPDATE nodes SET name=hostname WHERE mode='docker-gateway'`, `UPDATE enrollments SET name=hostname WHERE mode='docker-gateway'`} {
 		if _, err = tx.Exec(q); err != nil {
 			return err
 		}

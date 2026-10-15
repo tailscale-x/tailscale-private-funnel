@@ -9,11 +9,10 @@ import (
 )
 
 type ExposureRecord struct {
-	ID              string   `json:"id"`
-	ApplicationID   string   `json:"application_id"`
-	Hostname        string   `json:"hostname"`
-	LoadBalancerIDs []string `json:"loadbalancer_ids"`
-	Active          bool     `json:"active"`
+	ID            string `json:"id"`
+	ApplicationID string `json:"application_id"`
+	Hostname      string `json:"hostname"`
+	Active        bool   `json:"active"`
 }
 
 // migrateExposures transfers only known application hostnames from node-owned
@@ -69,7 +68,7 @@ func (s *Store) migrateExposures() error {
 				return err
 			}
 			// Transfer exact host records only, leaving each edge's own A record alone.
-			if _, err = tx.Exec(`UPDATE records SET owner_id=? WHERE name=? AND type='CNAME' AND (owner_id LIKE 'ingress:%' OR owner_id LIKE 'loadbalancer:%')`, "exposure:"+id, host); err != nil {
+			if _, err = tx.Exec(`UPDATE records SET owner_id=? WHERE name=? AND type='CNAME' AND (owner_id LIKE 'gateway:%' OR owner_id LIKE 'loadbalancer:%')`, "exposure:"+id, host); err != nil {
 				return err
 			}
 		}
@@ -114,7 +113,7 @@ func (s *Store) syncApplicationExposures(tx *sql.Tx, a ApplicationRecord) error 
 	return nil
 }
 func (s *Store) Exposures() ([]ExposureRecord, error) {
-	rows, err := s.db.Query(`SELECT id,application_id,hostname,loadbalancer_ids,active FROM exposures ORDER BY hostname`)
+	rows, err := s.db.Query(`SELECT id,application_id,hostname,active FROM exposures ORDER BY hostname`)
 	if err != nil {
 		return nil, err
 	}
@@ -122,14 +121,8 @@ func (s *Store) Exposures() ([]ExposureRecord, error) {
 	out := []ExposureRecord{}
 	for rows.Next() {
 		var e ExposureRecord
-		var ids sql.NullString
-		if err = rows.Scan(&e.ID, &e.ApplicationID, &e.Hostname, &ids, &e.Active); err != nil {
+		if err = rows.Scan(&e.ID, &e.ApplicationID, &e.Hostname, &e.Active); err != nil {
 			return nil, err
-		}
-		if ids.Valid {
-			if err = json.Unmarshal([]byte(ids.String), &e.LoadBalancerIDs); err != nil {
-				return nil, err
-			}
 		}
 		out = append(out, e)
 	}
@@ -146,29 +139,4 @@ func (s *Store) Exposure(id string) (ExposureRecord, error) {
 		}
 	}
 	return ExposureRecord{}, sql.ErrNoRows
-}
-func (s *Store) SetExposureLoadBalancers(id string, ids []string) error {
-	if ids != nil && len(ids) == 0 {
-		return fmt.Errorf("select at least one load balancer or use null for all")
-	}
-	var value any
-	if ids != nil {
-		b, err := json.Marshal(ids)
-		if err != nil {
-			return err
-		}
-		value = string(b)
-	}
-	result, err := s.db.Exec(`UPDATE exposures SET loadbalancer_ids=? WHERE id=?`, value, id)
-	if err != nil {
-		return err
-	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n != 1 {
-		return sql.ErrNoRows
-	}
-	return nil
 }

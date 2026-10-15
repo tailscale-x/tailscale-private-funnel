@@ -1,259 +1,253 @@
-# tailscale-private-funnel operations
+# Operating Tailscale Private Funnel
 
-Local Funnel has one self-hosted executable with three explicit modes:
+## Roles and network boundaries
+
+The executable has five top-level modes:
 
 ```text
 tailscale-private-funnel control ...
 tailscale-private-funnel loadbalancer ...
-tailscale-private-funnel ingress ...
+tailscale-private-funnel docker-gateway ...
+tailscale-private-funnel tailnet-gateway ...
+tailscale-private-funnel k8s-gateway ...
 ```
 
-The control service is tailnet-only. It owns applications, Docker-backed Tailscale Services,
-node enrollment, exposure policy, and the DNS ledger. A load balancer runs Caddy
-for public TLS. Docker routes use approved Services on ingress; tailnet-machine routes dial the selected backend device directly from the load balancer. An ingress supervisor is
-the only Docker API client and forwards each approved labelled backend assignment directly to its
-selected Docker container address. No relay sidecars are started.
+Control owns enrollment, policy, application Services, signed configuration, and DNS.
+Load balancers terminate public HTTPS. Gateways forward TCP through application
+Tailscale Services; they do not add an HTTP proxy hop. All nodes use persistent,
+independent tsnet identities and `tag:tailscale-private-funnel`.
 
-Load balancer Caddy uses the load balancer process's already-open `tsnet.Server`
-through a small native Caddy transport module. Route reloads reuse one
-persistent Tailscale identity instead of starting a second `tsnet.Server` against
-the same state directory. One persistent ingress identity owns Docker Services and forwards to Docker containers without another Tailscale identity.
+Configure the existing shared-tag grant in Tailscale. Local Funnel never writes ACLs.
+It cannot reach unrelated machines unless your Tailscale policy permits that traffic.
+Management remains tailnet-only and separately authorized through verified WhoIs.
+Human Owner access defaults to `autogroup:owner`; role verification requires OAuth
+`users:read`. Tagged nodes never inherit the human owner's management role.
 
-## Tags and Service approval
+OAuth needs `auth_keys`, `devices:core`, and `services` for the shared tag, plus
+`users:read` for human role verification. Credentials stay encrypted in control SQLite.
+For native control, back up both `funnel.db` and `master.key`. In Kubernetes, back up
+the SQLite PVC and matching identity Secret; the encryption key is in that Secret.
 
-The supported node tags are:
+## Bootstrap control, then use the UI
 
-- `tag:tailscale-private-funnel`
+Download the built release binary using the README installer. Bootstrap with protected
+OAuth files through `control join`; use its wizard for credential, tag, and grant guidance.
+Only control has an interactive setup flow.
 
-Devices and generated Tailscale Services share this single tag. The tailnet policy can therefore grant access to the Service group without listing each `svc:` name.
+In the control UI:
 
-Configure one grants rule in the tailnet policy:
+1. Configure Tailscale and administrator roles.
+2. Add a DNS provider, discover existing zones, and add zone assignments.
+3. Add hostname exposure rules. Optional gateway/role selectors restrict which gateways
+   may publish matching names. Empty selectors allow any enrolled gateway; no matching
+   enabled rule means deny.
+4. Open **Gateways → Add gateway** and choose Docker, Tailnet, or Kubernetes.
+5. Follow the generated install instructions and wait for identity and signed reports.
 
-```json
-{"src":["tag:tailscale-private-funnel"],"dst":["tag:tailscale-private-funnel"],"ip":["*"]}
-```
+Gateway setup never asks for a load-balancer ID or OAuth secret. Control automatically
+assigns each exposure to all eligible public load balancers. Health and verified public
+IPv4 discovery determine DNS publication. DNS multi-address publication is not a client
+failover guarantee.
 
-The control plane does not edit the tailnet policy. Its OAuth client needs
-`auth_keys`, `devices:core`, `services`, and **`users:read`**. Device and Service
-permissions use `tag:tailscale-private-funnel`.
+Bootstrap keys are one-use, preauthorized, non-ephemeral, and expire after 15 minutes.
+The installer keeps them out of saved configuration and systemd units. Enrollment codes
+are consumed at signing-key binding. Revoke lost/expired enrollments and create fresh ones.
+Ordinary stop/reboot preserves identity. Stale reports withdraw traffic after five minutes;
+only explicit reset or revocation deletes a persistent Tailscale identity.
 
-`users:read` is required to verify Tailscale Owner/Admin roles for control UI
-administrator access. It is read-only; the broader `users` write scope is not
-needed. WhoIs identifies the caller but does not supply their account role.
-Existing installations must add `users:read` to their control OAuth client.
-Use a user-owned Tailscale device to access the UI with your account role:
-tagged service devices do not inherit human Owner/Admin permissions.
+## Docker gateway
 
-Control creates each application Service before ingress advertises it. The
-ingress node advertises it with `tsnet.ListenService`; control then verifies the
-exact Service, ingress device, enrollment, and shared Private Funnel tag before approving that
-Service/device pair through the Tailscale Services API. The shared tag is
-assigned to both devices and Services; no `autoApprovers.services` policy is
-required.
+Install the generated native systemd service on a Docker host. The supervisor is the only
+Docker API client and needs the host user's Docker permissions.
 
-## Control and node settings
-
-The Tailscale settings page displays the current identity without pretending to
-reconnect it. OAuth changes are tested against Devices Read and `users:read`
-before saving; **Test only** never replaces stored credentials. Blank replacement
-fields preserve encrypted secrets.
-
-Enrollment defaults choose the management URL and a published binary release for
-new nodes. Existing services are not upgraded or reconfigured by this form. Each
-node enrollment selects its load-balancer hostname and the applicable certificate
-email or local Docker label/network options. Generated scripts use those values.
-
-Load balancer **Inspect settings** shows public IPv4 endpoints fetched by control
-from the enrolled Tailscale device. There is no manual override or node-reported
-IP source. Exactly one distinct public IPv4 is required; missing or ambiguous
-endpoints and API failures retain the previously owned A record while the node
-health report is fresh. Expired or revoked nodes still trigger owned-record cleanup.
-Local certificate and Docker deployment changes require updating and restarting
-the node service or creating a replacement enrollment.
-
-## CLI
-
-Control bootstrap is non-interactive and uses protected OAuth files. Generated
-node commands are non-interactive:
+Before starting or updating a native Docker gateway, pull its matching versioned Funnel
+image into **Docker** for relay creation. A k3s/containerd image cache does not satisfy
+this requirement. Verify the published digest before tagging or starting it:
 
 ```sh
-tailscale-private-funnel control join --tailnet example.ts.net --oauth-client-id-file ./ts-client-id --oauth-client-secret-file ./ts-client-secret
-tailscale-private-funnel control serve
-
-tailscale-private-funnel loadbalancer join --management-url http://100.x.y.z:8080 ...
-tailscale-private-funnel loadbalancer serve
-
-tailscale-private-funnel ingress join --management-url http://100.x.y.z:8080 ...
-tailscale-private-funnel ingress serve
-
+docker pull ghcr.io/tailscale-x/tailscale-private-funnel:<version>
 ```
 
-The UI produces the complete `join` command, release image, state/data paths,
-labels, and systemd settings. State defaults follow XDG conventions:
-`$XDG_STATE_HOME/tailscale-private-funnel/<mode>` and
-`$XDG_DATA_HOME/tailscale-private-funnel/<mode>`.
+The supervisor uses this image for credential-free relays; it does not build images.
 
-The control endpoint returns a signed configuration envelope. Ingress verifies
-it with the control public key from its generated command before accepting any
-application assignment and acknowledges the configuration revision. Each
-ingress node signs its reports with a persistent Ed25519 key. Docker application containers receive no Tailscale auth key or signing key.
-
-## Docker exposure label
-
-Use only the consolidated label. Whitespace around commas is accepted:
+Label HTTP applications:
 
 ```yaml
 labels:
   tailscale-private-funnel.expose: >-
-    8080:checkout.dev.example.com:http,
-    8443:checkout-admin.dev.example.com:http
+    8080:checkout.example.com:http,
+    8443:admin.example.com:http
 ```
 
-Each specification is `<container-port>:<public-hostname>:http`. Invalid,
-conflicting, generic `caddy.*`, or policy-denied values are stopped before a
-Service listener is created. The supervisor selects user-defined networks
-attached to the target container and excludes `host`, `none`, and locally denied patterns,
-then probes the selected container address and port from the Docker host.
-Different backend ports get separate Service listeners, with no HTTP host/path
-dispatcher. No backend host port is published or relay container created.
+Use user-defined application networks. The default bridge, `host`, and `none` are excluded.
+Local deny patterns and CIDR-overlap validation apply before forwarding. Alias label keys
+are configurable; conflicting alias values are rejected. Generic Caddy labels are not used.
 
-## DNS and ownership
+One isolated relay is created per target/backend assignment, attached only to selected
+application networks, with a dynamically allocated loopback port. Relays run raw TCP,
+nonroot, read-only, with dropped capabilities. They receive no Docker socket, signing key,
+Tailscale auth key, or tsnet state. Backend reachability is checked inside each relay.
+Removing a label or replacing the target withdraws its listener and relay.
 
-The control service changes only records bound to enrolled nodes in its internal
-ownership ledger. Public DNS contains the
-owned load balancer A record and per-exposure A records for all eligible load balancers. Each exposure defaults to all active edges; an administrator can restrict a hostname to selected edge IDs. Policy and fresh backend/edge health are enforced per edge.
-Tailscale Service discovery stays private; no public SRV or backend A record is
-created. Missing or ambiguous load balancer endpoints retain the previous owned
-A record. Unowned records require an explicit administrator overwrite approval.
-Expired or revoked reports remove only records in the corresponding ledger.
+## Tailnet gateway
 
-## Runtime data and rollback
+Docker is not required. After enrollment, assign additional tags/grants externally in
+Tailscale if this gateway needs access to other machines.
 
-Persist the control SQLite directory, each node's tsnet state, Caddy storage,
-and the ingress report signing key. Pull immutable release images
-and binaries; never compile on the VPS. Roll back by stopping the current unit,
-restoring the previous image or binary tag, and restoring the control database
-backup if required.
+Open **Exposures → Expose a tailnet machine**. Choose the gateway, a machine from its
+signed peer snapshot, an HTTP port, and a policy-approved public hostname. Check policy
+and run a successful connection test before saving. Peer visibility alone does not prove
+port access. Selection is bound to stable device identity; address changes are resolved
+through that gateway's tsnet state. There is no ordinary-network fallback.
 
-## Manage policy rules and additional domains
+## Kubernetes control, load balancers, and gateways
 
-Open **Exposure policy** to create a rule, edit it in place, toggle its enabled
-state, or delete it. The confirmation lists currently authorized exposures that
-will lose their last matching rule. Another enabled matching rule preserves
-access. **Save policy** imports JSON; **Validate only** does not save it. Revision
-checks reject stale browser edits. Policy saves immediately recompute public
-routes and start owned DNS cleanup; the status panel reports pending cleanup or
-provider errors. Ingress and load balancer configuration polling can delay
-listener/route withdrawal, and DNS caches can outlive record removal.
+See [Kubernetes installations](docs/KUBERNETES.md) for control bootstrap, additional
+public LoadBalancer Services, persistence, permissions, and migration. The OCI chart
+supports `component: control | loadbalancer | k8s-gateway` and `installation: main`.
 
-Configure a **DNS provider** once and manage multiple existing domains. Use
-**Edit credentials** to edit it inline; blank secrets preserve their current values.
-Open **Manage zones**, then **Add zone** to search and select accessible domains
-in the dialog. Discovery makes no changes; **Add selected zones** creates assignments only after fresh discovery and a read-access check. Cloudflare, GoDaddy, and Route 53 support discovery; Route 53 lists public hosted zones and honors a configured hosted-zone restriction. Configure missing domains with your DNS vendor first. Internal DNS
-ownership is derived from enrolled nodes; no ownership ID needs configuring. Cloudflare tokens need **Zone Read**
-and **DNS Edit** on every selected zone. Adding a zone does not register a domain
-or change its nameservers. Blank replacement credential fields retain existing
-secrets; credentials are never rendered back to the browser.
+### Kubernetes gateway and Helm
 
-Hostnames resolve to the most specific managed zone with an enabled
-DNS provider. Equally specific assignments are rejected. Aliases in multiple
-zones can point to the same load balancer; its A record stays in its own zone.
-Preview/apply requests require `node_id`, `provider_id`, and an explicit `zone_id`.
-The control derives record ownership and exposure mode from the stored node.
-Unknown nodes are rejected; revoked nodes may only clean up empty desired state. DNS work and cleanup are
-partitioned by provider, zone, and exact owner; one failing zone does not stop
-independent zones. Zones have no editing or enabled state. To change providers, withdraw exposures and use **Zones → DNS details** to confirm owned-record cleanup, remove the assignment, then select the domain from the new provider. Removal is blocked while ledger entries exist.
-Unowned overwrites require an administrator's approval of a specific preview.
-Viewers and operators cannot change policy, DNS providers, or zone scope.
+Use the commands generated by **Gateways → Add gateway → Kubernetes**. They install
+pinned Gateway API v1.5.1 Standard CRDs, create a bootstrap Secret, and install the chart
+from `oci://ghcr.io/tailscale-x/charts/tailscale-private-funnel`, pinned to the selected
+image version. No repository checkout is required. Release `vX.Y.Z` uses chart version
+`X.Y.Z`; the packaged chart defaults to image `vX.Y.Z`. Development image tags map to
+`0.0.0-<dev-tag>` and require that matching chart to be published separately. The script
+checks chart availability before creating cluster resources or bootstrap credentials.
+Development chart `0.0.0-dev-oci-helm-20261015-r2` is published and verified with k3d. No stable chart or GitHub release containing these changes has been published.
 
+Version-tag CI packages the chart, publishes it to GHCR, verifies the OCI pull against
+the package, and attaches the `.tgz` to the GitHub release alongside checksums and chart
+metadata. The source remains under `charts/tailscale-private-funnel`. The GHCR chart package is public and linked to this repository. Keep repository Actions
+package access enabled for version-tag publishing.
 
-Exposure-rule node and load-balancer restrictions are optional. Leave both roles
-and ingress node IDs blank to allow any enrolled ingress whose hostname matches
-the rule. When either is specified, a matching role or node ID is required.
-Leave load-balancer hostnames blank to allow any load balancer. An empty policy
-still denies all exposures.
+For a published release, inspect its chart without installing:
 
-Advanced policy JSON is displayed with indentation, formats valid pasted
-documents, and offers **Format JSON** without saving. **Validate only** also
-makes no policy changes.
-
-Each exposure rule supports multiple **Hostname patterns**, entered as individual
-rows with **Add pattern** and **Remove**. Any one pattern may authorize a hostname;
-every pattern matches the complete hostname. JSON uses an array, for example:
-
-```json
-"hostname_regexes": [
-  "api[.]example[.]com",
-  "app[0-9]{1,3}[.]example[.]net"
-]
+```sh
+helm show chart oci://ghcr.io/tailscale-x/charts/tailscale-private-funnel --version X.Y.Z
 ```
 
-Commas are part of the regex, never separators. At least one pattern is required,
-and all patterns must be valid before a rule can be saved.
+For local packaging only (no publication):
 
-## Expose another tailnet machine
+```sh
+scripts/package-chart.sh vX.Y.Z /tmp/private-funnel-chart
+```
 
-Choose **Expose a tailnet machine** in Exposures. Select a load balancer and a backend from its signed peer snapshot, enter the
-HTTP port and public hostname, check policy, and run the backend connection test.
-Saving creates a direct route and internal application without a Tailscale Service.
-Edit, disable, or delete the exposure there; DNS cleanup remains ownership-scoped.
+Credentials do not belong in Helm values. The chart references `bootstrap.existingSecret`.
+Delete the bootstrap Secret after the controller joins and forwarders report healthy.
+The chart runs a one-time bootstrap Job, one controller Deployment with Recreate updates,
+and a node-local forwarding DaemonSet. Controller and per-node Tailscale identities
+persist in installation-scoped Kubernetes Secrets; enable Kubernetes Secrets encryption
+and include these Secrets in cluster backups. State loss requires explicit reenrollment.
 
-Ingress always discovers Docker containers and needs Docker socket access. Direct
-tailnet exposures do not use ingress.
+Each installation uses `tailscale-private-funnel-<installation>-system`, with `main`
+as the default installation. Trusted control, load balancers and gateways share this
+namespace; different controls use separate installations.
+Each installation has independent classes, credentials, Secrets and leases. The default
+controller identifier includes the namespace and Helm release name. An HTTPRoute can
+explicitly attach to Gateways from several installations; status entries remain separate.
 
-Additional tags and access grants are configured externally in Tailscale. The
-bootstrap key still requests only `tag:tailscale-private-funnel`; control never
-modifies ACLs or requests access to unrelated devices through OAuth. Peer visibility
-is not proof of port access. The connection test runs through the selected
-persistent load-balancer identity and its tsnet dialer, not the control host's network.
-Selections bind to the stable Tailscale device ID and stop when that peer vanishes.
+Controller pods watch and validate Kubernetes resources and publish routing intent.
+Forwarders have no Kubernetes RBAC bindings, Docker socket, TUN, host networking or
+host mounts. They use audience-bound pod tokens to reach the controller's TLS broker.
+The broker verifies Pod UID, DaemonSet ownership and Node UID; only then can that pod
+load its node's Secret-backed identity and signed routing configuration, and renew its
+60-second lease. Configuration remains signed by Funnel control; the broker does not
+replace the control signing authority. Reports and acknowledgments use the forwarder's
+own tsnet HTTP client and verified WhoIs identity. Leases are renewed
+every 15 seconds; advertisements stop before lease expiry when renewal fails.
+The controller's Secret/lease permissions are restricted to its own dedicated namespace;
+TokenReview creation and read-only node/class discovery are cluster permissions.
 
-Docker and tailnet assignments share one ingress identity and are reconciled as
-one listener/report set. Docker uses selected container addresses directly;
-tailnet assignments use tsnet directly. Caddy remains the only HTTP proxy:
-it removes incoming `Forwarded`, `X-Forwarded-*`, and `X-Real-IP`, preserves the
-public Host, and generates trusted forwarding headers from the public connection.
+Only verified ready Pod endpoints on the forwarder's own node are selected. Nodes with
+no local backend withdraw the Service advertisement; there is no cross-node fallback.
+Multiple healthy forwarders advertise the same installation-owned Tailscale Service.
+Tailscale host selection determines the network path, so this does not promise geographic
+affinity. Application Services and DNS ownership remain stable across forwarder restarts.
 
-## Display names and resource IDs
+Use `watchNamespaces`, `forwarder.nodeSelector`, `forwarder.affinity` and
+`forwarder.tolerations` in Helm values to restrict discovery and placement. Watched
+namespaces must already exist. Chart NetworkPolicies isolate the identity broker and
+forwarder ingress; application namespaces should separately permit backend traffic from
+this installation's forwarder pods. All pods run nonroot with dropped capabilities,
+RuntimeDefault seccomp and read-only root filesystems.
 
-Names are editable labels, not reference keys. DNS providers, enrolled nodes,
-enrollments, applications, and policy rules retain immutable internal IDs when
-renamed. Duplicate display names are allowed; selectors show operational context
-and short IDs to distinguish them. DNS domains, Tailscale hostnames, tags, and
-Service names remain operational values. Renaming does not change them.
+Default GatewayClass and IngressClass: `tailscale-private-funnel`; choose unique names
+for additional installations. CLI runtime commands are `k8s-gateway controller serve`
+and `k8s-gateway forwarder serve`; generated Helm instructions handle enrollment.
 
-Create DNS providers with `POST /api/providers` using `name` and `provider`
-(the vendor), plus credential fields. The response supplies the generated `id`.
-Edit using `PATCH /api/providers/{id}`; blank secret fields retain stored values.
-Zone creation selects a freshly discovered domain using `{provider_id, zone}`
-and returns an immutable assignment ID. Zone testing/removal address that ID.
-DNS previews and applies use `zone_id`, never a display name or domain as a
-resource reference. Ingress enrollment and policy restrictions use
-immutable resource IDs. Ingress enrollment has no load-balancer assignment. Exposure overrides use `loadbalancer_ids` (null means all; a nonempty array selects edges). `--loadbalancer-hostname` is only a load-balancer DNS value.
+### Supported HTTP subset
 
-Existing provider references migrate transactionally. Encrypted credentials,
-node identities, original signed report envelopes, and DNS ownership values are
-preserved. The control keeps a normalized report projection for reconciliation;
-the reports API returns the original signed envelopes for inspection. Overwrite
-approvals made before the ID migration require a fresh preview.
+| Capability | Support |
+| --- | --- |
+| Gateway HTTP listener | Port 80; HTTPS terminates at external Caddy |
+| HTTPRoute matches | Explicit hosts; Exact/PathPrefix; methods; exact headers/query |
+| HTTPRoute backends | Weighted internal HTTP Services; verified node-local Pod endpoints |
+| Filters | Request/response header modifiers; scheme/host/port redirects |
+| Namespace boundaries | Gateway allowedRoutes and backend ReferenceGrant |
+| Ingress | Explicit hosts, Exact/Prefix, named/numeric Service ports |
+| ImplementationSpecific path | Treated as Prefix |
+| Public certificate Secrets / HTTPS listeners | Unsupported; Caddy manages public TLS |
+| Wildcard/hostless routes, regex, custom backend kinds | Unsupported |
+| ExternalName, headless Services, external-address backends | Unsupported |
+| Backend-specific filters, path-rewrite redirects, raw Caddy snippets | Unsupported |
 
+This is a practical subset, not a Gateway API conformance claim. Unsupported configuration
+is rejected in resource conditions/Events. `Programmed=True` requires control authorization,
+backend/Service readiness, and load-balancer acknowledgment.
 
-### Zone DNS status and recovery
+Supported annotations on HTTPRoute/Ingress:
 
-DNS records are generated automatically from enrolled load balancers and fresh,
-policy-authorized ingress reports. Open **Zones → DNS details** to inspect the
-ownership ledger and last successful sync. **Preview changes** compares the
-expected records with the DNS provider without mutating DNS. **Retry sync**
-recalculates expected records server-side and applies ownership-scoped changes.
-Ownership conflicts require administrator approval tied to the exact preview;
-a changed preview cannot authorize a stale overwrite. Endpoint lookup failures
-retain the previous managed load-balancer A record. Errors remain pending while
-independent valid node partitions can reconcile. Exposures link to their zone's
-DNS details. Operations contains audit history, version information, and recovery
-guidance, rather than a raw DNS editor.
+| Annotation | Value |
+| --- | --- |
+| `tailscale-private-funnel.io/request-timeout` | Go duration, e.g. `30s`; `0s` disables |
+| `tailscale-private-funnel.io/backend-timeout` | Response-header timeout, e.g. `5s` |
+| `tailscale-private-funnel.io/max-request-body-bytes` | Positive byte count |
 
-### Exposure load-balancer overrides
+Gateway annotations provide defaults; route annotations override them. HTTPRoute timeout
+fields take precedence. Unknown project-prefixed annotations are rejected. Standard API
+routing fields should be used rather than vendor annotations where available.
 
-In **Exposures**, choose **All load balancers** (the default) or **Selected load balancers** for each public hostname. Aliases may select different edges while sharing a Docker application Service. The administrator API is `PUT /api/exposures/{id}/loadbalancers` with `{"loadbalancer_ids":null}` or a nonempty ID array. `GET /api/exposures` returns immutable exposure IDs and edge readiness diagnostics. Direct tailnet creation uses `discovery_loadbalancer_id` solely for peer selection and the initial connection test; it does not bind routing to that edge.
+## HTTP trust and DNS ownership
 
-Control publishes deduplicated DNS-only A records for authorized, healthy, backend-reachable edges. Multiple DNS addresses distribute traffic; they do not guarantee client failover. Ambiguous endpoint discovery retains only the affected edge’s previously owned IP and marks it degraded. Exposure ledger ownership remains stable when nodes are added, removed, or overrides change.
+Caddy strips incoming `Forwarded`, `X-Forwarded-*`, and `X-Real-IP`, then generates trusted
+client metadata, preserves public Host, and sets forwarding port and protocol. Route
+header modifiers cannot replace these trusted headers. Gateways and relays preserve raw
+TCP, including streaming and WebSocket upgrades.
+
+Public exposure A records contain deduplicated ready load-balancer addresses. Each load
+balancer also has its owned public hostname A record. Backend addresses and Service names
+are private; no public backend A or SRV records are required.
+
+Control records exact ownership in its ledger. It never deletes unmanaged records.
+Conflicts require an administrator's explicit approval bound to a specific preview. No TXT
+markers or user-supplied ownership IDs are used. Missing/ambiguous endpoint discovery
+retains the last owned address. Use **Zones → DNS details** for preview and recovery.
+
+## Updates, reset, and troubleshooting
+
+Build on the development machine or CI, never the VPS. Native services use persistent
+state/data paths; Docker/Helm deployments use pinned images and persistent volumes.
+Verify checksums before atomically replacing a binary. Keep image digests for rollback.
+
+`<mode> status` reads local runtime status without opening a competing tsnet identity.
+`<mode> reset --force` is explicit identity deletion; control revocation withdraws traffic
+and performs scoped cleanup. Cleanup failures remain pending for retry.
+
+For Kubernetes, inspect `kubectl describe gateway`, `kubectl describe httproute`, and Events.
+Ingress exposes address status; Gateway/HTTPRoute expose conditions. For Docker, check label
+syntax, selected user-defined networks, deny patterns, and relay backend probes. For tailnet
+backends, verify effective tags, peer freshness, and the selected HTTP port.
+
+The old `ingress` command and load-balancer selectors are removed. Existing Docker-only
+nodes transition with their identity preserved. Tailnet exposure uses a separately enrolled
+Tailnet gateway; never run two processes against one tsnet state directory.
+
+### Namespaced Kubernetes workload example
+
+The [Voice deployment](deploy/voice/README.md) places application pods in `voice`
+and the gateway controller/Gateway in `tailscale-private-funnel-main-system`, with restricted Pod Security,
+namespace-scoped controller RBAC/cache, verified Pod-backed endpoints and explicit
+NetworkPolicies. [Verification](docs/qa-k3s-voice.md) records checks and limits.
+Namespace placement alone does not isolate network traffic.

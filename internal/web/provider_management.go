@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/libdns/libdns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
-	"io"
-	"net/http"
-	"strings"
 )
 
 type providerInput struct {

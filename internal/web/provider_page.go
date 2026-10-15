@@ -3,11 +3,12 @@ package web
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 )
 
 func jsonLiteral(v any) string { b, _ := json.Marshal(v); return string(b) }

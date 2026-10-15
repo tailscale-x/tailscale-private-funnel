@@ -67,27 +67,31 @@ func (a Agent) Send(ctx context.Context, exposures []Exposure) error {
 }
 
 func (a Agent) SendSnapshot(ctx context.Context, path string, payload any) error {
+	_, err := a.SnapshotResponse(ctx, path, payload)
+	return err
+}
+func (a Agent) SnapshotResponse(ctx context.Context, path string, payload any) ([]byte, error) {
 	pub, priv, err := LoadOrCreate(a.DataDir + "/report-identity.json")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	e, err := NewEnvelope(a.NodeID, payload, pub, priv, time.Now())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	body, _ := json.Marshal(e)
 	req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(a.ManagementURL, "/")+path, strings.NewReader(string(body)))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	res, err := a.HTTPClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer res.Body.Close()
 	if res.StatusCode/100 != 2 {
-		return fmt.Errorf("snapshot: HTTP %d", res.StatusCode)
+		return nil, fmt.Errorf("snapshot: HTTP %d", res.StatusCode)
 	}
-	return nil
+	return io.ReadAll(io.LimitReader(res.Body, 2<<20))
 }

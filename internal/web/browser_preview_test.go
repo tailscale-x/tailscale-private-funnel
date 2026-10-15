@@ -3,6 +3,13 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/libdns/libdns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
@@ -10,12 +17,6 @@ import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
-	"net/http"
-	"net/http/httptest"
-	"os"
-	"strings"
-	"testing"
-	"time"
 )
 
 // Opt-in local fixture used for browser QA; it is never linked into the binary.
@@ -33,12 +34,12 @@ func TestBrowserPreview(t *testing.T) {
 	_ = s.DeleteProvider("fixture")
 	_ = s.SaveProvider("cloudflare-dev", "cloudflare", map[string]string{"api_token": "synthetic-secret", "account_id": "synthetic-account"}, true)
 	_ = s.AddZone("cloudflare-dev", "example.com")
-	_ = s.UpsertNode("ingress-dev", "ingress", "development-ingress")
+	_ = s.UpsertNode("gateway-dev", "docker-gateway", "development-gateway")
 	_ = s.UpsertNode("edge-dev", "loadbalancer", "public-edge")
 	_ = s.SetJSON("node_deployment:edge-dev", nodeDeployment{LoadBalancerHostname: "edge.example.com"})
-	_ = s.SetJSON("node_deployment:ingress-dev", nodeDeployment{})
+	_ = s.SetJSON("node_deployment:gateway-dev", nodeDeployment{})
 	_ = s.SetJSON("access_roles", AccessSettings{Roles: map[string][]string{"admin": {"node:preview"}, "viewer": {"node:viewer"}, "operator": {"node:operator"}}})
-	_ = s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "Development apps", HostnameRegexes: []string{`[^.]+[.]example[.]com`}, IngressIDs: []string{"ingress-dev"}, LoadBalancerIDs: []string{"edge-dev"}, Enabled: true}}})
+	_ = s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "Development apps", HostnameRegexes: []string{`[^.]+[.]example[.]com`}, GatewayIDs: []string{"gateway-dev"}, Enabled: true}}})
 	_ = s.SetSecret("tailscale_oauth_client_id", "synthetic")
 	_ = s.SetSecret("tailscale_oauth_client_secret", "synthetic")
 	serviceAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -64,33 +65,35 @@ func TestBrowserPreview(t *testing.T) {
 	c.TailscaleClient = &tailscale.Client{HTTP: serviceAPI.Client(), APIBase: serviceAPI.URL, OAuthBase: serviceAPI.URL, Tailnet: "example.ts.net"}
 	c.ReleaseCheck = func(context.Context, string) error { return nil }
 	pub, priv, _ := report.GenerateKey()
-	_ = s.BindNodeIdentity("ingress-dev", encodePublicKey(pub), "synthetic-ingress-device", []string{"100.70.0.9"})
-	_ = s.RenameResource("node", "ingress-dev", "Development ingress")
+	_ = s.BindNodeIdentity("gateway-dev", encodePublicKey(pub), "synthetic-gateway-device", []string{"100.70.0.9"})
+	_ = s.RenameResource("node", "gateway-dev", "Development gateway")
 	_ = s.RenameResource("node", "edge-dev", "Public edge")
 	_ = s.RenameResource("provider", "cloudflare-dev", "Development DNS")
-	_ = s.UpsertApplication(store.ApplicationRecord{ID: "demo-app", Name: "Checkout demo", ServiceName: "svc:demo-checkout", ServiceFQDN: "svc:demo-checkout", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"checkout.example.com"}, AllowedIngressNodes: []string{"ingress-dev"}, Enabled: true})
+	_ = s.UpsertApplication(store.ApplicationRecord{ID: "demo-app", Name: "Checkout demo", ServiceName: "svc:demo-checkout", ServiceFQDN: "svc:demo-checkout", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"checkout.example.com"}, AllowedGatewayNodes: []string{"gateway-dev"}, Enabled: true})
 	record := libdns.RR{Name: "checkout.example.com", Type: "CNAME", Data: "edge.example.com"}
 	f.records["example.com"] = []libdns.Record{record}
-	_ = s.ReplaceLedger("cloudflare-dev", "example.com", "ingress:ingress-dev", []libdns.Record{record})
+	_ = s.ReplaceLedger("cloudflare-dev", "example.com", "gateway:gateway-dev", []libdns.Record{record})
 	_ = s.SetJSON("zone_sync:cloudflare-dev:example.com", "Reconciled")
 	zones, _ := s.Zones()
 	for _, z := range zones {
 		_ = s.SetJSON("zone_last_sync:"+z.ID, time.Now().Unix())
 	}
 	seedPeers := func() {
-		envelope, _ := report.NewEnvelope("ingress-dev", map[string]any{"exposures": []dns.IngressExposure{{ApplicationID: "demo-app", ServiceName: "svc:demo-checkout", PublicHostname: "checkout.example.com", Port: 8080, BackendHostname: "checkout", Networks: []string{"demo-network"}, Reachable: true}}, "expires_at": time.Now().Add(5 * time.Minute).Unix()}, pub, priv, time.Now())
+		envelope, _ := report.NewEnvelope("gateway-dev", map[string]any{"exposures": []dns.GatewayExposure{{ApplicationID: "demo-app", ServiceName: "svc:demo-checkout", PublicHostname: "checkout.example.com", Port: 8080, BackendHostname: "checkout", Networks: []string{"demo-network"}, Reachable: true}}, "expires_at": time.Now().Add(5 * time.Minute).Unix()}, pub, priv, time.Now())
 		raw, _ := json.Marshal(envelope)
-		_ = s.AcceptReport("ingress-dev", envelope.Nonce, raw, envelope.PublicKey)
+		_ = s.AcceptReport("gateway-dev", envelope.Nonce, raw, envelope.PublicKey)
 
 		var probes []nodeconfig.Probe
-		_ = s.GetJSON("node_probes:ingress-dev", &probes)
-		snapshot := nodeconfig.PeerSnapshot{Sources: []string{"docker", "tailnet"}, Tags: []string{"tag:tailscale-private-funnel", "tag:development"}, Roles: []string{"node:ingress-dev"}, ReceivedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(5 * time.Minute).Unix(), Peers: []nodeconfig.Peer{{ID: "test-backend", Hostname: "test-backend", DNSName: "test-backend.example.ts.net", Addresses: []string{"100.70.0.1"}, Online: true}}}
+		_ = s.GetJSON("node_probes:gateway-dev", &probes)
+		_ = s.UpsertNode("tailnet-dev", "tailnet-gateway", "tailnet-dev")
+		_ = s.SetJSON("node_peers:tailnet-dev", nodeconfig.PeerSnapshot{Sources: []string{"tailnet"}, Tags: []string{"tag:tailscale-private-funnel"}, ReceivedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(5 * time.Minute).Unix(), Peers: []nodeconfig.Peer{{ID: "test-backend", Hostname: "test-backend", Addresses: []string{"100.70.0.1"}, Online: true}}})
+		snapshot := nodeconfig.PeerSnapshot{Sources: []string{"docker", "tailnet"}, Tags: []string{"tag:tailscale-private-funnel", "tag:development"}, Roles: []string{"node:gateway-dev"}, ReceivedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(5 * time.Minute).Unix(), Peers: []nodeconfig.Peer{{ID: "test-backend", Hostname: "test-backend", DNSName: "test-backend.example.ts.net", Addresses: []string{"100.70.0.1"}, Online: true}}}
 		for _, p := range probes {
 			if p.ExpiresAt > time.Now().Unix() {
 				snapshot.Results = append(snapshot.Results, nodeconfig.ProbeResult{ID: p.ID, DeviceID: p.DeviceID, Port: p.Port, Reachable: true, CheckedAt: time.Now().Unix()})
 			}
 		}
-		_ = s.SetJSON("node_peers:ingress-dev", snapshot)
+		_ = s.SetJSON("node_peers:gateway-dev", snapshot)
 	}
 	seedPeers()
 	go func() {

@@ -41,6 +41,16 @@ jobs:
               raise SystemExit("generated app.css differs from the committed asset")
           PY
           git diff --exit-code -- internal/web/ui/layout_templ.go internal/web/assets/icons
+      - uses: azure/setup-helm@v4
+      - name: Validate Kubernetes chart
+        run: |
+          helm lint charts/tailscale-private-funnel --set bootstrap.existingSecret=ci-bootstrap
+          for component in control loadbalancer k8s-gateway; do
+            helm lint charts/tailscale-private-funnel --set component="$component" --set bootstrap.existingSecret=ci-bootstrap
+            helm template ci charts/tailscale-private-funnel --set component="$component" --set bootstrap.existingSecret=ci-bootstrap > "/tmp/funnel-$component.yaml"
+          done
+          scripts/package-chart.sh v0.0.0-ci /tmp/funnel-chart-package
+          helm template ci /tmp/funnel-chart-package/tailscale-private-funnel-0.0.0-ci.tgz --set bootstrap.existingSecret=ci-bootstrap > /tmp/funnel-packaged-chart.yaml
       - run: go test ./...
       - run: go vet ./...
       - run: go test -tags caddy ./...
@@ -83,7 +93,11 @@ jobs:
           path: dist
       - uses: docker/setup-buildx-action@v3
       - name: Package the prebuilt binary
-        run: docker buildx build --platform linux/amd64 --file Dockerfile --tag private-funnel:ci .
+        run: |
+          docker buildx build --load --platform linux/amd64 --file Dockerfile --tag private-funnel:ci .
+          docker run --rm private-funnel:ci version
+          docker run --rm private-funnel:ci k8s-gateway controller serve --help
+          docker run --rm private-funnel:ci k8s-gateway forwarder serve --help
 
   image:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -92,6 +106,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -105,6 +121,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
+        id: publish
         with:
           context: .
           file: Dockerfile
@@ -112,10 +129,48 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ghcr.io/tailscale-x/tailscale-private-funnel:${{ github.ref_name }}
           build-args: VERSION=${{ github.ref_name }}
+      - name: Verify published image platforms
+        env:
+          IMAGE_DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          docker buildx imagetools inspect --raw "ghcr.io/tailscale-x/tailscale-private-funnel@$IMAGE_DIGEST" > /tmp/image-index.json
+          python3 - <<'PY'
+          import json
+          index = json.load(open('/tmp/image-index.json'))
+          platforms = {(m.get('platform', {}).get('os'), m.get('platform', {}).get('architecture')) for m in index.get('manifests', [])}
+          assert {('linux', 'amd64'), ('linux', 'arm64')} <= platforms, platforms
+          PY
+
+  chart:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Package versioned Helm chart
+        run: scripts/package-chart.sh "$GITHUB_REF_NAME" dist
+      - name: Publish and verify OCI chart
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          chart_version="${GITHUB_REF_NAME#v}"
+          helm push "dist/tailscale-private-funnel-${chart_version}.tgz" oci://ghcr.io/tailscale-x/charts
+          mkdir -p /tmp/chart-verification
+          helm pull oci://ghcr.io/tailscale-x/charts/tailscale-private-funnel --version "$chart_version" --destination /tmp/chart-verification
+          cmp "dist/tailscale-private-funnel-${chart_version}.tgz" "/tmp/chart-verification/tailscale-private-funnel-${chart_version}.tgz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tailscale-private-funnel-chart
+          path: dist/*.tgz
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [binaries, image]
+    needs: [binaries, image, chart]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -125,6 +180,27 @@ jobs:
         with:
           name: tailscale-private-funnel-binaries
           path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: tailscale-private-funnel-chart
+          path: dist
+      - name: Include chart metadata and checksums
+        env:
+          IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          version = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          path = Path("dist/release-metadata.json")
+          metadata = json.loads(path.read_text())
+          metadata["image_digest"] = os.environ["IMAGE_DIGEST"]
+          metadata["image_pinned"] = "ghcr.io/tailscale-x/tailscale-private-funnel@" + os.environ["IMAGE_DIGEST"]
+          metadata["helm_chart"] = {"reference": "oci://ghcr.io/tailscale-x/charts/tailscale-private-funnel", "version": version, "artifact": f"tailscale-private-funnel-{version}.tgz"}
+          path.write_text(json.dumps(metadata, indent=2) + "\n")
+          files = sorted(p for p in Path("dist").iterdir() if p.is_file() and p.name != "SHA256SUMS")
+          Path("dist/SHA256SUMS").write_text("".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n" for p in files))
+          PY
       - uses: softprops/action-gh-release@v2
         with:
           body_path: docs/releases/${{ github.ref_name }}.md

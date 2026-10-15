@@ -58,7 +58,7 @@ func (c *Control) zoneDesired(r *http.Request, z store.ManagedZone, node store.N
 	if node.Revoked {
 		return nil, nil
 	}
-	if node.Mode == "ingress" {
+	if store.IsGateway(node.Mode) {
 		return nil, nil
 	}
 	deployment, err := c.nodeDeployment(node.ID)
@@ -83,6 +83,17 @@ func (c *Control) zoneDesired(r *http.Request, z store.ManagedZone, node store.N
 	}
 	if health.ReceivedAt <= 0 || time.Since(time.Unix(health.ReceivedAt, 0)) > ttl {
 		return nil, nil
+	}
+	if deployment.AddressSource == "kubernetes" {
+		ips, err := c.kubernetesAddresses(r.Context(), node, deployment)
+		if err != nil {
+			return nil, err
+		}
+		records := make([]libdns.Record, 0, len(ips))
+		for _, ip := range ips {
+			records = append(records, libdns.RR{Name: deployment.LoadBalancerHostname, Type: "A", Data: ip, TTL: time.Minute})
+		}
+		return records, nil
 	}
 	client, err := c.tailscaleRuntimeClient()
 	if err != nil {
@@ -131,7 +142,7 @@ func (c *Control) zoneDNSSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	seen := map[string]bool{}
-	for _, mode := range []string{"loadbalancer", "ingress"} {
+	for _, mode := range []string{"loadbalancer", "docker-gateway"} {
 		nodes, err := c.Store.Nodes(mode)
 		if err != nil {
 			http.Error(w, "Unable to read nodes", 500)

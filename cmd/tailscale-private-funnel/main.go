@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/app"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/gateway"
 )
 
 var version = "dev"
@@ -17,9 +18,9 @@ func main() {
 	app.BuildVersion = version
 	root := &cobra.Command{
 		Use:   "tailscale-private-funnel",
-		Short: "Private funnel loadbalancer, ingress, and control service",
+		Short: "Private funnel loadbalancer, gateway, and control service",
 	}
-	root.AddCommand(modeCommand("control"), modeCommand("loadbalancer"), modeCommand("ingress"), versionCommand())
+	root.AddCommand(modeCommand("control"), modeCommand("loadbalancer"), modeCommand("docker-gateway"), modeCommand("tailnet-gateway"), modeCommand("k8s-gateway"), versionCommand())
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := root.ExecuteContext(ctx); err != nil {
@@ -31,6 +32,50 @@ func main() {
 func modeCommand(mode string) *cobra.Command {
 	var opts app.Options
 	cmd := &cobra.Command{Use: mode, Short: mode + " mode"}
+	if mode == "docker-gateway" {
+		var listen, target string
+		relay := &cobra.Command{Use: "relay", Hidden: true}
+		serve := &cobra.Command{Use: "serve", RunE: func(cmd *cobra.Command, _ []string) error { return gateway.ServeRelay(cmd.Context(), listen, target) }}
+		serve.Flags().StringVar(&listen, "listen", ":10000", "relay listener")
+		serve.Flags().StringVar(&target, "target", "", "backend address")
+		check := &cobra.Command{Use: "check", RunE: func(cmd *cobra.Command, _ []string) error { return gateway.CheckRelay(target) }}
+		check.Flags().StringVar(&target, "target", "", "backend address")
+		relay.AddCommand(serve, check)
+		cmd.AddCommand(relay)
+	}
+	if mode == "control" || mode == "loadbalancer" {
+		kubernetes := &cobra.Command{Use: "kubernetes", Hidden: true}
+		for _, action := range []string{"bootstrap", "serve", "import-state"} {
+			var k app.Options
+			var sourceState, sourceData string
+			operation := action
+			command := &cobra.Command{Use: action, RunE: func(cmd *cobra.Command, _ []string) error {
+				switch operation {
+				case "bootstrap":
+					return app.BootstrapKubernetesNode(cmd.Context(), mode, k)
+				case "serve":
+					return app.ServeKubernetesNode(cmd.Context(), mode, k)
+				default:
+					return app.ImportKubernetesNode(cmd.Context(), mode, k, sourceState, sourceData)
+				}
+			}}
+			command.Flags().StringVar(&k.KubeNamespace, "namespace", "", "Kubernetes namespace")
+			command.Flags().StringVar(&k.IdentitySecret, "identity-secret", "", "precreated identity Secret")
+			command.Flags().StringVar(&k.PersistentDir, "persistent-dir", "/persistent", "SQLite or Caddy PVC mount")
+			command.Flags().StringVar(&k.BootstrapSecretDir, "bootstrap-secret-dir", "/bootstrap", "bootstrap Secret mount")
+			command.Flags().StringVar(&k.Kubeconfig, "kubeconfig", "", "Kubernetes client configuration")
+			command.Flags().StringVar(&k.StateDir, "state-dir", "", "runtime identity directory")
+			command.Flags().StringVar(&k.DataDir, "data-dir", "", "runtime application directory")
+			command.Flags().StringVar(&k.Hostname, "hostname", "", "bootstrap hostname")
+			command.Flags().StringVar(&k.Tailnet, "tailnet", "", "bootstrap tailnet")
+			command.Flags().StringVar(&k.KubernetesService, "kubernetes-service", "", "public Service name")
+			command.Flags().StringVar(&k.ProbeListen, "probe-listen", ":9090", "health listener")
+			command.Flags().StringVar(&sourceState, "source-state-dir", "", "stopped source tsnet state")
+			command.Flags().StringVar(&sourceData, "source-data-dir", "", "stopped source application data")
+			kubernetes.AddCommand(command)
+		}
+		cmd.AddCommand(kubernetes)
+	}
 	setup := &cobra.Command{Use: "join", Short: "bootstrap and run control using Tailscale OAuth", RunE: func(cmd *cobra.Command, _ []string) error {
 		return app.Setup(cmd.Context(), mode, opts)
 	}}
@@ -47,9 +92,10 @@ func modeCommand(mode string) *cobra.Command {
 	setup.Flags().BoolVar(&opts.AcceptDNS, "accept-dns", true, "accept Tailscale DNS settings")
 	setup.Flags().StringSliceVar(&opts.Tags, "advertise-tags", nil, "tags to advertise")
 	if mode == "control" {
+		setup.Flags().BoolVar(&opts.BootstrapOnly, "bootstrap-only", false, "join and persist identity without starting control")
 		cmd.AddCommand(setup)
 	}
-	if mode == "loadbalancer" || mode == "ingress" {
+	if mode != "control" {
 		deploy := &cobra.Command{Use: "join", Short: "enroll, install, and start the native service", RunE: func(cmd *cobra.Command, _ []string) error {
 			return app.Deploy(cmd.Context(), mode, opts)
 		}}
@@ -71,6 +117,8 @@ func modeCommand(mode string) *cobra.Command {
 		if mode == "loadbalancer" {
 			deploy.Flags().StringVar(&opts.LoadBalancerHostname, "loadbalancer-hostname", "", "public DNS hostname")
 		}
+		deploy.Flags().StringVar(&opts.BootstrapSecretDir, "bootstrap-secret-dir", "", "mounted Kubernetes enrollment Secret directory")
+		deploy.Flags().BoolVar(&opts.InstallService, "install-service", mode != "k8s-gateway", "install and start systemd after enrollment")
 		deploy.Flags().StringSliceVar(&opts.LabelKeys, "label-key", nil, "additional local exposure label aliases")
 		deploy.Flags().StringSliceVar(&opts.DenyNetworks, "deny-network", nil, "local Docker network name or ID pattern to deny")
 		cmd.AddCommand(deploy)
@@ -85,11 +133,15 @@ func modeCommand(mode string) *cobra.Command {
 				return app.Service(mode, action, opts)
 			}})
 		}
-		cmd.AddCommand(service)
+		if mode != "k8s-gateway" {
+			cmd.AddCommand(service)
+		}
 		doctor := &cobra.Command{Use: "doctor", Short: "check deployment prerequisites", RunE: func(cmd *cobra.Command, _ []string) error {
 			return app.Doctor(mode, opts)
 		}}
-		cmd.AddCommand(doctor)
+		if mode != "k8s-gateway" {
+			cmd.AddCommand(doctor)
+		}
 	}
 	serve := &cobra.Command{Use: "serve", Short: "run the selected mode", RunE: func(cmd *cobra.Command, _ []string) error {
 		return app.Serve(cmd.Context(), mode, opts)
@@ -110,10 +162,63 @@ func modeCommand(mode string) *cobra.Command {
 	if mode == "loadbalancer" {
 		serve.Flags().StringVar(&opts.LoadBalancerHostname, "loadbalancer-hostname", "", "public DNS hostname")
 	}
+	if mode == "k8s-gateway" {
+		serve.Flags().StringVar(&opts.Kubeconfig, "kubeconfig", "", "Kubernetes client config (default: in-cluster)")
+		serve.Flags().StringVar(&opts.GatewayClass, "gateway-class", "tailscale-private-funnel", "GatewayClass to reconcile")
+		serve.Flags().StringVar(&opts.IngressClass, "ingress-class", "tailscale-private-funnel", "IngressClass to reconcile")
+		serve.Flags().StringSliceVar(&opts.WatchNamespaces, "watch-namespace", nil, "namespaces to watch (default: all)")
+		serve.Flags().StringVar(&opts.ProbeListen, "probe-listen", ":9090", "local health listener")
+	}
 	serve.Flags().StringSliceVar(&opts.LabelKeys, "label-key", nil, "additional local exposure label aliases")
 	serve.Flags().StringSliceVar(&opts.DenyNetworks, "deny-network", nil, "local Docker network name or ID pattern to deny")
 	serve.Flags().StringVar(&opts.ConfigFile, "config", "", "deployment configuration path")
-	cmd.AddCommand(serve)
+	serve.Flags().BoolVar(&opts.RequireJoined, "require-joined", false, "fail unless persistent bootstrap state exists")
+	if mode == "control" || mode == "loadbalancer" {
+		serve.Flags().StringVar(&opts.ProbeListen, "probe-listen", "", "local Kubernetes health probe listener")
+	}
+	if mode == "loadbalancer" {
+		serve.Flags().StringVar(&opts.KubeNamespace, "kubernetes-namespace", "", "public Service namespace")
+		serve.Flags().StringVar(&opts.KubernetesService, "kubernetes-service", "", "discover public addresses from this Service")
+	}
+	if mode == "k8s-gateway" {
+		controller := &cobra.Command{Use: "controller", Short: "Kubernetes routing controller and identity broker"}
+		serve = &cobra.Command{Use: "serve", Short: "run the Kubernetes controller and identity broker", RunE: func(cmd *cobra.Command, _ []string) error { return app.ServeKubernetesController(cmd.Context(), opts) }}
+		serve.Flags().StringVar(&opts.Kubeconfig, "kubeconfig", "", "Kubernetes config (default: in-cluster)")
+		serve.Flags().StringVar(&opts.GatewayClass, "gateway-class", "tailscale-private-funnel", "selected GatewayClass")
+		serve.Flags().StringVar(&opts.IngressClass, "ingress-class", "tailscale-private-funnel", "selected IngressClass")
+		serve.Flags().StringSliceVar(&opts.WatchNamespaces, "watch-namespace", nil, "namespaces to watch (default: all)")
+		serve.Flags().StringVar(&opts.ProbeListen, "probe-listen", ":9090", "controller health listener")
+		serve.Flags().StringVar(&opts.KubeNamespace, "namespace", "", "installation namespace")
+		serve.Flags().StringVar(&opts.Installation, "installation", "", "Helm installation name")
+		serve.Flags().StringVar(&opts.ControllerName, "controller-name", "tailscale-private-funnel.io/controller", "unique Gateway API controller identifier")
+		controller.AddCommand(serve)
+		var boot app.Options
+		bootstrap := &cobra.Command{Use: "bootstrap", Hidden: true, RunE: func(cmd *cobra.Command, _ []string) error {
+			return app.BootstrapKubernetesController(cmd.Context(), boot)
+		}}
+		bootstrap.Flags().StringVar(&boot.KubeNamespace, "namespace", "", "installation namespace")
+		bootstrap.Flags().StringVar(&boot.Installation, "installation", "", "Helm installation name")
+		bootstrap.Flags().StringVar(&boot.BootstrapSecretDir, "bootstrap-secret-dir", "/bootstrap", "mounted enrollment Secret")
+		bootstrap.Flags().StringVar(&boot.StateDir, "state-dir", "/var/lib/tailscale-private-funnel/state", "temporary join state")
+		bootstrap.Flags().StringVar(&boot.DataDir, "data-dir", "/var/lib/tailscale-private-funnel/data", "temporary join data")
+		controller.AddCommand(bootstrap)
+		cmd.AddCommand(controller)
+		var forward app.Options
+		forwarder := &cobra.Command{Use: "forwarder", Short: "Node-local Tailscale Service forwarding"}
+		run := &cobra.Command{Use: "serve", RunE: func(cmd *cobra.Command, _ []string) error {
+			return app.ServeKubernetesForwarder(cmd.Context(), forward)
+		}}
+		run.Flags().StringVar(&forward.BrokerURL, "broker-url", "", "HTTPS identity broker")
+		run.Flags().StringVar(&forward.BrokerCAFile, "broker-ca-file", "/broker/ca.crt", "broker CA")
+		run.Flags().StringVar(&forward.BrokerTokenFile, "broker-token-file", "/identity/token", "audience-bound pod token")
+		forwarder.AddCommand(run)
+		cmd.AddCommand(forwarder)
+	} else {
+		cmd.AddCommand(serve)
+	}
+	if mode == "k8s-gateway" {
+		return cmd
+	}
 	status := &cobra.Command{Use: "status", Short: "show local node status", RunE: func(cmd *cobra.Command, _ []string) error {
 		return app.Status(mode, opts)
 	}}

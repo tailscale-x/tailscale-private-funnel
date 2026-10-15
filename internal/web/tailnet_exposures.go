@@ -14,15 +14,16 @@ import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 )
 
 func (c *Control) peerSnapshot(id string) (nodeconfig.PeerSnapshot, error) {
 	var snapshot nodeconfig.PeerSnapshot
 	if err := c.Store.GetJSON("node_peers:"+id, &snapshot); err != nil {
-		return snapshot, fmt.Errorf("load balancer has not reported peers")
+		return snapshot, fmt.Errorf("tailnet gateway has not reported peers")
 	}
 	if snapshot.ExpiresAt <= time.Now().Unix() || snapshot.ReceivedAt < time.Now().Add(-5*time.Minute).Unix() {
-		return snapshot, fmt.Errorf("load balancer peer information is stale; wait for a fresh report")
+		return snapshot, fmt.Errorf("tailnet gateway peer information is stale; wait for a fresh report")
 	}
 	return snapshot, nil
 }
@@ -32,8 +33,8 @@ func (c *Control) nodePeers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unknown or revoked node", 403)
 		return
 	}
-	if node.Mode != "loadbalancer" {
-		http.Error(w, "Load balancer required", 403)
+	if node.Mode != "tailnet-gateway" {
+		http.Error(w, "Tailnet gateway required", 403)
 		return
 	}
 	var env report.Envelope
@@ -122,8 +123,8 @@ func (c *Control) peersGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	node, err := c.Store.Node(chi.URLParam(r, "id"))
-	if err != nil || node.Revoked || node.Mode != "loadbalancer" {
-		http.Error(w, "Active load balancer required", 400)
+	if err != nil || node.Revoked || node.Mode != "tailnet-gateway" {
+		http.Error(w, "Active tailnet gateway required", 400)
 		return
 	}
 	snapshot, err := c.peerSnapshot(node.ID)
@@ -131,7 +132,6 @@ func (c *Control) peersGet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 409)
 		return
 	}
-	snapshot.LoadBalancerID = node.ID
 	writeJSON(w, snapshot)
 }
 func findPeer(snapshot nodeconfig.PeerSnapshot, id string) (nodeconfig.Peer, bool) {
@@ -146,8 +146,8 @@ func (c *Control) probeCreate(w http.ResponseWriter, r *http.Request) {
 	c.settingsMu.Lock()
 	defer c.settingsMu.Unlock()
 	node, err := c.Store.Node(chi.URLParam(r, "id"))
-	if err != nil || node.Revoked || node.Mode != "loadbalancer" {
-		http.Error(w, "Active load balancer required", 400)
+	if err != nil || node.Revoked || node.Mode != "tailnet-gateway" {
+		http.Error(w, "Active tailnet gateway required", 400)
 		return
 	}
 	var input struct {
@@ -166,11 +166,11 @@ func (c *Control) probeCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !contains(snapshot.Sources, "tailnet") {
-		http.Error(w, "Wait for load balancer peer discovery", 409)
+		http.Error(w, "Wait for tailnet gateway peer discovery", 409)
 		return
 	}
 	if _, ok := findPeer(snapshot, input.DeviceID); !ok {
-		http.Error(w, "Select a device visible to this load balancer", 400)
+		http.Error(w, "Select a device visible to this tailnet gateway", 400)
 		return
 	}
 	var probes []nodeconfig.Probe
@@ -214,14 +214,14 @@ func (c *Control) saveTailnetExposure(w http.ResponseWriter, r *http.Request) {
 	c.provisionMu.Lock()
 	defer c.provisionMu.Unlock()
 	var input struct {
-		Name                    string `json:"name"`
-		DiscoveryLoadBalancerID string `json:"discovery_loadbalancer_id"`
-		DeviceID                string `json:"device_id"`
-		Hostname                string `json:"hostname"`
-		Port                    uint16 `json:"port"`
-		Enabled                 bool   `json:"enabled"`
-		Revision                int64  `json:"revision"`
-		ProbeID                 string `json:"probe_id"`
+		Name      string `json:"name"`
+		GatewayID string `json:"gateway_id"`
+		DeviceID  string `json:"device_id"`
+		Hostname  string `json:"hostname"`
+		Port      uint16 `json:"port"`
+		Enabled   bool   `json:"enabled"`
+		Revision  int64  `json:"revision"`
+		ProbeID   string `json:"probe_id"`
 	}
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192))
 	dec.DisallowUnknownFields()
@@ -229,9 +229,9 @@ func (c *Control) saveTailnetExposure(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid exposure", 400)
 		return
 	}
-	node, err := c.Store.Node(input.DiscoveryLoadBalancerID)
-	if err != nil || node.Revoked || node.Mode != "loadbalancer" {
-		http.Error(w, "Active load balancer required", 400)
+	node, err := c.Store.Node(input.GatewayID)
+	if err != nil || node.Revoked || node.Mode != "tailnet-gateway" {
+		http.Error(w, "Active tailnet gateway required", 400)
 		return
 	}
 	host := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(input.Hostname), "."))
@@ -275,7 +275,7 @@ func (c *Control) saveTailnetExposure(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !contains(snapshot.Sources, "tailnet") {
-			http.Error(w, "Load balancer peer discovery is unavailable", 409)
+			http.Error(w, "Tailnet gateway peer discovery is unavailable", 409)
 			return
 		}
 		var ok bool
@@ -284,8 +284,8 @@ func (c *Control) saveTailnetExposure(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Select a visible backend device", 400)
 			return
 		}
-		if ok, _ := c.loadExposurePolicy().Allows(host, node.ID, nil, snapshot.Roles); !ok {
-			http.Error(w, "Exposure policy denies this hostname or load balancer", 403)
+		if ok, _ := c.loadExposurePolicy().Allows(host, []string{node.ID, node.TailnetID}, snapshot.Roles); !ok {
+			http.Error(w, "Exposure policy denies this hostname or tailnet gateway", 403)
 			return
 		}
 		if _, e = c.managedZone(host); e != nil {
@@ -316,7 +316,7 @@ func (c *Control) saveTailnetExposure(w http.ResponseWriter, r *http.Request) {
 		app.BackendDeviceID = peer.ID
 		app.BackendAddresses = nil
 		app.PublicHostnames = []string{host}
-		app.AllowedIngressNodes = nil
+		app.AllowedGatewayNodes = nil
 	}
 	if input.Name != "" {
 		name, nameErr := store.ValidateName(input.Name)
@@ -330,7 +330,20 @@ func (c *Control) saveTailnetExposure(w http.ResponseWriter, r *http.Request) {
 	}
 	app.Enabled = input.Enabled
 	app.PolicyRevision = time.Now().UnixMicro()
-	app.ServiceName = "direct:" + app.ID
+	app.ServiceName = "svc:tailscale-private-funnel-app-" + app.ID
+	app.ServicePort = app.BackendPort
+	app.AllowedGatewayNodes = []string{node.ID}
+	client, e := c.tailscaleRuntimeClient()
+	if e != nil {
+		http.Error(w, e.Error(), 428)
+		return
+	}
+	service, e := client.CreateService(r.Context(), tailscale.Service{Name: app.ServiceName, DisplayName: host, Ports: []string{fmt.Sprintf("tcp:%d", app.ServicePort)}, Tags: []string{"tag:tailscale-private-funnel"}})
+	if e != nil {
+		http.Error(w, e.Error(), 502)
+		return
+	}
+	app.ServiceFQDN = selectServiceTarget(service.Addresses, app.ServiceName, client.Tailnet)
 	err = c.Store.UpsertApplication(app)
 	if err != nil {
 		http.Error(w, "Unable to save exposure", 500)
@@ -338,7 +351,7 @@ func (c *Control) saveTailnetExposure(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = c.Store.Audit("tailnet.exposure.save:"+app.ID, identityFromRequest(r))
 	cleanupErr := c.ReconcilePolicy(r.Context())
-	writeJSON(w, map[string]any{"application": app, "cleanup_pending": cleanupErr != nil, "message": "Saved. Load balancer applies signed configuration on its next poll."})
+	writeJSON(w, map[string]any{"application": app, "cleanup_pending": cleanupErr != nil, "message": "Saved. Tailnet gateway applies signed configuration on its next poll."})
 }
 func (c *Control) deleteTailnetExposure(w http.ResponseWriter, r *http.Request) {
 	c.provisionMu.Lock()

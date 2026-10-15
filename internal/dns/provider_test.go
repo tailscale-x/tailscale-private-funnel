@@ -3,8 +3,9 @@ package dns
 import (
 	"context"
 	"fmt"
-	"github.com/libdns/libdns"
 	"testing"
+
+	"github.com/libdns/libdns"
 )
 
 func TestCatalogIncludesCloudflareAndCommonProviders(t *testing.T) {

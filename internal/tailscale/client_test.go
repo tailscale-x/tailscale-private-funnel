@@ -44,7 +44,7 @@ func TestServiceLifecycleUsesExactAPIEndpoints(t *testing.T) {
 	}))
 	defer srv.Close()
 	client := Client{HTTP: srv.Client(), ClientID: "id", ClientSecret: "secret", Tailnet: "example.ts.net", APIBase: srv.URL + "/api/v2", OAuthBase: srv.URL}
-	key, err := client.CreateAuthKey(context.Background(), "ingress", "node", []string{"tag:tailscale-private-funnel"})
+	key, err := client.CreateAuthKey(context.Background(), "docker-gateway", "node", []string{"tag:tailscale-private-funnel"})
 	if err != nil || key != "tskey-test" {
 		t.Fatalf("auth key=%q err=%v", key, err)
 	}

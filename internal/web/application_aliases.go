@@ -13,11 +13,11 @@ import (
 
 // An alias shares a Docker application's Service, backend and freshness lease.
 // It is derived from a validated signed backend report, never a second backend.
-func (c *Control) expandDockerAliases(exposures []dns.IngressExposure, apps []store.ApplicationRecord, node store.NodeRecord, roles []string) []dns.IngressExposure {
+func (c *Control) expandDockerAliases(exposures []dns.GatewayExposure, apps []store.ApplicationRecord, node store.NodeRecord, roles []string) []dns.GatewayExposure {
 	return c.expandDockerAliasesForPolicy(exposures, apps, node, roles, c.loadExposurePolicy())
 }
-func (c *Control) expandDockerAliasesForPolicy(exposures []dns.IngressExposure, apps []store.ApplicationRecord, node store.NodeRecord, roles []string, d policy.Document) []dns.IngressExposure {
-	out := append([]dns.IngressExposure(nil), exposures...)
+func (c *Control) expandDockerAliasesForPolicy(exposures []dns.GatewayExposure, apps []store.ApplicationRecord, node store.NodeRecord, roles []string, d policy.Document) []dns.GatewayExposure {
+	out := append([]dns.GatewayExposure(nil), exposures...)
 	seen := map[string]bool{}
 	for _, e := range exposures {
 		seen[e.ApplicationID+":"+e.PublicHostname] = true
@@ -95,7 +95,7 @@ func (c *Control) applicationAlias(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	allowed := false
-	for _, id := range app.AllowedIngressNodes {
+	for _, id := range app.AllowedGatewayNodes {
 		n, err := c.Store.Node(id)
 		if err != nil || n.Revoked {
 			continue

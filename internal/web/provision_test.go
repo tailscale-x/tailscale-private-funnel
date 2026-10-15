@@ -3,15 +3,16 @@ package web
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 )
 
 func TestPolicyProvisioning(t *testing.T) {
@@ -21,15 +22,15 @@ func TestPolicyProvisioning(t *testing.T) {
 	}
 	defer s.Close()
 	installTestEdge(t, s)
-	_ = s.SetJSON("node_deployment:ingress-one", nodeDeployment{})
-	s.UpsertNodeEnrollment("ingress-one", "enroll-one", "ingress", "node")
-	s.BindNodeIdentity("ingress-one", "key", "ts-one", nil)
+	_ = s.SetJSON("node_deployment:gateway-one", nodeDeployment{})
+	s.UpsertNodeEnrollment("gateway-one", "enroll-one", "docker-gateway", "node")
+	s.BindNodeIdentity("gateway-one", "key", "ts-one", nil)
 	s.SetJSON("tailnet", map[string]string{"name": "example.ts.net", "loadbalancer_hostname": "edge.example.com"})
 	s.SetSecret("tailscale_oauth_client_id", "id")
 	s.SetSecret("tailscale_oauth_client_secret", "secret")
 	s.SaveProvider("provider", "cloudflare", map[string]string{"api_token": "fixture"}, true)
 	s.AddZone("provider", "example.com")
-	s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "apps", HostnameRegexes: []string{`app[.]example[.]com`}, IngressIDs: []string{"ingress-one"}, Enabled: true}}})
+	s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "apps", HostnameRegexes: []string{`app[.]example[.]com`}, GatewayIDs: []string{"gateway-one"}, Enabled: true}}})
 	puts := 0
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "oauth/token") {
@@ -51,7 +52,7 @@ func TestPolicyProvisioning(t *testing.T) {
 	c := &Control{Store: s, TailscaleClient: &client}
 	h := c.Handler()
 	request := func(host string, port int, identity string) *httptest.ResponseRecorder {
-		body, _ := json.Marshal(map[string]any{"hostname": host, "backend_port": port, "node_id": "ingress-one"})
+		body, _ := json.Marshal(map[string]any{"hostname": host, "backend_port": port})
 		r := WithPrincipal(httptest.NewRequest("POST", "/api/node/config", bytes.NewReader(body)), Principal{NodeID: identity})
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
@@ -72,10 +73,10 @@ func TestPolicyProvisioning(t *testing.T) {
 		t.Fatalf("Service API mutations=%d", puts)
 	}
 	apps, _ := s.Applications()
-	if len(apps) != 1 || len(apps[0].AllowedIngressNodes) != 1 || apps[0].AllowedIngressNodes[0] != "ingress-one" {
+	if len(apps) != 1 || len(apps[0].AllowedGatewayNodes) != 1 || apps[0].AllowedGatewayNodes[0] != "gateway-one" {
 		t.Fatalf("applications=%+v", apps)
 	}
-	s.RevokeNode("ingress-one")
+	s.RevokeNode("gateway-one")
 	if w := request("app.example.com", 8080, "ts-one"); w.Code != 403 {
 		t.Fatalf("revoked=%d", w.Code)
 	}

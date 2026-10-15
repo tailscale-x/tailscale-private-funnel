@@ -15,6 +15,7 @@ import (
 
 	"github.com/libdns/libdns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/secretbox"
 	_ "modernc.org/sqlite"
 )
@@ -41,6 +42,7 @@ type ProviderRecord struct {
 }
 
 type NodeRecord struct {
+	ParentID   string `json:"parent_id,omitempty"`
 	Name       string `json:"name"`
 	ID         string `json:"id"`
 	Mode       string `json:"mode"`
@@ -74,10 +76,18 @@ type ManagedZone struct {
 }
 
 func Open(dataDir string) (*Store, error) {
+	return OpenDatabase(dataDir, dataDir)
+}
+
+// OpenDatabase keeps the encryption key separate from persistent SQLite files.
+func OpenDatabase(dataDir, databaseDir string) (*Store, error) {
+	if err := os.MkdirAll(databaseDir, 0700); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", filepath.Join(dataDir, "funnel.db"))
+	db, err := sql.Open("sqlite", filepath.Join(databaseDir, "funnel.db"))
 	if err != nil {
 		return nil, err
 	}
@@ -241,12 +251,15 @@ func Open(dataDir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	if err := s.migrateIngressNames(); err != nil {
+	if err := s.migrateExposures(); err != nil {
 		db.Close()
 		return nil, err
 	}
-
-	if err := s.migrateExposures(); err != nil {
+	if err := s.finishGatewayMigration(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := s.migrateSharedApplicationServices(); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -397,7 +410,7 @@ func (s *Store) StaleReportIDs(before int64) ([]string, error) {
 // before. Nodes without a heartbeat are left for explicit administrator
 // revocation because they may be completing their first bootstrap.
 func (s *Store) StaleNodes(before int64) ([]NodeRecord, error) {
-	rows, err := s.db.Query(`SELECT id,name,mode,hostname,public_key,revoked,last_report,tailnet_id,revoked_at FROM nodes WHERE revoked=0 AND mode IN ('loadbalancer','ingress') AND last_report>0 AND last_report < ?`, before)
+	rows, err := s.db.Query(`SELECT id,name,mode,hostname,node_key,revoked,last_report,tailnet_id,revoked_at FROM nodes WHERE revoked=0 AND mode IN ('loadbalancer','docker-gateway','tailnet-gateway','k8s-gateway') AND last_report>0 AND last_report < ?`, before)
 	if err != nil {
 		return nil, err
 	}
@@ -632,7 +645,7 @@ func (s *Store) BindEnrollment(id, code, publicKey, tailnetID, hostname string, 
 	}
 	if hostname != "" {
 		hostname = strings.SplitN(strings.TrimSuffix(hostname, "."), ".", 2)[0]
-		if _, err = tx.Exec(`UPDATE enrollments SET name=CASE WHEN mode='ingress' OR name=hostname THEN ? ELSE name END,hostname=? WHERE id=?`, hostname, hostname, id); err != nil {
+		if _, err = tx.Exec(`UPDATE enrollments SET name=CASE WHEN name=hostname THEN ? ELSE name END,hostname=? WHERE id=?`, hostname, hostname, id); err != nil {
 			return err
 		}
 	}
@@ -695,6 +708,9 @@ func (s *Store) Node(id string) (NodeRecord, error) {
 	var revoked int
 	err := s.db.QueryRow(`SELECT id,name,mode,hostname,COALESCE(node_key,''),revoked,last_report,revoked_at,tailnet_id FROM nodes WHERE id=?`, id).Scan(&n.ID, &n.Name, &n.Mode, &n.Hostname, &n.PublicKey, &revoked, &n.LastReport, &n.RevokedAt, &n.TailnetID)
 	n.Revoked = revoked != 0
+	if err == nil {
+		n.ParentID = s.ForwarderParent(n.ID)
+	}
 	return n, err
 }
 
@@ -703,6 +719,9 @@ func (s *Store) NodeByTailnetID(tailnetID string) (NodeRecord, error) {
 	var revoked int
 	err := s.db.QueryRow(`SELECT id,name,mode,hostname,COALESCE(node_key,''),revoked,last_report,revoked_at,tailnet_id FROM nodes WHERE tailnet_id=?`, tailnetID).Scan(&n.ID, &n.Name, &n.Mode, &n.Hostname, &n.PublicKey, &revoked, &n.LastReport, &n.RevokedAt, &n.TailnetID)
 	n.Revoked = revoked != 0
+	if err == nil {
+		n.ParentID = s.ForwarderParent(n.ID)
+	}
 	return n, err
 }
 
@@ -725,7 +744,7 @@ func (s *Store) TouchNodeReport(id string) error {
 }
 
 func (s *Store) Nodes(mode string) ([]map[string]any, error) {
-	rows, err := s.db.Query(`SELECT id,name,mode,hostname,revoked,last_report FROM nodes WHERE mode=? ORDER BY hostname`, mode)
+	rows, err := s.db.Query(`SELECT id,name,mode,hostname,revoked,last_report FROM nodes WHERE mode=? OR (?='gateways' AND mode IN ('docker-gateway','tailnet-gateway','k8s-gateway')) ORDER BY hostname`, mode, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -899,19 +918,21 @@ func (s *Store) BindNodeIdentity(id, publicKey, tailnetID string, addresses []st
 }
 
 type ApplicationRecord struct {
-	Name                string   `json:"name"`
-	BackendSource       string   `json:"backend_source"`
-	BackendDeviceID     string   `json:"backend_device_id,omitempty"`
-	BackendAddresses    []string `json:"backend_addresses,omitempty"`
-	ID                  string   `json:"id"`
-	ServiceName         string   `json:"service_name"`
-	ServiceFQDN         string   `json:"service_fqdn"`
-	ServicePort         uint16   `json:"service_port"`
-	BackendPort         uint16   `json:"backend_port"`
-	PublicHostnames     []string `json:"public_hostnames"`
-	AllowedIngressNodes []string `json:"allowed_ingress_nodes"`
-	PolicyRevision      int64    `json:"policy_revision"`
-	Enabled             bool     `json:"enabled"`
+	HTTPRules           []proxy.HTTPRule `json:"http_rules,omitempty"`
+	HTTPBackends        []proxy.Backend  `json:"http_backends,omitempty"`
+	Name                string           `json:"name"`
+	BackendSource       string           `json:"backend_source"`
+	BackendDeviceID     string           `json:"backend_device_id,omitempty"`
+	BackendAddresses    []string         `json:"backend_addresses,omitempty"`
+	ID                  string           `json:"id"`
+	ServiceName         string           `json:"service_name"`
+	ServiceFQDN         string           `json:"service_fqdn"`
+	ServicePort         uint16           `json:"service_port"`
+	BackendPort         uint16           `json:"backend_port"`
+	PublicHostnames     []string         `json:"public_hostnames"`
+	AllowedGatewayNodes []string         `json:"allowed_gateway_nodes"`
+	PolicyRevision      int64            `json:"policy_revision"`
+	Enabled             bool             `json:"enabled"`
 }
 
 type ServiceHostRecord struct {
@@ -945,7 +966,7 @@ func (s *Store) UpsertApplication(a ApplicationRecord) error {
 		}
 	}
 	hosts, _ := json.Marshal(a.PublicHostnames)
-	nodes, _ := json.Marshal(a.AllowedIngressNodes)
+	nodes, _ := json.Marshal(a.AllowedGatewayNodes)
 	addresses, _ := json.Marshal(a.BackendAddresses)
 	if a.BackendSource == "" {
 		a.BackendSource = "docker"
@@ -956,8 +977,12 @@ func (s *Store) UpsertApplication(a ApplicationRecord) error {
 	}
 	defer tx.Rollback()
 	now := time.Now().Unix()
-	_, err = tx.Exec(`INSERT INTO applications(id,name,service_name,service_fqdn,service_port,backend_port,public_hostnames,allowed_ingress_nodes,policy_revision,enabled,created_at,updated_at,backend_source,backend_device_id,backend_addresses) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,service_name=excluded.service_name,service_fqdn=excluded.service_fqdn,service_port=excluded.service_port,backend_port=excluded.backend_port,public_hostnames=excluded.public_hostnames,allowed_ingress_nodes=excluded.allowed_ingress_nodes,policy_revision=excluded.policy_revision,enabled=excluded.enabled,updated_at=excluded.updated_at,backend_source=excluded.backend_source,backend_device_id=excluded.backend_device_id,backend_addresses=excluded.backend_addresses`, a.ID, a.Name, a.ServiceName, a.ServiceFQDN, a.ServicePort, a.BackendPort, string(hosts), string(nodes), a.PolicyRevision, boolInt(a.Enabled), now, now, a.BackendSource, a.BackendDeviceID, string(addresses))
+	_, err = tx.Exec(`INSERT INTO applications(id,name,service_name,service_fqdn,service_port,backend_port,public_hostnames,allowed_gateway_nodes,policy_revision,enabled,created_at,updated_at,backend_source,backend_device_id,backend_addresses) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,service_name=excluded.service_name,service_fqdn=excluded.service_fqdn,service_port=excluded.service_port,backend_port=excluded.backend_port,public_hostnames=excluded.public_hostnames,allowed_gateway_nodes=excluded.allowed_gateway_nodes,policy_revision=excluded.policy_revision,enabled=excluded.enabled,updated_at=excluded.updated_at,backend_source=excluded.backend_source,backend_device_id=excluded.backend_device_id,backend_addresses=excluded.backend_addresses`, a.ID, a.Name, a.ServiceName, a.ServiceFQDN, a.ServicePort, a.BackendPort, string(hosts), string(nodes), a.PolicyRevision, boolInt(a.Enabled), now, now, a.BackendSource, a.BackendDeviceID, string(addresses))
 	if err != nil {
+		return err
+	}
+	routing, _ := json.Marshal(map[string]any{"rules": a.HTTPRules, "backends": a.HTTPBackends})
+	if _, err = tx.Exec(`UPDATE applications SET http_config=? WHERE id=?`, string(routing), a.ID); err != nil {
 		return err
 	}
 	if err = s.syncApplicationExposures(tx, a); err != nil {
@@ -967,7 +992,7 @@ func (s *Store) UpsertApplication(a ApplicationRecord) error {
 }
 
 func (s *Store) Applications() ([]ApplicationRecord, error) {
-	rows, err := s.db.Query(`SELECT id,name,service_name,service_fqdn,service_port,backend_port,public_hostnames,allowed_ingress_nodes,policy_revision,enabled,backend_source,backend_device_id,backend_addresses FROM applications ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id,name,service_name,service_fqdn,service_port,backend_port,public_hostnames,allowed_gateway_nodes,policy_revision,enabled,backend_source,backend_device_id,backend_addresses,http_config FROM applications ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -975,9 +1000,9 @@ func (s *Store) Applications() ([]ApplicationRecord, error) {
 	var out []ApplicationRecord
 	for rows.Next() {
 		var a ApplicationRecord
-		var hosts, nodes, addresses string
+		var hosts, nodes, addresses, routing string
 		var enabled int
-		if err := rows.Scan(&a.ID, &a.Name, &a.ServiceName, &a.ServiceFQDN, &a.ServicePort, &a.BackendPort, &hosts, &nodes, &a.PolicyRevision, &enabled, &a.BackendSource, &a.BackendDeviceID, &addresses); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.ServiceName, &a.ServiceFQDN, &a.ServicePort, &a.BackendPort, &hosts, &nodes, &a.PolicyRevision, &enabled, &a.BackendSource, &a.BackendDeviceID, &addresses, &routing); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(hosts), &a.PublicHostnames)
@@ -985,8 +1010,17 @@ func (s *Store) Applications() ([]ApplicationRecord, error) {
 		if len(a.PublicHostnames) > 0 {
 			a.Name = a.PublicHostnames[0]
 		}
-		_ = json.Unmarshal([]byte(nodes), &a.AllowedIngressNodes)
+		_ = json.Unmarshal([]byte(nodes), &a.AllowedGatewayNodes)
 		_ = json.Unmarshal([]byte(addresses), &a.BackendAddresses)
+		var config struct {
+			Rules    []proxy.HTTPRule `json:"rules"`
+			Backends []proxy.Backend  `json:"backends"`
+		}
+		if err := json.Unmarshal([]byte(routing), &config); err != nil {
+			return nil, err
+		}
+		a.HTTPRules = config.Rules
+		a.HTTPBackends = config.Backends
 		a.Enabled = enabled != 0
 		out = append(out, a)
 	}
@@ -1059,4 +1093,24 @@ func (s *Store) SignedReports() (map[string]string, error) {
 		out[id] = payload
 	}
 	return out, rows.Err()
+}
+
+// BindPublicService changes only administrator-authorized discovery settings.
+func (s *Store) BindPublicService(id string, deployment any) error {
+	b, e := json.Marshal(deployment)
+	if e != nil {
+		return e
+	}
+	tx, e := s.db.Begin()
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	if _, e = tx.Exec(`INSERT INTO settings(name,value,secret) VALUES(?,?,0) ON CONFLICT(name) DO UPDATE SET value=excluded.value,secret=0`, "node_deployment:"+id, string(b)); e != nil {
+		return e
+	}
+	if _, e = tx.Exec(`DELETE FROM settings WHERE name=? AND secret=0`, "node_public_endpoint:"+id); e != nil {
+		return e
+	}
+	return tx.Commit()
 }

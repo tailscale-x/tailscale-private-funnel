@@ -16,7 +16,6 @@ func ValidateConfig(mode string) error {
 	return fmt.Errorf("%s config validation requires the caddy build tag", mode)
 }
 
-func ReloadRoutes(_ []Route) error                                            { return fmt.Errorf("route reload requires the caddy build tag") }
-func SetPeerResolver(_ func(context.Context, string, uint16) (string, error)) {}
+func ReloadRoutes(_ []Route) error { return fmt.Errorf("route reload requires the caddy build tag") }
 
 func Stop() error { return nil }

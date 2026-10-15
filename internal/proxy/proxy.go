@@ -26,7 +26,7 @@ var reloadState struct {
 	listen, email, dataDir, tailscaleBlock string
 }
 
-// Start runs the public load balancer. Ingress owns Docker discovery and
+// Start runs the public load balancer. Gateway owns Docker discovery and
 // forwards approved Services directly to their selected backends.
 func Start(mode, listen string, dial func(context.Context, string, string) (net.Conn, error)) error {
 	sharedDialer.Lock()
@@ -111,22 +111,41 @@ func configureStorage(dataDir string) error {
 
 func caddyfile(listen, email, dataDir, tailscaleBlock string, routes []Route) (string, error) {
 	var sites strings.Builder
+	grouped := map[string][]HTTPRule{}
+	simple := []Route{}
+	for _, route := range routes {
+		if len(route.Rules) > 0 {
+			grouped[route.Hostname] = append(grouped[route.Hostname], route.Rules...)
+		} else {
+			simple = append(simple, route)
+		}
+	}
+	hosts := []string{}
+	for host := range grouped {
+		hosts = append(hosts, host)
+	}
+	sort.Strings(hosts)
+	for _, host := range hosts {
+		rules := grouped[host]
+		text, err := httpSite(host, rules)
+		if err != nil {
+			return "", err
+		}
+		sites.WriteString(text)
+	}
+	routes = simple
 	for _, route := range routes {
 		if err := validateRoute(route); err != nil {
 			return "", err
 		}
 		transport := "transport funnel_tsnet"
 		upstream := net.JoinHostPort(route.Service, strconv.Itoa(int(route.Port)))
-		if route.BackendDeviceID != "" {
-			transport = "transport funnel_tsnet {\n\t\t\tdevice " + caddyToken(route.BackendDeviceID) + "\n\t\t}"
-			upstream = net.JoinHostPort("direct.invalid", strconv.Itoa(int(route.Port)))
-		}
 		fmt.Fprintf(&sites, "\n%s {\n\ttls {\n\t\ton_demand\n\t}\n\trequest_header -Forwarded\n\trequest_header -X-Forwarded-*\n\trequest_header -X-Real-IP\n\treverse_proxy %s {\n\t\theader_up X-Forwarded-Port {http.request.local.port}\n\t\theader_up X-Real-IP {http.request.remote.host}\n\t\t%s\n\t}\n}\n", route.Hostname, upstream, transport)
 	}
 	// Keep an explicit catch-all for hosts that have no approved application;
 	// on-demand TLS still uses the local always-allow permission endpoint, but
 	// the request receives 404 until control supplies a route.
-	if len(routes) == 0 {
+	if len(routes) == 0 && len(grouped) == 0 {
 		sites.WriteString("\n:443 {\n\ttls {\n\t\ton_demand\n\t}\n\trespond 404\n}\n")
 	}
 	emailOption := ""
@@ -156,14 +175,8 @@ func validateRoute(route Route) error {
 	if route.Hostname == "" || strings.ContainsAny(route.Hostname, " \t\r\n{}") {
 		return fmt.Errorf("invalid route hostname %q", route.Hostname)
 	}
-	if route.Port == 0 || (route.Service == "" && route.BackendDeviceID == "") || strings.ContainsAny(route.Service, " \t\r\n{}") {
+	if route.Port == 0 || route.Service == "" || strings.ContainsAny(route.Service, " \t\r\n{}") {
 		return fmt.Errorf("invalid Service route for %q", route.Hostname)
-	}
-	if route.BackendDeviceID != "" {
-		if strings.ContainsAny(route.BackendDeviceID, " \t\r\n{}\"'") || route.Service != "" {
-			return fmt.Errorf("invalid direct backend route for %q", route.Hostname)
-		}
-		return nil
 	}
 	if ip, err := netip.ParseAddr(strings.Trim(route.Service, "[]")); err != nil || !ip.IsValid() {
 		if strings.ContainsAny(route.Service, ":/") || strings.TrimSuffix(route.Service, ".") == "" {

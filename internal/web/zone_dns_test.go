@@ -13,24 +13,54 @@ import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
+	core "k8s.io/api/core/v1"
 )
+
+func TestZoneDNSKubernetesUsesBoundServiceWithoutNativeFallback(t *testing.T) {
+	c, s := testControl(t)
+	installDNSFixture(t, s, "example.com")
+	if err := s.UpsertNode("edge", "loadbalancer", "edge"); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.SetJSON("node_deployment:edge", nodeDeployment{LoadBalancerHostname: "edge.example.com", AddressSource: "kubernetes", KubernetesNamespace: "system", PublicService: "edge-public"})
+	_ = s.SetJSON("node_health:edge", loadBalancerHealth{ReceivedAt: time.Now().Unix()})
+	n, _ := s.Node("edge")
+	z, _ := s.ZoneByID(testZoneID(t, s, "example.com"))
+	r := httptest.NewRequest("POST", "/", nil)
+	p := publicEndpoint{Namespace: "system", Service: "edge-public", ObservedAt: time.Now().Unix(), Ingress: []core.LoadBalancerIngress{{IP: "8.8.8.8"}, {IP: "9.9.9.9"}}}
+	_ = s.SetJSON("node_public_endpoint:edge", p)
+	records, err := c.zoneDesired(r, z, n)
+	if err != nil || len(records) != 2 || records[0].RR().Data != "8.8.8.8" || records[1].RR().Data != "9.9.9.9" {
+		t.Fatal(records, err)
+	}
+	for _, invalid := range []publicEndpoint{
+		{Namespace: "system", Service: "edge-public", ObservedAt: time.Now().Add(-2 * time.Minute).Unix(), Ingress: p.Ingress},
+		{Namespace: "wrong", Service: "edge-public", ObservedAt: time.Now().Unix(), Ingress: p.Ingress},
+		{Namespace: "system", Service: "edge-public", ObservedAt: time.Now().Unix(), Ingress: []core.LoadBalancerIngress{{IP: "10.0.0.1"}}},
+	} {
+		_ = s.SetJSON("node_public_endpoint:edge", invalid)
+		if records, err := c.zoneDesired(r, z, n); err == nil || len(records) != 0 || !strings.Contains(err.Error(), "retaining owned DNS") {
+			t.Fatal("must retain rather than fall back to native endpoints", records, err)
+		}
+	}
+}
 
 func zoneReportFixture(t *testing.T, c *Control, s *store.Store) {
 	t.Helper()
-	_ = s.UpsertNode("ingress", "ingress", "worker")
+	_ = s.UpsertNode("docker-gateway", "docker-gateway", "worker")
 	pub, priv, _ := report.GenerateKey()
-	if err := s.BindNodeIdentity("ingress", encodePublicKey(pub), "tail-ingress", []string{"100.64.0.8"}); err != nil {
+	if err := s.BindNodeIdentity("docker-gateway", encodePublicKey(pub), "tail-gateway", []string{"100.64.0.8"}); err != nil {
 		t.Fatal(err)
 	}
-	_ = s.SetJSON("node_deployment:ingress", nodeDeployment{})
+	_ = s.SetJSON("node_deployment:docker-gateway", nodeDeployment{})
 	_ = s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "Apps", HostnameRegexes: []string{`.*[.]example[.]com`}, Enabled: true}}})
 	_ = s.UpsertApplication(store.ApplicationRecord{ID: "app", Name: "App", ServiceName: "svc:app", ServiceFQDN: "svc:app", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"app.example.com"}, Enabled: true})
-	e, err := report.NewEnvelope("ingress", map[string]any{"exposures": []dns.IngressExposure{{ApplicationID: "app", ServiceName: "svc:app", PublicHostname: "app.example.com", Port: 8080, Reachable: true}}, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, priv, time.Now())
+	e, err := report.NewEnvelope("docker-gateway", map[string]any{"exposures": []dns.GatewayExposure{{ApplicationID: "app", ServiceName: "svc:app", PublicHostname: "app.example.com", Port: 8080, Reachable: true}}, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, priv, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(e)
-	if err := s.AcceptReport("ingress", e.Nonce, raw, e.PublicKey); err != nil {
+	if err := s.AcceptReport("docker-gateway", e.Nonce, raw, e.PublicKey); err != nil {
 		t.Fatal(err)
 	}
 	seedEdgeReport(t, s, "edge-id")
@@ -159,13 +189,13 @@ func TestZoneDNSExpiredReportCleanup(t *testing.T) {
 	}
 	reports, _ := s.Reports()
 	var envelope report.Envelope
-	_ = json.Unmarshal([]byte(reports["ingress"]), &envelope)
+	_ = json.Unmarshal([]byte(reports["docker-gateway"]), &envelope)
 	var payload map[string]any
 	_ = json.Unmarshal(envelope.Payload, &payload)
 	payload["expires_at"] = time.Now().Add(-time.Minute).Unix()
 	envelope.Payload, _ = json.Marshal(payload)
 	raw, _ := json.Marshal(envelope)
-	_ = s.SaveReport("ingress", raw)
+	_ = s.SaveReport("docker-gateway", raw)
 	w = requestManagement(c, "POST", path, map[string]any{}, "owner")
 	if w.Code != 200 || len(f.records["example.com"]) != 0 {
 		t.Fatal("expired report records retained", w.Body.String())
@@ -174,10 +204,10 @@ func TestZoneDNSExpiredReportCleanup(t *testing.T) {
 
 func TestEnrollmentBackLinks(t *testing.T) {
 	c, _ := testControl(t)
-	for mode, path := range map[string]string{"ingress": "/ingresses", "loadbalancer": "/loadbalancers"} {
+	for mode, path := range map[string]string{"docker-gateway": "/gateways/new", "tailnet-gateway": "/gateways/new", "k8s-gateway": "/gateways/new", "loadbalancer": "/loadbalancers"} {
 		w := requestManagement(c, "GET", "/enroll/"+mode, nil, "owner")
-		if w.Code != 200 || !strings.Contains(w.Body.String(), `href="`+path+`">Back to`) || strings.Contains(w.Body.String(), "/ingresss") {
-			t.Fatal(mode, w.Body.String())
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `href="`+path+`"`) {
+			t.Fatal(mode, w.Code)
 		}
 	}
 }

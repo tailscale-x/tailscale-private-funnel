@@ -1,0 +1,18 @@
+{{- if eq .Values.component "k8s-gateway" }}
+{{- if .Values.createClasses }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: {{ .Values.gatewayClass }}
+spec:
+  controllerName: {{ include "funnel.controllerName" . }}
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: {{ .Values.ingressClass }}
+spec:
+  controller: {{ include "funnel.controllerName" . }}
+{{- end }}
+
+{{- end }}

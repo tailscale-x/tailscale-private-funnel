@@ -4,15 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	r53 "github.com/aws/aws-sdk-go-v2/service/route53"
 	"github.com/aws/aws-sdk-go-v2/service/route53/types"
 	"github.com/libdns/cloudflare"
 	"github.com/libdns/godaddy"
 	"github.com/libdns/route53"
-	"net/http"
-	"net/http/httptest"
-	"testing"
 )
 
 func TestGoDaddyDiscoveryPaginationAndPermission(t *testing.T) {

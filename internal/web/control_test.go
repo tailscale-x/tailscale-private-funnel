@@ -28,7 +28,7 @@ func TestSignedReportRequiresBoundTailnetIdentityAndRejectsReplay(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertNodeEnrollment("node-1", "enrollment-1", "ingress", "ingress-one"); err != nil {
+	if err := s.UpsertNodeEnrollment("node-1", "enrollment-1", "docker-gateway", "gateway-one"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.BindNodeIdentity("node-1", encodePublicKey(pub), "tailnode-1", []string{"100.64.0.5"}); err != nil {
@@ -42,7 +42,7 @@ func TestSignedReportRequiresBoundTailnetIdentityAndRejectsReplay(t *testing.T) 
 	h := (&Control{Store: s}).Handler()
 	request := func() *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, "/api/reports", bytes.NewReader(body))
-		r = WithPrincipal(r, Principal{NodeID: "tailnode-1", Hostname: "ingress-one", Addresses: []string{"100.64.0.5"}})
+		r = WithPrincipal(r, Principal{NodeID: "tailnode-1", Hostname: "gateway-one", Addresses: []string{"100.64.0.5"}})
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		return w
@@ -56,7 +56,7 @@ func TestSignedReportRequiresBoundTailnetIdentityAndRejectsReplay(t *testing.T) 
 	}
 }
 
-func TestIngressReportRequiresHostnamePolicy(t *testing.T) {
+func TestGatewayReportRequiresHostnamePolicy(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "data"))
 	if err != nil {
 		t.Fatal(err)
@@ -69,7 +69,7 @@ func TestIngressReportRequiresHostnamePolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertNodeEnrollment("node-policy", "enrollment-policy", "ingress", "ingress-policy"); err != nil {
+	if err := s.UpsertNodeEnrollment("node-policy", "enrollment-policy", "docker-gateway", "gateway-policy"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.BindNodeIdentity("node-policy", encodePublicKey(pub), "tailnode-policy", []string{"100.64.0.5"}); err != nil {
@@ -78,12 +78,12 @@ func TestIngressReportRequiresHostnamePolicy(t *testing.T) {
 	if err := s.UpsertApplication(store.ApplicationRecord{ID: "app-dev", ServiceName: "svc:app-dev", ServiceFQDN: "svc:app-dev", ServicePort: 18080, BackendPort: 18080, PublicHostnames: []string{"app.dev.example.com"}, Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "dev", HostnameRegexes: []string{`[^.]+\.dev\.example\.com`}, Roles: []string{"tag:ingress-dev"}, Enabled: true}}}); err != nil {
+	if err := s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "dev", HostnameRegexes: []string{`[^.]+\.dev\.example\.com`}, Roles: []string{"tag:gateway-dev"}, Enabled: true}}}); err != nil {
 		t.Fatal(err)
 	}
 	reportBody := func(host string) []byte {
 		e, envelopeErr := report.NewEnvelope("node-policy", map[string]any{
-			"exposures":  []map[string]any{{"application_id": "app-dev", "service_name": "svc:app-dev", "public_hostname": host, "backend_hostname": "ingress-policy", "backend_ip": "100.64.0.5", "port": 18080, "reachable": true}},
+			"exposures":  []map[string]any{{"application_id": "app-dev", "service_name": "svc:app-dev", "public_hostname": host, "backend_hostname": "gateway-policy", "backend_ip": "100.64.0.5", "port": 18080, "reachable": true}},
 			"expires_at": time.Now().Add(time.Minute).Unix(),
 		}, pub, priv, time.Now())
 		if envelopeErr != nil {
@@ -95,15 +95,15 @@ func TestIngressReportRequiresHostnamePolicy(t *testing.T) {
 	h := (&Control{Store: s}).Handler()
 	request := func(host string, tags []string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, "/api/reports", bytes.NewReader(reportBody(host)))
-		r = WithPrincipal(r, Principal{NodeID: "tailnode-policy", Hostname: "ingress-policy", Tags: tags, Addresses: []string{"100.64.0.5"}})
+		r = WithPrincipal(r, Principal{NodeID: "tailnode-policy", Hostname: "gateway-policy", Tags: tags, Addresses: []string{"100.64.0.5"}})
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		return w
 	}
-	if got := request("app.dev.example.com", []string{"tag:ingress-dev"}).Code; got != http.StatusAccepted {
+	if got := request("app.dev.example.com", []string{"tag:gateway-dev"}).Code; got != http.StatusAccepted {
 		t.Fatalf("allowed report status=%d", got)
 	}
-	if got := request("app.prod.example.com", []string{"tag:ingress-dev"}).Code; got != http.StatusForbidden {
+	if got := request("app.prod.example.com", []string{"tag:gateway-dev"}).Code; got != http.StatusForbidden {
 		t.Fatalf("hostname policy status=%d", got)
 	}
 }
@@ -119,7 +119,7 @@ func TestEnrollmentCommandsUseConfiguredImageAndWritableBindDirs(t *testing.T) {
 	}
 	if err := s.SetJSON("tailnet", map[string]any{
 		"name":           "example.ts.net",
-		"tags":           "tag:ingress",
+		"tags":           "tag:gateway",
 		"management_url": "http://100.64.0.10:8080",
 		"bootstrap_url":  "http://control-bootstrap:8081",
 		"image":          "ghcr.io/example/funnel:test",
@@ -127,7 +127,7 @@ func TestEnrollmentCommandsUseConfiguredImageAndWritableBindDirs(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	r := httptest.NewRequest(http.MethodPost, "/api/enrollments/ingress", bytes.NewBufferString(`{"name":"Ingress test","hostname":"ingress-test","label_keys":"my.expose","deny_networks":"private-*"}`))
+	r := httptest.NewRequest(http.MethodPost, "/api/enrollments/docker-gateway", bytes.NewBufferString(`{"name":"Gateway test","hostname":"gateway-test","label_keys":"my.expose","deny_networks":"private-*"}`))
 	r.Header.Set("Content-Type", "application/json")
 	r = WithPrincipal(r, Principal{NodeID: "admin-node", Login: "admin@example.com"})
 	w := httptest.NewRecorder()
@@ -146,7 +146,7 @@ func TestEnrollmentCommandsUseConfiguredImageAndWritableBindDirs(t *testing.T) {
 			t.Fatalf("deployment value %s not used", value)
 		}
 	}
-	if !strings.Contains(response.DeploymentScript, "ingress join") || !strings.Contains(response.DeploymentScript, "enrollment-code-file") {
+	if !strings.Contains(response.DeploymentScript, "gateway join") || !strings.Contains(response.DeploymentScript, "enrollment-code-file") {
 		t.Fatalf("deployment script does not use the native deploy flow: %s", response.DeploymentScript)
 	}
 }
@@ -192,14 +192,14 @@ func TestManagementAuthorizationUsesTailscaleRoles(t *testing.T) {
 	}
 	defer s.Close()
 	if err := s.SetJSON("tailnet", map[string]any{
-		"name": "example.ts.net", "tags": "tag:ingress", "management_url": "http://100.64.0.10:8080", "bootstrap_url": "http://control-bootstrap:8081",
+		"name": "example.ts.net", "tags": "tag:gateway", "management_url": "http://100.64.0.10:8080", "bootstrap_url": "http://control-bootstrap:8081",
 		"roles": map[string][]string{"admin": {"group:platform-admins"}, "viewer": {"group:readonly"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	h := enrollmentTestControl(t, s).Handler()
 	request := func(groups []string) int {
-		r := httptest.NewRequest(http.MethodPost, "/api/enrollments/ingress", bytes.NewBufferString(`{"name":"Ingress role","hostname":"ingress-role"}`))
+		r := httptest.NewRequest(http.MethodPost, "/api/enrollments/docker-gateway", bytes.NewBufferString(`{"name":"Gateway role","hostname":"gateway-role"}`))
 		r.Header.Set("Content-Type", "application/json")
 		r = WithPrincipal(r, Principal{NodeID: "admin-node", Login: "member@example.com", Groups: groups})
 		w := httptest.NewRecorder()
@@ -235,23 +235,23 @@ func TestTaggedNodeDoesNotInheritCreatorAndCapabilityCanGrantRole(t *testing.T) 
 		h.ServeHTTP(w, r)
 		return w.Code
 	}
-	if got := request(Principal{NodeID: "tagged-node", Login: "owner@example.com", Tagged: true, Tags: []string{"tag:ingress"}}); got != http.StatusForbidden {
+	if got := request(Principal{NodeID: "tagged-node", Login: "owner@example.com", Tagged: true, Tags: []string{"tag:gateway"}}); got != http.StatusForbidden {
 		t.Fatalf("tagged node inherited creator access: status=%d", got)
 	}
-	if got := request(Principal{NodeID: "cap-node", Tagged: true, Tags: []string{"tag:ingress"}, Capabilities: map[string][]json.RawMessage{DefaultCapability: {json.RawMessage(`{"roles":["admin"]}`)}}}); got != http.StatusOK {
+	if got := request(Principal{NodeID: "cap-node", Tagged: true, Tags: []string{"tag:gateway"}, Capabilities: map[string][]json.RawMessage{DefaultCapability: {json.RawMessage(`{"roles":["admin"]}`)}}}); got != http.StatusOK {
 		t.Fatalf("capability admin should authorize: status=%d", got)
 	}
 }
 
-func TestManualIngressExposureIsDeniedByDefaultPolicy(t *testing.T) {
+func TestManualGatewayExposureIsDeniedByDefaultPolicy(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "data"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 	h := (&Control{Store: s}).Handler()
-	_ = s.UpsertNode("ingress-1", "ingress", "ingress-1")
-	body := bytes.NewBufferString(`{"node_id":"ingress-1","zone":"example.com","provider_id":"missing","public_hostname":"app.dev.example.com","backend_hostname":"ingress-1","backend_ip":"100.64.0.5","loadbalancer_hostname":"loadbalancer.example.com","port":18080}`)
+	_ = s.UpsertNode("gateway-1", "docker-gateway", "gateway-1")
+	body := bytes.NewBufferString(`{"node_id":"gateway-1","zone":"example.com","provider_id":"missing","public_hostname":"app.dev.example.com","backend_hostname":"gateway-1","backend_ip":"100.64.0.5","loadbalancer_hostname":"loadbalancer.example.com","port":18080}`)
 	r := httptest.NewRequest(http.MethodPost, "/api/exposures/sync", body)
 	r.Header.Set("Content-Type", "application/json")
 	r = WithPrincipal(r, Principal{NodeID: "admin-node", Login: "admin@example.com"})
@@ -272,14 +272,14 @@ func TestEnrollmentPageExplainsGeneratedCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := (&Control{Store: s}).Handler()
-	r := httptest.NewRequest(http.MethodGet, "/enroll/ingress", nil)
+	r := httptest.NewRequest(http.MethodGet, "/enroll/docker-gateway", nil)
 	r = WithPrincipal(r, Principal{NodeID: "admin-node", Login: "admin@example.com"})
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("enrollment page status=%d body=%s", w.Code, w.Body.String())
 	}
-	for _, text := range []string{"Ingress enrollment", "One-copy native deployment", "Exposure policy:"} {
+	for _, text := range []string{"Add Docker gateway", "Step 3", "Configure exposure policy"} {
 		if !strings.Contains(w.Body.String(), text) {
 			t.Fatalf("enrollment page missing %q", text)
 		}
@@ -296,7 +296,7 @@ func TestRedesignedPagesRenderSharedShellForAdministrator(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := (&Control{Store: s}).Handler()
-	for _, path := range []string{"/", "/settings", "/access", "/providers", "/zones", "/applications", "/loadbalancers", "/ingresses", "/policies", "/exposures", "/operations", "/enroll/loadbalancer", "/enroll/ingress"} {
+	for _, path := range []string{"/", "/settings", "/access", "/providers", "/zones", "/applications", "/loadbalancers", "/gateways", "/policies", "/exposures", "/operations", "/enroll/loadbalancer", "/enroll/docker-gateway"} {
 		r := httptest.NewRequest(http.MethodGet, path, nil)
 		r = WithPrincipal(r, Principal{NodeID: "admin-node", Login: "admin@example.com"})
 		w := httptest.NewRecorder()
@@ -325,7 +325,7 @@ func TestPolicyRuleEditorPersistsGuidedRule(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := (&Control{Store: s}).Handler()
-	r := httptest.NewRequest(http.MethodPost, "/api/policies/rule", strings.NewReader("revision=1&name=dev&hostname_regexes=%5B%5E.%5D%2B%5C.dev%5C.example%5C.com&roles=tag%3Aingress-dev&loadbalancer_ids=edge-id&enabled=on"))
+	r := httptest.NewRequest(http.MethodPost, "/api/policies/rule", strings.NewReader("revision=1&name=dev&hostname_regexes=%5B%5E.%5D%2B%5C.dev%5C.example%5C.com&roles=tag%3Agateway-dev&loadbalancer_ids=edge-id&enabled=on"))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.Header.Set("HX-Request", "true")
 	r = WithPrincipal(r, Principal{NodeID: "admin-node", Login: "admin@example.com"})
@@ -369,17 +369,32 @@ func enrollmentTestControl(t *testing.T, s *store.Store) *Control {
 			json.NewEncoder(w).Encode(map[string]string{"key": "tskey-bootstrap-test"})
 			return
 		}
+		if r.Method == "PUT" && strings.Contains(r.URL.Path, "/services/") {
+			var service tailscale.Service
+			_ = json.NewDecoder(r.Body).Decode(&service)
+			service.Addresses = []string{"100.70.1.1"}
+			writeJSON(w, service)
+			return
+		}
+		if r.Method == "DELETE" {
+			w.WriteHeader(204)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/devices") {
+			writeJSON(w, map[string]any{"hosts": []any{}})
+			return
+		}
 		http.NotFound(w, r)
 	}))
 	t.Cleanup(server.Close)
 	return &Control{Store: s, ReleaseCheck: func(context.Context, string) error { return nil }, TailscaleClient: &tailscale.Client{HTTP: server.Client(), ClientID: "test-id", ClientSecret: "test-secret", Tailnet: "example.ts.net", APIBase: server.URL + "/api/v2", OAuthBase: server.URL}}
 }
 
-func TestIngressEnrollmentResolvesTargetHostname(t *testing.T) {
+func TestGatewayEnrollmentResolvesTargetHostname(t *testing.T) {
 	_, s := testControl(t)
 	c := enrollmentTestControl(t, s)
 	_ = s.SetJSON("tailnet", map[string]any{"name": "example.ts.net", "management_url": "http://control:8080", "release_version": "v1.0.2"})
-	w := requestManagement(c, "POST", "/api/enrollments/ingress", map[string]any{}, "owner")
+	w := requestManagement(c, "POST", "/api/enrollments/docker-gateway", map[string]any{}, "owner")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -389,7 +404,7 @@ func TestIngressEnrollmentResolvesTargetHostname(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(response.DeploymentScript, `--hostname "$(hostname -s)-ingress"`) {
+	if !strings.Contains(response.DeploymentScript, `--hostname "$(hostname -s)-docker-gateway"`) {
 		t.Fatal("installer does not resolve target hostname")
 	}
 }

@@ -1,0 +1,96 @@
+package proxy
+
+import (
+	"fmt"
+	"net"
+	"net/netip"
+	"net/url"
+	"strings"
+	"time"
+
+	"golang.org/x/net/http/httpguts"
+)
+
+func ValidateHTTPRule(r HTTPRule, assigned bool) error {
+	if len(r.Matches) > 64 || len(r.Backends) > 32 {
+		return fmt.Errorf("route exceeds match/backend limit")
+	}
+	for _, m := range r.Matches {
+		if m.Path != "" && (!strings.HasPrefix(m.Path, "/") || strings.ContainsAny(m.Path, "\r\n*?{}")) {
+			return fmt.Errorf("unsupported HTTP path")
+		}
+		if m.Method != "" && !httpguts.ValidHeaderFieldName(m.Method) {
+			return fmt.Errorf("invalid HTTP method")
+		}
+		for k, v := range m.Headers {
+			if !httpguts.ValidHeaderFieldName(k) || !httpguts.ValidHeaderFieldValue(v) {
+				return fmt.Errorf("invalid header match")
+			}
+		}
+	}
+	for _, f := range []HeaderFilter{r.RequestHeaders, r.ResponseHeaders} {
+		names := append([]string{}, f.Remove...)
+		for k, v := range f.Set {
+			if !httpguts.ValidHeaderFieldValue(v) {
+				return fmt.Errorf("invalid header value")
+			}
+			names = append(names, k)
+		}
+		for k, v := range f.Add {
+			if !httpguts.ValidHeaderFieldValue(v) {
+				return fmt.Errorf("invalid header value")
+			}
+			names = append(names, k)
+		}
+		for _, name := range names {
+			n := strings.ToLower(name)
+			if !httpguts.ValidHeaderFieldName(name) || strings.HasPrefix(n, "x-forwarded-") || n == "forwarded" || n == "x-real-ip" || n == "host" || n == "connection" || n == "transfer-encoding" {
+				return fmt.Errorf("header %s is reserved", name)
+			}
+		}
+	}
+	for _, d := range []string{r.RequestTimeout, r.BackendTimeout, r.BackendRequestTimeout} {
+		if d != "" {
+			v, e := time.ParseDuration(d)
+			if e != nil || v < 0 || v > 24*time.Hour {
+				return fmt.Errorf("invalid HTTP timeout")
+			}
+		}
+	}
+	if r.MaxRequestBodyBytes < 0 {
+		return fmt.Errorf("invalid body limit")
+	}
+	total := 0
+	for _, b := range r.Backends {
+		total += b.Weight
+		if b.Key == "" || b.Port == 0 || b.Weight < 0 || b.Weight > 1000 {
+			return fmt.Errorf("invalid backend")
+		}
+		if assigned {
+			if b.Service == "" || strings.ContainsAny(b.Service, " \r\n\t{}\"/") {
+				return fmt.Errorf("invalid Service target")
+			}
+		} else {
+			host, port, e := net.SplitHostPort(b.Address)
+			ip, ie := netip.ParseAddr(host)
+			if e != nil || ie != nil || !ip.IsPrivate() || ip.IsLoopback() || port != fmt.Sprint(b.Port) {
+				return fmt.Errorf("backend must be a private cluster address and port")
+			}
+		}
+	}
+	if r.Redirect == nil && total == 0 {
+		return fmt.Errorf("at least one backend must have positive weight")
+	}
+	if d := r.Redirect; d != nil {
+		if len(r.Backends) > 0 || d.Status != 301 && d.Status != 302 || d.Scheme != "" && d.Scheme != "http" && d.Scheme != "https" {
+			return fmt.Errorf("invalid redirect")
+		}
+		if d.Host != "" {
+			u, e := url.Parse("https://" + d.Host)
+			if e != nil || u.Hostname() != d.Host || strings.ContainsAny(d.Host, " \r\n\t{}") {
+				return fmt.Errorf("invalid redirect hostname")
+			}
+		}
+	}
+	return nil
+}
