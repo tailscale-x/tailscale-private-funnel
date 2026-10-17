@@ -53,4 +53,3 @@ Generated from the pinned v1alpha1 CRD schemas. Application policy and DNS stay 
 | `publicService` | object |  |
 | `resources` | object | ResourceRequirements describes the compute resource requirements. |
 | `storage` | object |  |
-

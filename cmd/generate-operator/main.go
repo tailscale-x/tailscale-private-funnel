@@ -81,7 +81,7 @@ func main() {
 		}
 		docs += "\n"
 	}
-	must(os.WriteFile("docs/KUBERNETES_API.md", []byte(docs), 0644))
+	must(os.WriteFile("docs/KUBERNETES_API.md", []byte(strings.TrimRight(docs, "\n")+"\n"), 0644))
 }
 func must(e error) {
 	if e != nil {
