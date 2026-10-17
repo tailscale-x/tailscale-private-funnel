@@ -1,2 +1,4 @@
 # Preserve meaningful whitespace inside the upstream bundle's multiline strings.
 internal/web/assets/api/scalar.js -whitespace linguist-vendored
+# Pinned protobuf generators include a final blank line; retain their exact output.
+ui/src/gen/** whitespace=-blank-at-eof linguist-generated
