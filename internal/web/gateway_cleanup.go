@@ -4,13 +4,31 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 )
 
 // cleanupRevokedNode touches only this enrolled identity and application-owned
 // Services. Failures remain pending and can be retried by the control loop.
+type nodeCleanupState struct {
+	Pending             bool     `json:"pending"`
+	Errors              []string `json:"errors,omitempty"`
+	AwaitingAck         bool     `json:"awaiting_ack,omitempty"`
+	OperationalComplete bool     `json:"operational_complete,omitempty"`
+	DeleteAfter         int64    `json:"delete_after,omitempty"`
+}
+
 func (c *Control) cleanupRevokedNode(ctx context.Context, n store.NodeRecord) error {
+	c.shutdownMu.Lock()
+	defer c.shutdownMu.Unlock()
+	return c.cleanupRevokedNodeLocked(ctx, n)
+}
+func (c *Control) cleanupRevokedNodeLocked(ctx context.Context, n store.NodeRecord) error {
+	var state nodeCleanupState
+	_ = c.Store.GetJSON("node_cleanup:"+n.ID, &state)
+	deleteDevice := !state.AwaitingAck && state.DeleteAfter <= time.Now().Unix()
+
 	if !n.Revoked {
 		return fmt.Errorf("node must be revoked before cleanup")
 	}
@@ -40,7 +58,8 @@ func (c *Control) cleanupRevokedNode(ctx context.Context, n store.NodeRecord) er
 				}
 				child.Revoked = true
 			}
-			if e = c.cleanupRevokedNode(ctx, child); e != nil {
+			_ = c.Store.SetJSON("node_cleanup:"+child.ID, nodeCleanupState{Pending: true})
+			if e = c.cleanupRevokedNodeLocked(ctx, child); e != nil {
 				return e
 			}
 		}
@@ -85,6 +104,13 @@ func (c *Control) cleanupRevokedNode(ctx context.Context, n store.NodeRecord) er
 				}
 			}
 		}
+
+	}
+	if e := c.reconcileExposures(ctx); e != nil {
+		failures = append(failures, e.Error())
+	}
+	// Keep the caller's device usable for cleanup retries until DNS and Service cleanup succeeds.
+	if len(failures) == 0 && deleteDevice {
 		devices, e := ts.ListDevices(ctx)
 		if e != nil {
 			failures = append(failures, e.Error())
@@ -98,14 +124,16 @@ func (c *Control) cleanupRevokedNode(ctx context.Context, n store.NodeRecord) er
 			}
 		}
 	}
-	if e := c.reconcileExposures(ctx); e != nil {
-		failures = append(failures, e.Error())
-	}
 	if len(failures) > 0 {
-		_ = c.Store.SetJSON("node_cleanup:"+n.ID, map[string]any{"pending": true, "errors": failures})
+		state.Pending = true
+		state.Errors = failures
+		_ = c.Store.SetJSON("node_cleanup:"+n.ID, state)
 		return fmt.Errorf("%s", strings.Join(failures, "; "))
 	}
-	_ = c.Store.SetJSON("node_cleanup:"+n.ID, map[string]any{"pending": false})
+	state.Pending = !deleteDevice
+	state.Errors = nil
+	state.OperationalComplete = true
+	_ = c.Store.SetJSON("node_cleanup:"+n.ID, state)
 	return nil
 }
 

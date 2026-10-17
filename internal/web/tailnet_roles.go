@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -42,4 +43,26 @@ func (c *Control) tailnetRole(ctx context.Context, p Principal) string {
 		}
 	}
 	return ""
+}
+
+// Explicit self-removal may transfer administration to the real tailnet Owner,
+// never to an unverified selector or a tagged identity claiming a human role.
+func (c *Control) verifyOwnerAdministration(ctx context.Context, settings AccessSettings) error {
+	if !contains(settings.Roles["admin"], "autogroup:owner") {
+		return fmt.Errorf("self-removal requires autogroup:owner to remain an administrator")
+	}
+	ts, err := c.tailscaleRuntimeClient()
+	if err != nil {
+		return fmt.Errorf("verify remaining Owner: %w", err)
+	}
+	users, err := ts.ListUsers(ctx)
+	if err != nil {
+		return fmt.Errorf("verify remaining Owner: %w", err)
+	}
+	for _, user := range users {
+		if user.Role == "owner" && user.Type == "member" && (user.Status == "active" || user.Status == "idle") && user.LoginName != "" {
+			return nil
+		}
+	}
+	return fmt.Errorf("no active tailnet Owner verified; administrator access unchanged")
 }

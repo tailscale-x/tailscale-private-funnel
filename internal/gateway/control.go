@@ -2,13 +2,15 @@ package gateway
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
+
+	"connectrpc.com/connect"
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1/funnelv1connect"
 
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
@@ -16,71 +18,43 @@ import (
 
 var ErrControlUnavailable = errors.New("control service unavailable")
 
-type HTTPResolver struct {
+type RPCResolver struct {
 	BaseURL, NodeID, ControlKey string
 	Client                      *http.Client
 	Revision                    *string
 }
 
-func (r HTTPResolver) ReportHealth(ctx context.Context, payload map[string]any) error {
-	if strings.TrimSpace(r.BaseURL) == "" || strings.TrimSpace(r.NodeID) == "" {
-		return fmt.Errorf("%w: management URL and node ID are required", ErrControlUnavailable)
+func (r RPCResolver) ReportHealth(ctx context.Context, payload map[string]any) error {
+	if r.Client == nil {
+		return fmt.Errorf("%w: process-owned Tailscale HTTP client required", ErrControlUnavailable)
 	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
+	health, e := report.Payload(payload, &v1.NodeHealth{})
+	if e != nil {
+		return e
 	}
-	client := r.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(r.BaseURL, "/")+"/api/node/health", strings.NewReader(string(body)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	res, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrControlUnavailable, err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode/100 != 2 {
-		if res.StatusCode >= 500 {
-			return fmt.Errorf("%w: HTTP %d", ErrControlUnavailable, res.StatusCode)
-		}
-		return fmt.Errorf("health report: HTTP %d", res.StatusCode)
+	_, e = r.rpc().ReportHealth(ctx, connect.NewRequest(health))
+	if e != nil {
+		return fmt.Errorf("%w: %v", ErrControlUnavailable, e)
 	}
 	return nil
 }
+func (r RPCResolver) rpc() funnelv1connect.NodeServiceClient {
+	return funnelv1connect.NewNodeServiceClient(r.Client, r.BaseURL)
+}
 
-func (r HTTPResolver) Resolve(ctx context.Context, hostname string, backendPort uint16) (Assignment, error) {
-	if strings.TrimSpace(r.BaseURL) == "" || strings.TrimSpace(r.NodeID) == "" {
+func (r RPCResolver) Resolve(ctx context.Context, hostname string, backendPort uint16) (Assignment, error) {
+	if strings.TrimSpace(r.BaseURL) == "" || strings.TrimSpace(r.NodeID) == "" || r.Client == nil {
 		return Assignment{}, fmt.Errorf("%w: management URL and node ID are required", ErrControlUnavailable)
 	}
-	client := r.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	body, _ := json.Marshal(map[string]any{"hostname": hostname, "backend_port": backendPort})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(r.BaseURL, "/")+"/api/node/config", strings.NewReader(string(body)))
+	response, err := r.rpc().ResolveApplication(ctx, connect.NewRequest(&v1.ResolveApplicationRequest{Hostname: hostname, BackendPort: uint32(backendPort)}))
 	if err != nil {
+		if connect.CodeOf(err) == connect.CodeUnavailable || connect.CodeOf(err) == connect.CodeDeadlineExceeded {
+			return Assignment{}, fmt.Errorf("%w: %v", ErrControlUnavailable, err)
+		}
 		return Assignment{}, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	res, err := client.Do(req)
+	envelope, err := report.FromWire(response.Msg, "configuration")
 	if err != nil {
-		return Assignment{}, fmt.Errorf("%w: %v", ErrControlUnavailable, err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode/100 != 2 {
-		b, _ := io.ReadAll(res.Body)
-		if res.StatusCode >= 500 {
-			return Assignment{}, fmt.Errorf("%w: HTTP %d: %s", ErrControlUnavailable, res.StatusCode, strings.TrimSpace(string(b)))
-		}
-		return Assignment{}, fmt.Errorf("management config: HTTP %d: %s", res.StatusCode, strings.TrimSpace(string(b)))
-	}
-	var envelope report.Envelope
-	if err := json.NewDecoder(res.Body).Decode(&envelope); err != nil {
 		return Assignment{}, err
 	}
 	config, err := nodeconfig.Verify(envelope, r.ControlKey, r.NodeID, time.Now())
@@ -108,48 +82,27 @@ func (r HTTPResolver) Resolve(ctx context.Context, hostname string, backendPort 
 	return Assignment{}, fmt.Errorf("hostname %q is not approved", hostname)
 }
 
-func (r HTTPResolver) Acknowledge(ctx context.Context, revision string, services []string) error {
-	if strings.TrimSpace(r.BaseURL) == "" || strings.TrimSpace(r.NodeID) == "" || strings.TrimSpace(revision) == "" {
-		return fmt.Errorf("control configuration acknowledgement requires node, URL, and revision")
+func (r RPCResolver) Acknowledge(ctx context.Context, revision string, services []string) error {
+	if r.Client == nil {
+		return fmt.Errorf("%w: process-owned Tailscale HTTP client required", ErrControlUnavailable)
 	}
-	body, _ := json.Marshal(map[string]any{"revision": revision, "services": services})
-	client := r.Client
-	if client == nil {
-		client = http.DefaultClient
+	if revision == "" {
+		return fmt.Errorf("configuration revision required")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(r.BaseURL, "/")+"/api/node/config/ack", strings.NewReader(string(body)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	res, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrControlUnavailable, err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode/100 != 2 {
-		return fmt.Errorf("configuration acknowledgement: HTTP %d", res.StatusCode)
-	}
-	return nil
+	_, e := r.rpc().Acknowledge(ctx, connect.NewRequest(&v1.ConfigAck{Revision: revision, Services: services}))
+	return e
 }
-
-func (r HTTPResolver) Configuration(ctx context.Context) (nodeconfig.Configuration, error) {
-	var config nodeconfig.Configuration
-	req, err := http.NewRequestWithContext(ctx, "GET", strings.TrimRight(r.BaseURL, "/")+"/api/node/config", nil)
-	if err != nil {
-		return config, err
+func (r RPCResolver) Configuration(ctx context.Context) (nodeconfig.Configuration, error) {
+	if r.Client == nil {
+		return nodeconfig.Configuration{}, fmt.Errorf("%w: process-owned Tailscale HTTP client required", ErrControlUnavailable)
 	}
-	res, err := r.Client.Do(req)
-	if err != nil {
-		return config, err
+	response, e := r.rpc().GetConfig(ctx, connect.NewRequest(&v1.Empty{}))
+	if e != nil {
+		return nodeconfig.Configuration{}, e
 	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 {
-		return config, fmt.Errorf("config: HTTP %d", res.StatusCode)
-	}
-	var env report.Envelope
-	if err = json.NewDecoder(res.Body).Decode(&env); err != nil {
-		return config, err
+	env, e := report.FromWire(response.Msg, "configuration")
+	if e != nil {
+		return nodeconfig.Configuration{}, e
 	}
 	return nodeconfig.Verify(env, r.ControlKey, r.NodeID, time.Now())
 }

@@ -10,14 +10,15 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"math/big"
+	"sync"
+	"time"
+
 	core "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"math/big"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sync"
-	"time"
 )
 
 func serial() *big.Int {
@@ -66,7 +67,7 @@ func EnsureTLS(ctx context.Context, c client.Client, ns, name, dns string) (tls.
 		if err != nil {
 			return tls.Certificate{}, nil, err
 		}
-		s = core.Secret{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns}, Data: map[string][]byte{"ca.crt": pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), "ca.key": pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pk}), "tls.crt": cert, "tls.key": leafKey}}
+		s = core.Secret{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: ownedRuntimeLabels()}, Data: map[string][]byte{"ca.crt": pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), "ca.key": pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pk}), "tls.crt": cert, "tls.key": leafKey}}
 		e = c.Create(ctx, &s)
 		if apierrors.IsAlreadyExists(e) {
 			e = c.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, &s)

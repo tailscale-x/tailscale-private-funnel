@@ -12,3 +12,8 @@ await mkdir(target, { recursive: true });
 for (const name of names) {
   await cp(join(source, `${name}.svg`), join(target, `${name}.svg`));
 }
+
+// Bundle the API renderer locally; control has no runtime CDN dependency.
+const docs = join(process.cwd(), '..', 'internal', 'web', 'assets', 'api');
+await mkdir(docs, {recursive: true});
+await cp(join(process.cwd(), 'node_modules', '@scalar', 'api-reference', 'dist', 'browser', 'standalone.js'), join(docs, 'scalar.js'));

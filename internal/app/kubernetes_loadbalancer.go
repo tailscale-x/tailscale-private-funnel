@@ -4,14 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
-	core "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"log/slog"
 	"os"
 	"path/filepath"
-	"tailscale.com/tsnet"
 	"time"
+
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
+	core "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"tailscale.com/tsnet"
 )
 
 func validatePersistentState(mode string, o Options) error {
@@ -49,7 +51,11 @@ func reportKubernetesEndpoint(ctx context.Context, s *tsnet.Server, o Options) {
 		var service core.Service
 		err = c.Get(bounded, types.NamespacedName{Namespace: o.KubeNamespace, Name: o.KubernetesService}, &service)
 		if err == nil && service.Spec.Type == core.ServiceTypeLoadBalancer {
-			err = agent.SendSnapshot(bounded, "/api/node/public-endpoint", map[string]any{"namespace": service.Namespace, "service": service.Name, "uid": string(service.UID), "observed_at": time.Now().Unix(), "ingress": service.Status.LoadBalancer.Ingress})
+			payload := &v1.PublicEndpointPayload{Namespace: service.Namespace, Service: service.Name, Uid: string(service.UID), ObservedAt: time.Now().Unix()}
+			for _, ip := range service.Status.LoadBalancer.Ingress {
+				payload.Ingress = append(payload.Ingress, &v1.PublicIngress{Ip: ip.IP, Hostname: ip.Hostname})
+			}
+			err = agent.SendPublicEndpoint(bounded, payload)
 		} else if err == nil {
 			err = fmt.Errorf("public Service is not type LoadBalancer")
 		}

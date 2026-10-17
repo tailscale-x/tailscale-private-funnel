@@ -7,12 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	"connectrpc.com/connect"
+
 	"github.com/libdns/libdns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
@@ -57,49 +56,7 @@ func (c *Control) policyLocked() policy.Document {
 	}
 	return d
 }
-func (c *Control) exposureAllowed(e dns.GatewayExposure, ids, roles []string) bool {
-	return c.anyEdgeAllows(c.loadExposurePolicy(), e.PublicHostname, ids, roles)
-}
-func (c *Control) policyGet(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, c.loadExposurePolicy())
-}
-func writeJSON(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	encoder := json.NewEncoder(w)
-	encoder.SetIndent("", "  ")
-	_ = encoder.Encode(v)
-}
-func readPolicy(w http.ResponseWriter, r *http.Request) (policy.Document, error) {
-	var d policy.Document
-	var err error
-	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
-		decoder.DisallowUnknownFields()
-		err = decoder.Decode(&d)
-	} else {
-		err = json.Unmarshal([]byte(r.FormValue("policy")), &d)
-	}
-	if err != nil {
-		return d, fmt.Errorf("invalid policy JSON: %w", err)
-	}
-	return d, d.Validate()
-}
-func (c *Control) policyValidate(w http.ResponseWriter, r *http.Request) {
-	d, err := readPolicy(w, r)
-	if err != nil {
-		http.Error(w, err.Error(), 400)
-		return
-	}
-	writeJSON(w, map[string]any{"valid": true, "rules": len(d.Rules), "saved": false})
-}
-func (c *Control) policyPreview(w http.ResponseWriter, r *http.Request) {
-	d, err := readPolicy(w, r)
-	if err != nil {
-		http.Error(w, err.Error(), 400)
-		return
-	}
-	writeJSON(w, map[string]any{"affected_exposures": c.policyImpact(d), "revision": c.loadExposurePolicy().Revision})
-}
+
 func (c *Control) policyImpact(d policy.Document) []string {
 	old := c.authorizedHostnames(c.loadExposurePolicy())
 	next := c.authorizedHostnames(d)
@@ -110,157 +67,6 @@ func (c *Control) policyImpact(d policy.Document) []string {
 		}
 	}
 	return out
-}
-func (c *Control) savePolicy(w http.ResponseWriter, r *http.Request, d policy.Document) {
-	for i := range d.Rules {
-		name, err := store.ValidateName(d.Rules[i].Name)
-		if err != nil {
-			http.Error(w, err.Error(), 400)
-			return
-		}
-		d.Rules[i].Name = name
-		for _, id := range d.Rules[i].GatewayIDs {
-			n, err := c.Store.Node(id)
-			if err != nil || !store.IsGateway(n.Mode) {
-				http.Error(w, "Unknown gateway reference", 400)
-				return
-			}
-		}
-	}
-	if err := d.Validate(); err != nil {
-		http.Error(w, err.Error(), 400)
-		return
-	}
-	c.policyMu.Lock()
-	if err := c.policyStorageError(); err != nil {
-		c.policyMu.Unlock()
-		http.Error(w, "Exposure policy unavailable; retry later", 503)
-		return
-	}
-	old := c.policyLocked()
-	if d.Revision != old.Revision {
-		c.policyMu.Unlock()
-		http.Error(w, "Policy changed. Reload before saving.", 409)
-		return
-	}
-	d.Revision++
-	for i := range d.Rules {
-		if d.Rules[i].ID == "" {
-			d.Rules[i].ID = fmt.Sprintf("rule-%x", sha256.Sum256([]byte(fmt.Sprintf("%d:%d:%d", time.Now().UnixNano(), d.Revision, i))))[:29]
-		}
-	}
-	err := c.Store.SetJSON("exposure_policy", d)
-	c.policyMu.Unlock()
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	action := "exposure-policy.save"
-	if id := chi.URLParam(r, "id"); id != "" {
-		action = "exposure-policy.rule." + strings.ToLower(r.Method) + ":" + id
-	}
-	_ = c.Store.Audit(action+fmt.Sprintf(":revision:%d", d.Revision), identityFromRequest(r))
-	_ = c.Store.SetJSON("policy_cleanup", map[string]any{"pending": true, "revision": d.Revision, "message": "Policy saved. Routes withdraw on node polling; DNS cleanup is queued."})
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	_ = c.ReconcilePolicy(ctx)
-	cancel()
-	if r.Header.Get("HX-Request") == "true" {
-		w.Header().Set("HX-Redirect", "/policies")
-		return
-	}
-	writeJSON(w, map[string]any{"policy": d, "cleanup_pending": true})
-}
-func (c *Control) policySave(w http.ResponseWriter, r *http.Request) {
-	d, err := readPolicy(w, r)
-	if err != nil {
-		http.Error(w, err.Error(), 400)
-		return
-	}
-	c.savePolicy(w, r, d)
-}
-func (c *Control) policyRuleSave(w http.ResponseWriter, r *http.Request) {
-	d := c.loadExposurePolicy()
-	var rule policy.Rule
-	rev := uint64(0)
-	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-		var input struct {
-			Revision uint64      `json:"revision"`
-			Rule     policy.Rule `json:"rule"`
-		}
-		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
-		decoder.DisallowUnknownFields()
-		if decoder.Decode(&input) != nil {
-			http.Error(w, "invalid rule", 400)
-			return
-		}
-		rule = input.Rule
-		rev = input.Revision
-	} else {
-		rev, _ = strconv.ParseUint(r.FormValue("revision"), 10, 64)
-		rule = policy.Rule{Name: r.FormValue("name"), HostnameRegexes: r.Form["hostname_regexes"], Roles: splitValues(r.FormValue("roles")), GatewayIDs: splitValues(r.FormValue("gateway_ids")), Enabled: r.FormValue("enabled") == "on"}
-	}
-	if rev != d.Revision {
-		http.Error(w, "Policy changed. Reload before saving.", 409)
-		return
-	}
-	id := chi.URLParam(r, "id")
-	if id == "" && rule.ID != "" {
-		http.Error(w, "Rule IDs are server generated", 400)
-		return
-	}
-	if id != "" && rule.ID != "" && rule.ID != id {
-		http.Error(w, "Rule ID is immutable", 400)
-		return
-	}
-	name, nameErr := store.ValidateName(rule.Name)
-	if nameErr != nil {
-		http.Error(w, nameErr.Error(), 400)
-		return
-	}
-	rule.Name = name
-	if id == "" {
-		d.Rules = append(d.Rules, rule)
-	} else {
-		found := false
-		for i := range d.Rules {
-			if d.Rules[i].ID == id {
-				rule.ID = id
-				d.Rules[i] = rule
-				found = true
-				break
-			}
-		}
-		if !found {
-			http.NotFound(w, r)
-			return
-		}
-	}
-	c.savePolicy(w, r, d)
-}
-func (c *Control) policyRuleDelete(w http.ResponseWriter, r *http.Request) {
-	d := c.loadExposurePolicy()
-	rev, _ := strconv.ParseUint(r.URL.Query().Get("revision"), 10, 64)
-	if rev != d.Revision {
-		http.Error(w, "Policy changed. Reload before deleting.", 409)
-		return
-	}
-	for i, rule := range d.Rules {
-		if rule.ID == chi.URLParam(r, "id") {
-			d.Rules = append(d.Rules[:i], d.Rules[i+1:]...)
-			c.savePolicy(w, r, d)
-			return
-		}
-	}
-	http.NotFound(w, r)
-}
-func (c *Control) policyTest(w http.ResponseWriter, r *http.Request) {
-	if r.FormValue("loadbalancer_id") != "" || r.FormValue("loadbalancer_ids") != "" {
-		http.Error(w, "load-balancer selection is control-managed", 400)
-		return
-	}
-	h := r.FormValue("hostname")
-	ok, name := c.loadExposurePolicy().Allows(h, splitValues(r.FormValue("gateway_ids")), splitValues(r.FormValue("roles")))
-	writeJSON(w, map[string]any{"allowed": ok, "matched_rule": name, "hostname": h})
 }
 
 // Desired DNS and routes are reconstructed from signed, unexpired reports and
@@ -393,29 +199,6 @@ func (c *Control) reconcilePartitions(ctx context.Context, owner string, desired
 	return nil
 }
 
-// retainOwnedType keeps records managed by another reconciliation loop for the
-// same load-balancer owner. The endpoint loop owns A records; reports own CNAMEs.
-func (c *Control) retainOwnedType(owner, recordType string, desired map[store.LedgerPartition][]libdns.Record) error {
-	parts, err := c.Store.LedgerPartitions()
-	if err != nil {
-		return err
-	}
-	for _, p := range parts {
-		if p.OwnerID != owner {
-			continue
-		}
-		entries, err := c.Store.Ledger(p.ProviderID, p.Zone, owner)
-		if err != nil {
-			return err
-		}
-		for _, entry := range entries {
-			if strings.EqualFold(entry.Record.RR().Type, recordType) {
-				desired[p] = append(desired[p], entry.Record)
-			}
-		}
-	}
-	return nil
-}
 func (c *Control) ReconcilePolicy(ctx context.Context) error {
 	c.cleanupMu.Lock()
 	defer c.cleanupMu.Unlock()
@@ -447,4 +230,50 @@ func (c *Control) ReconcilePolicy(ctx context.Context) error {
 		return fmt.Errorf("%s", message)
 	}
 	return nil
+}
+
+func (c *Control) savePolicyOperation(ctx context.Context, d policy.Document, actor string) (policy.Document, error) {
+	for i := range d.Rules {
+		name, err := store.ValidateName(d.Rules[i].Name)
+		if err != nil {
+			return policy.Document{}, rpcFailure(connect.CodeInvalidArgument, errors.New(err.Error()))
+		}
+		d.Rules[i].Name = name
+		for _, id := range d.Rules[i].GatewayIDs {
+			n, err := c.Store.Node(id)
+			if err != nil || !store.IsGateway(n.Mode) {
+				return policy.Document{}, rpcFailure(connect.CodeInvalidArgument, errors.New("Unknown gateway reference"))
+			}
+		}
+	}
+	if err := d.Validate(); err != nil {
+		return policy.Document{}, rpcFailure(connect.CodeInvalidArgument, errors.New(err.Error()))
+	}
+	c.policyMu.Lock()
+	if err := c.policyStorageError(); err != nil {
+		c.policyMu.Unlock()
+		return policy.Document{}, rpcFailure(connect.CodeUnavailable, errors.New("Exposure policy unavailable; retry later"))
+	}
+	old := c.policyLocked()
+	if d.Revision != old.Revision {
+		c.policyMu.Unlock()
+		return policy.Document{}, rpcFailure(connect.CodeAborted, errors.New("Policy changed. Reload before saving."))
+	}
+	d.Revision++
+	for i := range d.Rules {
+		if d.Rules[i].ID == "" {
+			d.Rules[i].ID = fmt.Sprintf("rule-%x", sha256.Sum256([]byte(fmt.Sprintf("%d:%d:%d", time.Now().UnixNano(), d.Revision, i))))[:29]
+		}
+	}
+	err := c.Store.SetJSON("exposure_policy", d)
+	c.policyMu.Unlock()
+	if err != nil {
+		return policy.Document{}, rpcFailure(connect.CodeInternal, errors.New(err.Error()))
+	}
+	_ = c.Store.Audit(fmt.Sprintf("exposure-policy.save:revision:%d", d.Revision), actor)
+	_ = c.Store.SetJSON("policy_cleanup", map[string]any{"pending": true, "revision": d.Revision, "message": "Policy saved. Routes withdraw on node polling; DNS cleanup is queued."})
+	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_ = c.ReconcilePolicy(bounded)
+	return d, nil
 }

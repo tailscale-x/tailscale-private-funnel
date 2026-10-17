@@ -1,0 +1,75 @@
+# API, CLI, and deployment instructions
+
+The protobuf contracts under `api/funnel/v1` generate Go/TypeScript Connect
+clients, handlers, OpenAPI, RPC reference, CLI flags, and agent documentation.
+Run `scripts/generate-rpc.sh`; the embedded `/llms.txt` points agents to the
+current generated documentation. Node communication, brokers and management use
+Connect over verified Tailscale identity or broker-scoped tokens.
+
+## Command boundaries
+
+- `native controls|gateways|loadbalancers`: named system services on this Linux host.
+- `k8s operator`: singleton operator installation and lifecycle.
+- `k8s controls|gateways|loadbalancers`: component CR creation and lifecycle.
+- `manage`: application management through the authorized Funnel API.
+
+Use standard help/completion offline. Kubernetes operations require explicit
+`--context`. Use `--output json`, mutation `--dry-run`, deployment `--wait` and
+`--timeout`, and `--yes` for deletion. Stop preserves native state and identity;
+delete revokes and removes owned state. Runtime commands are hidden infrastructure
+entrypoints and are not a public deployment API.
+
+## Instructions versus execution
+
+`DeploymentService.Instructions` is pure: it resolves settings and returns typed
+commands, prerequisites and diagnostics. It never creates enrollment or keys.
+Both React and CLI use shared Go renderers. The browser does not build command
+strings, upload kubeconfigs, or execute host/cluster commands.
+
+`DeploymentService.Authorize` begins enrollment when an authorized CLI runs
+create. One-use bootstrap enters the target over protected stdin or a dedicated
+Kubernetes Secret. OAuth stays server-side; creating an independent control uses
+protected OAuth files on the target. UI instruction generation does not start
+bootstrap expiry.
+
+```sh
+tailscale-private-funnel native gateways create-remote site \
+  --type tailnet --control-url http://CONTROL:8080 --version VERSION \
+  --output script | ssh ubuntu@TARGET 'sh -s'
+```
+
+`create-remote` performs no SSH connection. `--output instructions` is readable;
+`script` emits only complete POSIX shell on stdout; `json` returns structured
+instructions and script. Diagnostics use stderr. `--wait` applies to target
+execution. Dry runs mint no credentials and emit a non-executable preview.
+
+Native deployment handles are unique, immutable operational names. Editable
+Unicode display names and immutable internal node/resource IDs are separate.
+Inspection reads systemd/runtime status without opening another tsnet identity.
+No Docker deployment target, public join/serve/reset/bootstrap/provision,
+print-command, import/adoption/resume, or compatibility alias remains.
+
+## Authorization and ownership
+
+Management uses WhoIs and server-verified Tailscale roles/capabilities. Node
+operations resolve the caller, rather than trusting client node IDs. Signed
+reports bind keys, timestamps, nonces and configuration revisions to enrollment.
+DNS mutations pass through control, preserving exact ledger ownership and
+preview-bound overwrite approval. Revoking access does not prove deployment
+resources were removed; deletion is a separate infrastructure action.
+
+## Generation and verification
+
+Pinned tools: buf v1.74.0, protoc-gen-go v1.36.11,
+protoc-gen-connect-go v1.21.1, protoc-gen-es v2.16.0,
+protoc-gen-connect-openapi v0.28.0, controller-tools v0.20.0.
+`go test ./...`, `go test -tags caddy ./...`, `go vet ./...`, envtest,
+Helm lint/template, generation drift checks, and image startup are required.
+`scripts/code-surface.py` tracks authored source separately from generated and
+bundled output. See [Kubernetes operator](KUBERNETES.md).
+
+For an explicitly authorized tagged automation machine, first control creation
+also accepts repeated `--administrator 'node:STABLE_TAILSCALE_NODE_ID'` selectors.
+This is a first-bootstrap addition; `autogroup:owner` remains the default and
+restarts never overwrite stored roles. Do not grant administrator access to a
+shared workload tag. Later access changes use `manage access` or the web UI.

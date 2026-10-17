@@ -1,0 +1,615 @@
+syntax = "proto3";
+package funnel.v1;
+
+import "buf/validate/validate.proto";
+import "funnel/v1/options.proto";
+
+option go_package = "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1;funnelv1";
+// ManagementService is the tailnet-only interface shared by the CLI and UI.
+service ManagementService {
+  // Identify the verified caller and its effective control roles.
+  rpc WhoAmI(Empty) returns (Identity) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "whoami";
+  }
+  // Inspect control version and resource health without starting another node.
+  rpc Health(Empty) returns (HealthResponse) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "health";
+  }
+  rpc ListProviders(Empty) returns (Providers) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "providers list";
+  }
+  rpc SaveProvider(SaveProviderRequest) returns (Provider) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "providers save";
+    option (sensitive) = true;
+    option (audit) = true;
+  }
+  rpc DeleteProvider(ResourceID) returns (Empty) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "providers delete";
+    option (audit) = true;
+  }
+  rpc EnableProvider(EnableRequest) returns (Empty) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "providers enable";
+    option (audit) = true;
+  }
+  rpc TestProvider(ResourceID) returns (TestResult) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "providers test";
+    option (audit) = true;
+  }
+  rpc DiscoverZones(ResourceID) returns (DiscoveredZones) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "zones discover";
+  }
+  rpc ListZones(Empty) returns (Zones) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "zones list";
+  }
+  rpc AddZone(AddZoneRequest) returns (Zone) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "zones add";
+    option (audit) = true;
+  }
+  rpc DeleteZone(ResourceID) returns (Empty) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "zones delete";
+    option (audit) = true;
+  }
+  rpc TestZone(ResourceID) returns (TestResult) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "zones test";
+    option (audit) = true;
+  }
+  rpc ListNodes(ListNodesRequest) returns (Nodes) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "nodes list";
+  }
+  rpc GetNode(ResourceID) returns (Node) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "nodes get";
+  }
+  rpc RenameNode(RenameRequest) returns (Empty) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "nodes rename";
+    option (audit) = true;
+  }
+  rpc RenameEnrollment(RenameRequest) returns (Empty) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "enrollments rename";
+    option (audit) = true;
+  }
+  rpc RenameApplication(RenameRequest) returns (Empty) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "applications rename";
+    option (audit) = true;
+  }
+  // Transfer approved assignments only after the replacement gateway is healthy.
+  // Rebind an existing stopped load balancer to its exact Kubernetes public Service.
+  // Generate bootstrap instructions without accepting or returning OAuth secrets.
+
+  rpc ListEnrollments(ListNodesRequest) returns (Enrollments) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "enrollments list";
+  }
+  rpc GetPolicy(Empty) returns (Policy) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "policies get";
+  }
+  rpc ValidatePolicy(Policy) returns (TestResult) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "policies validate";
+  }
+  rpc TestPolicy(PolicyTestRequest) returns (PolicyTestResult) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "policies test";
+  }
+  rpc GetAccess(Empty) returns (AccessSettings) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "access get";
+  }
+  rpc GetSettings(Empty) returns (Settings) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "settings get";
+  }
+  rpc ListApplications(Empty) returns (Applications) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "applications list";
+  }
+  // Inspect accepted exposure reports and their freshness without replaying them.
+  rpc ListReports(Empty) returns (Reports) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "reports list";
+  }
+  // Inspect only application Service hosts managed by this control installation.
+  rpc ListServiceHosts(Empty) returns (ServiceHosts) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "services hosts";
+  }
+  rpc ListAudit(AuditRequest) returns (AuditEvents) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "audit list";
+  }
+  rpc ListVendors(Empty) returns (Vendors) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "providers vendors";
+  }
+  rpc SavePolicy(Policy) returns (PolicySaveResult) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "policies save";
+    option (audit) = true;
+  }
+  rpc PreviewPolicy(Policy) returns (PolicyImpact) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "policies preview";
+  }
+  rpc SaveRule(SaveRuleRequest) returns (PolicySaveResult) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "policies rules save";
+    option (audit) = true;
+  }
+  rpc DeleteRule(DeleteRuleRequest) returns (PolicySaveResult) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "policies rules delete";
+    option (audit) = true;
+  }
+  rpc SaveAccess(AccessSettings) returns (AccessSettings) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "access save";
+    option (audit) = true;
+  }
+  rpc SaveDefaults(EnrollmentDefaults) returns (Settings) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "settings defaults save";
+    option (audit) = true;
+  }
+  rpc TestOAuth(OAuthRequest) returns (TestResult) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "settings oauth test";
+    option (sensitive) = true;
+    option (audit) = true;
+  }
+  rpc SaveOAuth(OAuthRequest) returns (TestResult) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "settings oauth save";
+    option (sensitive) = true;
+    option (audit) = true;
+  }
+  rpc ListExposures(Empty) returns (Exposures) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "exposures list";
+  }
+  rpc RevokeNode(ResourceID) returns (TestResult) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "nodes revoke";
+    option (audit) = true;
+  }
+  rpc CleanupNode(ResourceID) returns (TestResult) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "nodes cleanup";
+    option (audit) = true;
+  }
+  rpc RevokeEnrollment(ResourceID) returns (Empty) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "enrollments revoke";
+    option (audit) = true;
+  }
+  rpc GetPeers(ResourceID) returns (PeerSnapshot) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "nodes peers";
+  }
+  rpc ProbeBackend(ProbeRequest) returns (Probe) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "nodes probe";
+    option (audit) = true;
+  }
+  rpc SaveTailnetExposure(TailnetExposureRequest) returns (Application) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "exposures tailnet save";
+    option (audit) = true;
+  }
+  rpc DeleteTailnetExposure(ResourceRevision) returns (TestResult) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "exposures tailnet delete";
+    option (audit) = true;
+  }
+  rpc AddAlias(AliasRequest) returns (Application) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "exposures aliases add";
+    option (audit) = true;
+  }
+  rpc ZoneDNS(ResourceID) returns (ZoneDNSState) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "dns list";
+  }
+  rpc PreviewDNS(DNSRequest) returns (DNSResult) {
+    option (permission) = PERMISSION_OPERATOR;
+    option (cli) = "dns preview";
+    option (audit) = true;
+  }
+  rpc ApplyDNS(DNSRequest) returns (DNSResult) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "dns apply";
+    option (audit) = true;
+  }
+}
+message Empty {}
+message ResourceID {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+}
+message RenameRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  string name = 2 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 128
+  }];
+}
+message EnableRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  bool enabled = 2;
+}
+message Identity {
+  string node_id = 1;
+  string hostname = 2;
+  string login = 3;
+  repeated string tags = 4;
+  repeated string roles = 5;
+}
+message HealthResponse {
+  string version = 1;
+  uint32 providers = 2;
+  uint32 zones = 3;
+  uint32 nodes = 4;
+  uint32 applications = 5;
+  DeploymentMetadata deployment = 6;
+}
+message Provider {
+  string id = 1;
+  string name = 2;
+  string vendor = 3;
+  string account_id = 4;
+  bool enabled = 5;
+  repeated string capabilities = 6;
+  int64 tested_at = 7;
+}
+message Providers {
+  repeated Provider items = 1;
+}
+message SaveProviderRequest {
+  string id = 1;
+  string name = 2 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 128
+  }];
+  string vendor = 3;
+  string account_id = 4;
+  map<string, string> credentials = 5;
+  optional bool enabled = 6;
+}
+message TestResult {
+  bool ok = 1;
+  string message = 2;
+}
+message DiscoveredZone {
+  string domain = 1;
+  bool managed = 2;
+}
+message DiscoveredZones {
+  repeated DiscoveredZone items = 1;
+}
+message Zone {
+  string id = 1;
+  string provider_id = 2;
+  string domain = 3;
+}
+message Zones {
+  repeated Zone items = 1;
+}
+message AddZoneRequest {
+  string provider_id = 1 [(buf.validate.field).string.min_len = 1];
+  string domain = 2 [(buf.validate.field).string.min_len = 1];
+}
+message Node {
+  string id = 1;
+  string name = 2;
+  string mode = 3;
+  string hostname = 4;
+  string tailnet_id = 5;
+  bool revoked = 6;
+  int64 last_report = 7;
+  string parent_id = 8;
+  repeated string effective_tags = 9;
+  string config_revision = 10;
+  uint32 listeners = 11;
+  uint32 backends = 12;
+  repeated string public_ipv4 = 13;
+  bool public_ready = 14;
+  repeated string diagnostics = 15;
+  DeploymentMetadata deployment = 16;
+}
+message Nodes {
+  repeated Node items = 1;
+}
+message ListNodesRequest {
+  string mode = 1;
+}
+message Enrollment {
+  string id = 1;
+  string name = 2;
+  string mode = 3;
+  string hostname = 4;
+  bool revoked = 5;
+  int64 created_at = 6;
+}
+message Enrollments {
+  repeated Enrollment items = 1;
+}
+message Rule {
+  string id = 1;
+  string name = 2;
+  repeated string hostname_regexes = 3;
+  repeated string roles = 4;
+  repeated string gateway_ids = 5;
+  bool enabled = 6;
+}
+message Policy {
+  uint64 revision = 1;
+  repeated Rule rules = 2;
+}
+message PolicyTestRequest {
+  string hostname = 1;
+  repeated string gateway_ids = 2;
+  repeated string roles = 3;
+}
+message PolicyTestResult {
+  bool allowed = 1;
+  string matched_rule = 2;
+}
+message Selectors {
+  repeated string selectors = 1;
+}
+message AccessSettings {
+  map<string, Selectors> roles = 1;
+  string capability = 2;
+  // One-shot confirmation; requires a verified active Owner in replacement roles.
+  bool confirm_self_removal = 3;
+}
+message Settings {
+  string tailnet = 1;
+  string management_url = 2;
+  string release_version = 3;
+  bool oauth_configured = 4;
+}
+message Application {
+  string id = 1;
+  string name = 2;
+  string backend_source = 3;
+  repeated string public_hostnames = 4;
+  string service_name = 5;
+  string service_fqdn = 6;
+  uint32 service_port = 7;
+  uint32 backend_port = 8;
+  repeated string gateway_ids = 9;
+  bool enabled = 10;
+  string backend_device_id = 11;
+  int64 revision = 12;
+}
+message Applications {
+  repeated Application items = 1;
+}
+message AuditRequest {
+  uint32 limit = 1 [(buf.validate.field).uint32.lte = 1000];
+}
+message AuditEvent {
+  string action = 1;
+  string actor = 2;
+  int64 created_at = 3;
+}
+message AuditEvents {
+  repeated AuditEvent items = 1;
+}
+
+message Vendor {
+  string id = 1;
+  repeated string fields = 2;
+  bool available = 3;
+}
+message Vendors {
+  repeated Vendor items = 1;
+}
+message PolicySaveResult {
+  Policy policy = 1;
+  bool cleanup_pending = 2;
+}
+message PolicyImpact {
+  repeated string affected_hostnames = 1;
+}
+message SaveRuleRequest {
+  uint64 revision = 1;
+  Rule rule = 2;
+}
+message DeleteRuleRequest {
+  uint64 revision = 1;
+  string id = 2;
+}
+message EnrollmentDefaults {
+  string management_url = 1;
+  string release_version = 2;
+}
+message OAuthRequest {
+  string client_id = 1 [(secret) = true];
+  string client_secret = 2 [(secret) = true];
+}
+message Edge {
+  string id = 1;
+  string name = 2;
+  bool ready = 3;
+  bool healthy = 4;
+  bool policy_allowed = 5;
+  bool backend_reachable = 6;
+  repeated string public_ipv4 = 7;
+  string reason = 8;
+}
+message Exposure {
+  string id = 1;
+  string application_id = 2;
+  string hostname = 3;
+  bool active = 4;
+  repeated Edge edges = 5;
+}
+message Exposures {
+  repeated Exposure items = 1;
+}
+message Peer {
+  string id = 1;
+  string hostname = 2;
+  string dns_name = 3;
+  repeated string addresses = 4;
+  repeated string tags = 5;
+  bool online = 6;
+}
+message Probe {
+  string id = 1;
+  string device_id = 2;
+  uint32 port = 3;
+  int64 expires_at = 4;
+}
+message ProbeResult {
+  string id = 1;
+  string device_id = 2;
+  uint32 port = 3;
+  bool reachable = 4;
+  string error = 5;
+  int64 checked_at = 6;
+}
+message PeerSnapshot {
+  repeated Peer peers = 1;
+  repeated string tags = 2;
+  repeated ProbeResult results = 3;
+  int64 expires_at = 4;
+  int64 received_at = 5;
+  repeated string sources = 6;
+  repeated string roles = 7;
+}
+message ProbeRequest {
+  string node_id = 1;
+  string device_id = 2;
+  uint32 port = 3 [(buf.validate.field).uint32 = {
+    gt: 0
+    lte: 65535
+  }];
+}
+message TailnetExposureRequest {
+  string id = 1;
+  string name = 2;
+  string node_id = 3;
+  string backend_device_id = 4;
+  uint32 backend_port = 5 [(buf.validate.field).uint32 = {
+    gt: 0
+    lte: 65535
+  }];
+  string public_hostname = 6;
+  bool enabled = 7;
+  int64 revision = 8;
+  string probe_id = 9;
+}
+message AliasRequest {
+  string application_id = 1;
+  string hostname = 2;
+}
+message DNSRecord {
+  string name = 1;
+  string type = 2;
+  string data = 3;
+  string node = 4;
+  string management = 5;
+}
+message ZoneDNSState {
+  string domain = 1;
+  repeated DNSRecord records = 2;
+  string status = 3;
+  int64 last_success = 4;
+}
+message DNSRequest {
+  string zone_id = 1;
+  map<string, string> approvals = 2;
+}
+message DNSPartitionResult {
+  string resource_id = 1;
+  string name = 2;
+  string error = 3;
+  bool requires_approval = 4;
+  string approval_token = 5;
+  repeated DNSRecord existing_records = 6;
+  repeated DNSRecord desired_records = 7;
+  uint32 add_count = 8;
+  uint32 remove_count = 9;
+}
+message DNSResult {
+  bool dry_run = 1;
+  repeated DNSPartitionResult results = 2;
+  bool pending = 3;
+}
+
+message ResourceRevision {
+  string id = 1;
+  int64 revision = 2;
+}
+
+
+message ExposureReport {
+  repeated ReportedExposure exposures = 1;
+  int64 expires_at = 2;
+}
+message ReportedExposure {
+  string backend_device_id = 1;
+  string application_id = 2;
+  string service_name = 3;
+  string container_id = 4;
+  string public_hostname = 5;
+  string backend_hostname = 6;
+  string backend_ip = 7;
+  uint32 port = 8;
+  string protocol = 9;
+  repeated string networks = 10;
+  bool reachable = 11;
+}
+
+message NodeReport {
+  string node_id = 1;
+  string name = 2;
+  string mode = 3;
+  int64 received_at = 4;
+  int64 expires_at = 5;
+  bool fresh = 6;
+  repeated ReportedExposure exposures = 7;
+}
+message Reports {
+  repeated NodeReport items = 1;
+}
+message ServiceHost {
+  string service_name = 1;
+  string device_id = 2;
+  bool approved = 3;
+  string approval_state = 4;
+  int64 updated_at = 5;
+}
+message ServiceHosts {
+  repeated ServiceHost items = 1;
+}
+
+message DeploymentMetadata {
+ string target = 1;
+ string resource_name = 2;
+ string namespace = 3;
+ string version = 4;
+ string state_dir = 5;
+ string data_dir = 6;
+ string context_hint = 7;
+ bool conditions_reported = 8;
+ repeated string conditions = 9;
+}

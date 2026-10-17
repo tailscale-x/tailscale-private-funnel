@@ -22,7 +22,7 @@ func TestControllerRestoreRequiresExistingMachineIdentity(t *testing.T) {
 	}
 	c := fake.NewClientBuilder().WithScheme(kube.Scheme()).WithObjects(s).Build()
 	data, state := t.TempDir(), t.TempDir()
-	if err := RestoreController(ctx, c, "system", "controller", data, state); err == nil {
+	if err := RestoreAgentBundle(ctx, c, "system", "controller", data, state); err == nil {
 		t.Fatal("corrupt identity accepted")
 	}
 	if _, err := os.Stat(filepath.Join(data, "config.json")); !os.IsNotExist(err) {
@@ -33,7 +33,7 @@ func TestControllerRestoreRequiresExistingMachineIdentity(t *testing.T) {
 	if err := c.Update(ctx, s); err != nil {
 		t.Fatal(err)
 	}
-	if err := RestoreController(ctx, c, "system", "controller", data, state); err != nil {
+	if err := RestoreAgentBundle(ctx, c, "system", "controller", data, state); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range BundleFiles {

@@ -1,206 +1,167 @@
-# Kubernetes installations
+# Kubernetes operator
 
-The OCI chart is `oci://ghcr.io/tailscale-x/charts/tailscale-private-funnel`.
-Select `component: control`, `loadbalancer`, or `k8s-gateway`; the default is
-`k8s-gateway`. Pin the chart version and matching image tag or digest.
+Install one stateless, singleton Recreate operator per cluster. The operator uses
+controller-runtime v0.23.3; controller-tools v0.20.0 generates CRDs, deepcopy code,
+RBAC, and the [resource reference](KUBERNETES_API.md).
 
-All components belonging to one Funnel installation share:
+The public OCI Helm chart installs **only the operator and CRDs**. Components are
+namespaced `tailscale-private-funnel.io/v1alpha1` resources created by the CLI.
+SQLite remains authoritative for application authorization, providers, policy,
+enrollment, reports, DNS ownership, and audit.
 
-```text
-tailscale-private-funnel-<installation>-system
-```
+## Install and create control
 
-`installation` defaults to `main` and is a DNS label of at most 31 characters.
-Different controls belong to different installations and namespaces. Release names
-are independent: `control`, `edge`, `edge2`, and `gateway` can coexist in one namespace.
-Never reuse a release name for a different component.
-
-## Control bootstrap
-
-Create a dedicated namespace and an existing bootstrap Secret from protected files:
+Run from an authorized workstation. Every Kubernetes operation requires an
+explicit context; the current context is never used implicitly.
 
 ```sh
-kubectl create namespace tailscale-private-funnel-main-system
-kubectl label namespace tailscale-private-funnel-main-system tailscale-private-funnel.io/installation=main
-kubectl -n tailscale-private-funnel-main-system create secret generic control-identity
-kubectl -n tailscale-private-funnel-main-system create secret generic control-bootstrap \
-  --from-file=client-id="$HOME/.config/tailscale-private-funnel/ts-client-id" \
-  --from-file=client-secret="$HOME/.config/tailscale-private-funnel/ts-client-secret"
-helm upgrade --install control oci://ghcr.io/tailscale-x/charts/tailscale-private-funnel \
-  --version '<chart-version>' --namespace tailscale-private-funnel-main-system \
-  --set component=control --set installation=main \
-  --set-string image.reference='ghcr.io/tailscale-x/tailscale-private-funnel:<image-version>' \
-  --set bootstrap.existingSecret=control-bootstrap \
-  --set control.hostname=funnel-control-main --set-string control.tailnet='<tailnet>' \
-  --wait --timeout 5m
-kubectl -n tailscale-private-funnel-main-system delete secret control-bootstrap
-kubectl -n tailscale-private-funnel-main-system logs deployment/control-control -c control
+tailscale-private-funnel k8s operator create \
+  --context CLUSTER --version VERSION \
+  --managed-namespace tailscale-private-funnel-main-system --wait
+
+tailscale-private-funnel k8s controls create main \
+  --context CLUSTER --namespace tailscale-private-funnel-main-system \
+  --version VERSION --hostname funnel-control --tailnet TAILNET \
+  --oauth-client-id-file ./ts-client-id \
+  --oauth-client-secret-file ./ts-client-secret --wait
 ```
 
-Open the tailnet address on port 8080 printed in the logs. Management is tailnet-only;
-there is no public control Service or Ingress. Default administration uses verified
-`autogroup:owner`; the OAuth client needs `users:read` to resolve account roles, plus
-`auth_keys`, `devices:core`, and `services` for the shared Funnel tag. Use the existing
-static grant; Funnel does not change ACLs. Tagged diagnostic machines need an explicit
-configured administrator role or verified capability.
+Control and load balancers require a working dynamic StorageClass. If the cluster
+has no default, pass `--storage-class NAME --storage-size 1Gi` at creation.
+Provisioning reports `StoragePending` until the PVC binds; it does not silently
+choose an arbitrary storage provider.
 
-Control uses one Recreate Deployment. Its init container bootstraps or validates the
-precreated identity Secret. The PVC contains SQLite and its journals; the identity Secret
-contains tsnet state, the database encryption key, and the configuration signing key.
-Only ephemeral runtime files are restored into the Pod. Missing or mismatched durable
-storage fails startup.
-Restart after deleting the bootstrap Secret reuses that state without interactive login.
+Credential files must be private regular files (0600). Credentials are sent only
+to a dedicated bootstrap Secret, never CR specs, Helm values, Events, logs, or
+status. The operator deletes its owned bootstrap Secret after initialization.
+The private setup URL is exposed in `k8s controls get main --context CLUSTER`.
+Management remains tailnet-only; no public Kubernetes Service exposes control.
 
-The current control UI also generates these commands under Tailscale settings →
-**Deploy a control installation on Kubernetes**. This creates a new installation;
-it does not copy the current database or identity.
+## Component resources
 
-## Additional public load balancers
+| CRD | Owned resources | Persistent state |
+|---|---|---|
+| FunnelControl | Recreate Deployment, exact-Secret role, identity Secret, PVC | SQLite on PVC; tsnet and encryption key in Secret |
+| FunnelLoadBalancer | Recreate Deployment, identity Secret, certificate PVC, TCP LoadBalancer Service | tsnet/signing key in Secret; Caddy certificates on PVC |
+| FunnelGateway | Gateway-agent Deployment, broker, leases, identities, forwarder DaemonSet, classes | Agent and per-node tsnet identities in broker-managed Secrets |
 
-In **Add load balancer**, select **Kubernetes · Helm**, installation, and optional
-release name. Execute the generated script with the intended kubeconfig. It creates
-a short-lived enrollment Secret, installs the pinned chart, waits for bootstrap,
-and removes the Secret. The script waits for the Deployment separately from public
-address allocation; a pending LoadBalancer address does not leave consumed bootstrap
-credentials behind. Each release owns a separate Recreate Deployment, enrollment and identity Secret. Its PVC contains complete
-Caddy storage, including certificates, private keys, ACME state and renewal metadata.
+The UI generates complete `k8s gateways create` and `k8s loadbalancers create`
+commands using the selected context, namespace, image version, and settings.
+Commands execute locally through Kubernetes credentials; the control service
+never receives kubeconfigs or remote-execution permissions.
 
-The chart creates a TCP Service of type `LoadBalancer` for ports 80/443. It uses the
-cluster's existing cloud provider, MetalLB, or equivalent; it does not provision an
-address allocator or create a public route for a private cluster address.
+Use `k8s <resource> get NAME` for observed generation, conditions, identity,
+forwarder counts, and public Service allocation. Workload readiness alone does
+not prove public DNS/ACME/backend readiness; also inspect enrolled health in the
+control UI. Additional load balancers receive independent identities and storage.
 
-Supported values:
+`GatewayClass.parametersRef` references the owning FunnelGateway infrastructure
+resource. Gateway API and Ingress resources remain the routing interface; their
+class selection, allowedRoutes, ReferenceGrant, backend validation, node-local
+forwarding, and status isolation are enforced by the gateway agent. No full
+Gateway API conformance is claimed.
 
-```yaml
-component: loadbalancer
-installation: main
-loadbalancer:
-  service:
-    annotations: {}
-    loadBalancerClass: ""
-    loadBalancerSourceRanges: []
-    externalTrafficPolicy: Local
+## Isolation
+
+Operator namespace: `tailscale-private-funnel-k8s-operator-system`. Installation
+namespace: `tailscale-private-funnel-<installation>-system`. Explicit
+`--managed-namespace` grants workload/Secret permissions only to selected
+namespaces. The operator is trusted infrastructure with cluster-scoped routing
+and delegated RBAC permissions; do not expose its ServiceAccount to tenants.
+
+Control/load-balancer runtime roles address exact identity Secrets. Brokers have
+namespace-scoped identity/lease permissions and identity-validation reads, with
+no workload creation, Pod exec, or Pod patch permissions. Forwarders get only
+short-lived audience-bound broker tokens and no Kubernetes RBAC bindings.
+Different installations use separate namespaces. Pods run nonroot with dropped
+capabilities, read-only filesystems and seccomp. Only load balancers add
+NET_BIND_SERVICE. No TUN, Docker socket, or host networking is used in Kubernetes.
+
+Forwarders use only ready Pod endpoints on their own node. Each identity is
+lease-fenced; losing the lease stops advertising before another Pod takes over.
+Public LoadBalancer allocation comes from the cluster implementation. A private
+or pending address does not satisfy WAN/ACME acceptance. Client-IP preservation
+must be verified with that implementation and externalTrafficPolicy Local.
+
+## Updates, deletion, and recovery
+
+```sh
+tailscale-private-funnel k8s gateways update site --context CLUSTER \
+  --namespace tailscale-private-funnel-main-system --version VERSION --wait
+tailscale-private-funnel k8s gateways delete site --context CLUSTER \
+  --namespace tailscale-private-funnel-main-system --yes --wait
 ```
 
-The provider must preserve client source addresses. L7 frontends, TLS offload,
-PROXY-protocol injection, or trusting arbitrary incoming forwarding headers are not
-configured by this chart. Caddy terminates public TLS and generates trusted forwarding
-headers. Public HTTP/HTTPS are TCP only; this Service does not publish HTTP/3 UDP.
+Ordinary restart/update preserves identity. Corrupt or missing initialized state
+fails closed. Bootstrap expiry requires fresh credentials. There is no adoption,
+import, migration, resume, or compatibility CLI.
 
-Control uses signed, WhoIs-bound Service observations, not the Pod's outbound Tailscale
-endpoint. The node can read only its own public Service. Observations pin Service
-namespace/name/UID; a recreated Service UID requires an explicit administrator rebind
-with the old process stopped (see the migration operation below).
-Public IPv4 addresses are deduplicated, including DNS resolution when Service status
-contains a hostname. Pending, stale, private-only, or unresolved addresses retain
-previous owned records and produce diagnostics. Revocation removes only that node's
-owned contribution. There is no manual address override or Pod/node/ClusterIP fallback.
+Deletion stops identity owners before a cleanup Job uses the same identity.
+Finalizers revoke node/Service access, complete owned DNS cleanup, and remove
+owned Secrets, leases, certificates, and PVCs. Failure retains state and the
+finalizer with diagnostics. External referenced resources are not implicitly
+owned. Deleting a PVC follows its StorageClass reclaim policy: a `Retain`
+PersistentVolume may remain for storage-administrator cleanup. PVC deletion is
+not a claim of physical data erasure. A control cannot be deleted while active enrolled components remain;
+operator deletion refuses while any component CR remains. Never remove a
+finalizer to bypass a cleanup failure.
 
-k3d and many bare-metal k3s clusters report private addresses; these intentionally do
-not become public DNS. Allocator-specific capacity limits still apply: k3s ServiceLB
-may need node pools to host multiple Services using the same public ports.
+Back up SQLite and its matching identity Secret before planned upgrades. Rollback
+uses the prior pinned image and matching compatible state. Replacing an existing
+installation requires explicit cleanup and fresh provisioning; never run two
+processes with one tsnet identity.
 
-Verify the actual client address after Pod replacement as well as initial installation.
-On our dedicated xvps cluster, a directly routable Service VIP is handled by kube-proxy.
-We disabled the CNI `portmap` plugin there because its host-port NAT path could take
-precedence and replace the public client address with a ServiceLB Pod address. This is
-a host-specific configuration, not a chart default; hostPort-dependent workloads would
-need a different networking setup. Do not apply it to a NAT-only cluster expecting
-ServiceLB host-port forwarding. The [live migration report](qa-secret-deployments.md)
-records the verified setup.
+Gateway-agent RBAC reads routing and backend metadata at cluster scope, including
+when `watchNamespaces` limits processing. This supports cross-namespace reference
+validation without granting workload or Secret permissions in application
+namespaces. Broker identity permissions remain restricted to its installation
+namespace. Forwarders have no API bindings. Namespace watch filters are not an
+RBAC isolation boundary; `allowedRoutes`, ReferenceGrant, policy, and backend
+validation remain mandatory.
 
-## Kubernetes gateways and trust
+For clusters with tainted control-plane nodes, supply explicit Pod placement:
 
-The `k8s-gateway` component runs one controller/broker Deployment Pod with Recreate updates and a
-node-local forwarder DaemonSet. Install pinned Gateway API CRDs before this component.
-Use separate classes/releases for independent routing controllers.
-
-Control and brokers are trusted infrastructure inside the namespace. Brokers manage
-dynamic identity Secrets and forwarder leases. They have no Pod-patching permissions
-and cannot create workloads, exec into Pods, modify control Pods,
-mutate PVCs, or read another installation's Secrets. Control and load balancers have projected API tokens and get/update/patch access to
-their exact identity Secret only;
-forwarders have only audience-bound broker tokens and no Kubernetes API permissions.
-No broker or forwarder mounts control storage. Delete bootstrap Secrets promptly.
-
-All Pods run nonroot, with read-only roots and dropped capabilities. Only load-balancer
-main containers add `NET_BIND_SERVICE`. There is no TUN, host network, host mount, or
-Docker socket. NetworkPolicies select installation/release/component; application
-namespaces must separately allow traffic from the relevant forwarders.
-
-## Update, rollback, migration, and removal
-
-The Kubernetes controller is a singleton `Deployment` with `strategy: Recreate`.
-Its Tailscale identity is independent of the Pod name and reloads from the same
-controller-state Secret. There is no controller leader election or Pod-label patching.
-Forwarder leases still fence each node's identity; they are not controller election leases.
-A controller restart temporarily interrupts broker/configuration service; there is no standby.
-
-When replacing the former controller StatefulSet, explicitly scale it to zero and wait
-for its Pods to terminate **before** upgrading the chart. Set `controller.replicas=1`
-when reusing existing Helm values. Keep the controller-state and per-node identity Secrets.
-Do not run the old and new controller processes concurrently against the same identity.
-Remove the obsolete controller election Lease after cutover; retain forwarder leases.
-Subsequent Deployment updates use Recreate automatically. A rollback to the previous
-StatefulSet chart similarly requires stopping the Deployment first.
-
-- Use `helm upgrade` with a pinned chart/image. For load balancers, wait on the
-  Deployment with `kubectl rollout status`; Helm `--wait` additionally waits for an
-  external Service address, which may remain pending. Keep component, installation, release,
-  Service identity, and PVCs unchanged. Upgrade load balancers independently.
-- Use `helm rollback <release> <revision>` for runtime rollback. Database schema rollback
-  additionally requires a compatible backup; Helm rollback does not restore data.
-- Back up SQLite PVC contents with control stopped and its matching identity Secret
-  (including the database encryption key), and include
-  broker identity/TLS Secrets in cluster backups. Do not copy SQLite without a consistent
-  snapshot. Kubernetes Secrets encryption at rest remains a cluster responsibility.
-- For migration, stop the original process, transfer its state/data and keys to the
-  destination storage, then start the replacement. Never run the same tsnet identity
-  concurrently. Existing installations are not automatically moved or upgraded.
-- To remove a node, revoke it in control and wait for owned cleanup, then uninstall its
-  release. PVCs remain retained; delete them only as an explicit irreversible operation.
-- Replacing an entire control requires its database and encryption key. Missing/corrupt
-  state fails startup rather than silently reenrolling; storage loss requires an explicit
-  restore or new installation.
-
-Single-replica control and load-balancer Recreate Deployments preserve identity; they are not
-active/active HA. The controller is single-replica; forwarders retain identity lease
-fencing. Validate WAN routing and ACME only on a cluster with a real routable address.
-
-## Identity and storage provisioning
-
-Control/load-balancer charts reference a precreated Secret (`<release>-identity` by default;
-override `identity.existingSecret`). Identity contents never appear in Helm values or release
-manifests. The generated installers create an empty Secret only when absent. Do not replace
-it with an empty Secret during an update. `persistence.existingClaim` may reference an
-operator-managed PVC; otherwise the chart creates `<release>-data` with Helm keep policy.
-
-A fresh `control kubernetes bootstrap` or `loadbalancer kubernetes bootstrap` initializes
-storage through the existing OAuth/enrollment flow. Subsequent boots validate and reuse
-state without auth-key files. Runtime uses a Secret-backed tsnet StateStore. These commands
-are chart internals; native join/serve paths retain their existing Linux filesystem behavior.
-
-For a stopped native/StatefulSet migration, copy the source state/data into a protected
-snapshot, precreate an empty identity Secret, and mount the destination PVC in a migration
-Pod. Run the matching prebuilt binary with:
-
-```text
-<mode> kubernetes import-state --namespace <namespace> --identity-secret <release>-identity \
-  --persistent-dir /persistent --source-state-dir /source/state --source-data-dir /source/data
+```json
+{"tolerations":[{"operator":"Exists","effect":"NoSchedule"}]}
 ```
 
-The source must be stopped. Import preserves identity, signing keys and encrypted database
-contents; the destination must be empty. Import never enrolls or mutates DNS. Keep the
-original offline snapshot until verified recovery. Then start the Recreate Deployment.
+Save this as `placement.json` and use `--placement-file ./placement.json` on
+operator or component creation. Gateway forwarders have a separate
+`--forwarder-placement-file`; the agent's placement does not grant forwarders
+permission to run on those nodes. Placement files contain only node selectors,
+affinity, and tolerations, never credentials or arbitrary Helm values.
 
-When moving an existing load balancer from native discovery to a Kubernetes public Service,
-an administrator explicitly binds it after stopping the old process:
+Component deletion uses a two-phase shutdown. Control first confirms owned route,
+Service-host, and DNS withdrawal, then queues device deletion. Cleanup reconnects
+the existing identity without bootstrap credentials to confirm revocation before
+removing local state. Failures retain state for retry; cleanup never reenrolls.
+Control deletion is blocked by active nodes or pending cleanup tasks.
 
-```text
-POST /api/nodes/<id>/public-service
-{"namespace":"tailscale-private-funnel-main-system","service":"edge-public","confirm_stopped":true}
-```
+## Control updates and bounded forwarding continuity
 
-This audited change preserves node/DNS ownership and requires signed WhoIs-bound Service
-observations before publication. Pending observations retain previous owned records. It
-does not grant an ordinary node permission to choose its own Service or overwrite DNS.
+Forwarders keep their existing listeners during short control outages. The broker
+may reuse only a previously verified signed configuration and known child
+membership, for at most five minutes from their last successful verification.
+It never refreshes an old signature or grants a new identity during an outage.
+Explicit authorization denial and invalid signatures invalidate the cache.
+Kubernetes token/Pod validation and the per-node ownership lease remain mandatory;
+failing to renew that lease still fences forwarding before it expires.
+
+Forwarder reports do not wait behind provider reconciliation. Report acceptance
+and backend updates reject revoked nodes and revoked parents transactionally.
+Local readiness describes forwarding with a valid configuration and lease;
+a temporary inability to deliver a report does not tear down healthy listeners.
+An expired configuration, lost lease or missing local backend stops forwarding.
+Control outages longer than the freshness window can withdraw traffic and DNS.
+This is bounded continuity during maintenance, not a highly available control plane.
+
+Control also distinguishes upstream authorization API failure from an explicit
+revocation. An unavailable lookup does not approve new hosts or disapprove a
+known healthy host; local enrollment, report freshness, policy and acknowledgments
+remain required. Errors are reported for retry. OAuth tokens use their provider
+expiry with standard in-memory renewal, independently of the forwarding lease.
+
+The canonical token endpoint is `https://api.tailscale.com/api/v2/oauth/token`,
+as specified in [Tailscale OAuth documentation](https://tailscale.com/docs/features/oauth-clients#tailscale-oauth-token-endpoint).
+Expiry-aware token sources are shared by matching credentials; rotation starts a
+new source. Token caching is in memory and does not change node identity persistence.

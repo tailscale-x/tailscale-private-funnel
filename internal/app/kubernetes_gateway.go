@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+
 	"github.com/tailscale-x/tailscale-private-funnel/internal/gateway"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/kube"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
@@ -37,11 +39,15 @@ func runKubernetesGateway(ctx context.Context, o Options, s *tsnet.Server) error
 	if o.ProbeListen == "" {
 		o.ProbeListen = ":9090"
 	}
-	session := gateway.Session{Resolver: gateway.HTTPResolver{BaseURL: o.ManagementURL, NodeID: loadBalancerNodeID(o.DataDir), ControlKey: o.ControlKey, Client: tsnetHTTPClient(s)}, Listeners: gateway.NewListenerManager(s), Agent: report.Agent{NodeID: loadBalancerNodeID(o.DataDir), ManagementURL: o.ManagementURL, DataDir: o.DataDir, HTTPClient: tsnetHTTPClient(s)}}
+	session := gateway.Session{Resolver: gateway.RPCResolver{BaseURL: o.ManagementURL, NodeID: loadBalancerNodeID(o.DataDir), ControlKey: o.ControlKey, Client: tsnetHTTPClient(s)}, Listeners: gateway.NewListenerManager(s), Agent: report.Agent{NodeID: loadBalancerNodeID(o.DataDir), ManagementURL: o.ManagementURL, DataDir: o.DataDir, HTTPClient: tsnetHTTPClient(s)}}
 	defer session.Listeners.Close()
 	return kube.Run(ctx, o.Kubeconfig, o.ProbeListen, kube.Options{GatewayClass: o.GatewayClass, IngressClass: o.IngressClass, Namespaces: o.WatchNamespaces, ControllerName: o.ControllerName, ClusterID: string(data)}, func(ctx context.Context, result kube.Result) (kube.Publication, error) {
 		snapshot := nodeconfig.KubernetesSnapshot{ClusterID: string(data), Hosts: result.Hosts, Errors: result.Problems, ExpiresAt: time.Now().Add(5 * time.Minute).Unix()}
-		if err := session.Agent.SendSnapshot(ctx, "/api/node/kubernetes", snapshot); err != nil {
+		payload, convertErr := report.Payload(snapshot, &v1.KubernetesPayload{})
+		if convertErr != nil {
+			return kube.Publication{}, convertErr
+		}
+		if err := session.Agent.SendKubernetes(ctx, payload); err != nil {
 			return kube.Publication{}, err
 		}
 		config, err := session.Resolver.Configuration(ctx)
@@ -49,7 +55,7 @@ func runKubernetesGateway(ctx context.Context, o Options, s *tsnet.Server) error
 			return kube.Publication{}, err
 		}
 		// Controllers publish routing intent only. Child forwarders own all listeners.
-		if err = session.Resolver.ReportHealth(ctx, map[string]any{"controller": true, "at": time.Now().Unix()}); err != nil {
+		if err = session.Resolver.ReportHealth(ctx, map[string]any{"online": true, "last_report": time.Now().Unix()}); err != nil {
 			return kube.Publication{}, err
 		}
 

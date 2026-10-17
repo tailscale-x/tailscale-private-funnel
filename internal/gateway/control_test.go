@@ -2,84 +2,90 @@ package gateway
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1/funnelv1connect"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 )
 
-func signedConfig(t *testing.T, nodeID string) ([]byte, string) {
+type nodeFixture struct {
+	funnelv1connect.UnimplementedNodeServiceHandler
+	envelope *v1.SignedEnvelope
+	health   int
+}
+
+func (f *nodeFixture) ResolveApplication(context.Context, *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.SignedEnvelope], error) {
+	return connect.NewResponse(f.envelope), nil
+}
+func (f *nodeFixture) ReportHealth(context.Context, *connect.Request[v1.NodeHealth]) (*connect.Response[v1.Empty], error) {
+	f.health++
+	return connect.NewResponse(&v1.Empty{}), nil
+}
+func resolverFixture(t *testing.T) (RPCResolver, *nodeFixture) {
 	t.Helper()
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
+	pub, key, e := report.GenerateKey()
+	if e != nil {
+		t.Fatal(e)
 	}
-	config := nodeconfig.Configuration{NodeID: nodeID, Applications: []store.ApplicationRecord{{ID: "checkout", ServiceName: "svc:tailscale-private-funnel-app-checkout", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"checkout.dev.example.com"}, Enabled: true}}, IssuedAt: time.Now().Unix()}
+	config := nodeconfig.Configuration{NodeID: "node-1", Applications: []store.ApplicationRecord{{ID: "checkout", ServiceName: "svc:checkout", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"checkout.dev.example.com"}, Enabled: true}}, IssuedAt: time.Now().Unix()}
 	config.Revision = nodeconfig.Revision(config)
-	e, err := report.NewEnvelope(nodeID, config, pub, priv, time.Now())
-	if err != nil {
-		t.Fatal(err)
+	envelope, e := report.NewEnvelopeWithPurpose("configuration", "node-1", config, pub, key, time.Now())
+	if e != nil {
+		t.Fatal(e)
 	}
-	b, _ := json.Marshal(e)
-	return b, base64.RawStdEncoding.EncodeToString(pub)
+	wire, e := report.Wire(envelope)
+	if e != nil {
+		t.Fatal(e)
+	}
+	fixture := &nodeFixture{envelope: wire}
+	path, h := funnelv1connect.NewNodeServiceHandler(fixture)
+	mux := http.NewServeMux()
+	mux.Handle(path, h)
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return RPCResolver{BaseURL: server.URL, NodeID: "node-1", ControlKey: base64.RawStdEncoding.EncodeToString(pub), Client: server.Client()}, fixture
 }
-
-func TestHTTPResolverMatchesApprovedPublicHostname(t *testing.T) {
-	payload, key := signedConfig(t, "node-1")
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/node/config" {
-			t.Fatalf("path=%s", r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(payload)
-	}))
-	defer srv.Close()
-
-	assignment, err := (HTTPResolver{BaseURL: srv.URL, NodeID: "node-1", ControlKey: key, Client: srv.Client()}).Resolve(context.Background(), "checkout.dev.example.com.", 8080)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if assignment.ApplicationID != "checkout" || assignment.ServiceName != "svc:tailscale-private-funnel-app-checkout" {
-		t.Fatalf("assignment=%#v", assignment)
+func TestRPCResolverMatchesApprovedPublicHostname(t *testing.T) {
+	r, _ := resolverFixture(t)
+	a, e := r.Resolve(t.Context(), "checkout.dev.example.com.", 8080)
+	if e != nil || a.ApplicationID != "checkout" {
+		t.Fatalf("assignment=%v error=%v", a, e)
 	}
 }
-
-func TestHTTPResolverRejectsUnapprovedPort(t *testing.T) {
-	payload, key := signedConfig(t, "node-1")
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write(payload)
-	}))
-	defer srv.Close()
-	if _, err := (HTTPResolver{BaseURL: srv.URL, NodeID: "node-1", ControlKey: key, Client: srv.Client()}).Resolve(context.Background(), "checkout.dev.example.com", 8443); err == nil {
-		t.Fatal("accepted a backend port that was not approved")
+func TestRPCResolverRejectsUnapprovedPort(t *testing.T) {
+	r, _ := resolverFixture(t)
+	if _, e := r.Resolve(t.Context(), "checkout.dev.example.com", 8443); e == nil {
+		t.Fatal("unapproved port accepted")
 	}
 }
-
-func TestHTTPResolverMarksControlOutage(t *testing.T) {
-	_, err := (HTTPResolver{}).Resolve(context.Background(), "checkout.dev.example.com", 8080)
-	if !errors.Is(err, ErrControlUnavailable) {
-		t.Fatalf("error=%v, want ErrControlUnavailable", err)
+func TestRPCResolverRejectsWrongSignedPurpose(t *testing.T) {
+	r, f := resolverFixture(t)
+	f.envelope.Purpose = "report"
+	if _, e := r.Resolve(t.Context(), "checkout.dev.example.com", 8080); e == nil {
+		t.Fatal("report accepted as configuration")
 	}
 }
-
-func TestHTTPResolverReportsHealthToEnrolledNode(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/api/node/health" {
-			t.Fatalf("request=%s %s", r.Method, r.URL.Path)
-		}
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer srv.Close()
-	if err := (HTTPResolver{BaseURL: srv.URL, NodeID: "node-1", Client: srv.Client()}).ReportHealth(context.Background(), map[string]any{"backends": 1}); err != nil {
-		t.Fatal(err)
+func TestRPCResolverMarksControlOutage(t *testing.T) {
+	_, e := (RPCResolver{}).Resolve(t.Context(), "checkout.dev.example.com", 8080)
+	if !errors.Is(e, ErrControlUnavailable) {
+		t.Fatalf("outage=%v", e)
+	}
+}
+func TestRPCResolverReportsHealth(t *testing.T) {
+	r, f := resolverFixture(t)
+	if e := r.ReportHealth(t.Context(), map[string]any{"backends": 1}); e != nil {
+		t.Fatal(e)
+	}
+	if f.health != 1 {
+		t.Fatal("health not submitted")
 	}
 }

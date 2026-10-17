@@ -6,7 +6,6 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +15,6 @@ import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"tailscale.com/ipn"
 )
 
@@ -246,13 +244,17 @@ func BootstrapKubernetesNode(ctx context.Context, mode string, o Options) error 
 		existing = filepath.Join(o.DatabaseDir, "funnel.db")
 	}
 	if _, e = os.Stat(existing); e == nil {
-		return fmt.Errorf("existing storage without identity Secret: use stopped-state import")
+		return fmt.Errorf("existing storage has no matching identity Secret; restore matching state or explicitly delete and recreate")
 	}
 	o.RequireJoined = false
 	o.BootstrapOnly = true
 	o.NonInteractive = true
-	o.InstallService = false
 	if mode == "control" {
+		if b, err := os.ReadFile(filepath.Join(o.BootstrapSecretDir, "administrators")); err == nil {
+			if err = json.Unmarshal(b, &o.Administrators); err != nil {
+				return fmt.Errorf("invalid bootstrap administrators")
+			}
+		}
 		o.OAuthClientIDFile = filepath.Join(o.BootstrapSecretDir, "client-id")
 		o.OAuthClientSecretFile = filepath.Join(o.BootstrapSecretDir, "client-secret")
 		e = Setup(ctx, mode, o)
@@ -291,130 +293,8 @@ func ServeKubernetesNode(ctx context.Context, mode string, o Options) error {
 		return e
 	}
 	o.TSStore = kubebroker.SecretStore{Client: c, Namespace: o.KubeNamespace, Name: o.IdentitySecret}
+	if mode == "control" {
+		go publishKubernetesControlState(ctx, o)
+	}
 	return Serve(ctx, mode, o)
 }
-
-// ImportKubernetesNode requires a snapshot made with the source process stopped.
-// It copies durable application storage, never enrolls or calls a DNS provider.
-func ImportKubernetesNode(ctx context.Context, mode string, o Options, sourceState, sourceData string) error {
-	o, e := kubernetesNodeOptions(mode, o)
-	if e != nil {
-		return e
-	}
-	c, _, e := kubernetesClients(o)
-	if e != nil {
-		return e
-	}
-	return importKubernetesNode(ctx, c, mode, o, sourceState, sourceData)
-}
-func importKubernetesNode(ctx context.Context, c client.Client, mode string, o Options, sourceState, sourceData string) error {
-	var s core.Secret
-	if e := c.Get(ctx, types.NamespacedName{Namespace: o.KubeNamespace, Name: o.IdentitySecret}, &s); e != nil {
-		return e
-	}
-	if len(s.Data) > 0 {
-		return fmt.Errorf("identity Secret must be empty for explicit import")
-	}
-	var e error
-	if e = prepareNodeStorage(mode, o); e != nil {
-		return e
-	}
-	for _, f := range nodeBundleFiles(mode) {
-		b, e := os.ReadFile(filepath.Join(sourceData, f))
-		if e != nil {
-			return e
-		}
-		if e = os.WriteFile(filepath.Join(o.DataDir, f), b, 0600); e != nil {
-			return e
-		}
-	}
-	b, e := os.ReadFile(filepath.Join(sourceState, "tailscaled.state"))
-	if e != nil {
-		return e
-	}
-	if e = os.WriteFile(filepath.Join(o.StateDir, "tailscaled.state"), b, 0600); e != nil {
-		return e
-	}
-	if mode == "control" {
-		if _, e = os.Stat(filepath.Join(o.DatabaseDir, "funnel.db")); e == nil {
-			return fmt.Errorf("destination database already exists")
-		}
-		for _, f := range []string{"funnel.db", "funnel.db-wal", "funnel.db-shm"} {
-			if e = copyNodeFile(filepath.Join(sourceData, f), filepath.Join(o.DatabaseDir, f)); e != nil && !os.IsNotExist(e) {
-				return e
-			}
-		}
-		o.Hostname = strings.TrimSpace(string(mustReadFile(filepath.Join(sourceData, "hostname"))))
-		st, e := openRuntimeStore(o)
-		if e != nil {
-			return e
-		}
-		var settings map[string]any
-		e = st.GetJSON("tailnet", &settings)
-		st.Close()
-		if e != nil {
-			return e
-		}
-		o.Tailnet, _ = settings["name"].(string)
-	} else {
-		var cfg savedConfig
-		if json.Unmarshal(mustReadFile(filepath.Join(o.DataDir, "config.json")), &cfg) != nil || cfg.Mode != mode {
-			return fmt.Errorf("invalid source configuration")
-		}
-		cfg.DataDir, cfg.StateDir = o.DataDir, o.StateDir
-		b, e = json.Marshal(cfg)
-		if e != nil {
-			return e
-		}
-		if e = os.WriteFile(filepath.Join(o.DataDir, "config.json"), b, 0600); e != nil {
-			return e
-		}
-		if entries, e := os.ReadDir(filepath.Join(o.PersistentDir, "caddy")); e != nil || len(entries) != 0 {
-			return fmt.Errorf("destination Caddy storage must be empty")
-		}
-		e = filepath.WalkDir(filepath.Join(sourceData, "caddy"), func(path string, d os.DirEntry, e error) error {
-			if e != nil {
-				return e
-			}
-			rel, e := filepath.Rel(filepath.Join(sourceData, "caddy"), path)
-			if e != nil {
-				return e
-			}
-			dst := filepath.Join(o.PersistentDir, "caddy", rel)
-			if d.IsDir() {
-				return os.MkdirAll(dst, 0700)
-			}
-			if d.Type()&os.ModeSymlink != 0 {
-				return fmt.Errorf("symlinks not allowed in Caddy snapshot")
-			}
-			return copyNodeFile(path, dst)
-		})
-		if e != nil {
-			return e
-		}
-	}
-	data, e := exportNodeBundle(mode, o)
-	if e != nil {
-		return e
-	}
-	s.Data = data
-	return c.Update(ctx, &s)
-}
-func copyNodeFile(source, destination string) error {
-	in, e := os.Open(source)
-	if e != nil {
-		return e
-	}
-	defer in.Close()
-	out, e := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if e != nil {
-		return e
-	}
-	_, e = io.Copy(out, in)
-	closeErr := out.Close()
-	if e != nil {
-		return e
-	}
-	return closeErr
-}
-func mustReadFile(path string) []byte { b, _ := os.ReadFile(path); return b }

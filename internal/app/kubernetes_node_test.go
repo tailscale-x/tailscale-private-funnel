@@ -4,20 +4,21 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+
 	"github.com/tailscale-x/tailscale-private-funnel/internal/kube"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	core "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"os"
-	"path/filepath"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"tailscale.com/ipn"
-	"testing"
 )
 
-func TestKubernetesNodeStoppedImportAndPersistence(t *testing.T) {
+func TestKubernetesNodeBundlePersistence(t *testing.T) {
 	for _, mode := range []string{"control", "loadbalancer"} {
 		t.Run(mode, func(t *testing.T) {
 			root := t.TempDir()
@@ -51,8 +52,38 @@ func TestKubernetesNodeStoppedImportAndPersistence(t *testing.T) {
 				t.Fatal(e)
 			}
 			c := fake.NewClientBuilder().WithScheme(kube.Scheme()).WithObjects(&core.Secret{ObjectMeta: meta.ObjectMeta{Name: "identity", Namespace: "system"}}).Build()
-			if e = importKubernetesNode(context.Background(), c, mode, o, srcState, srcData); e != nil {
+			// Model initial bootstrap using the persistent database and runtime state.
+			o.DataDir = srcData
+			o.StateDir = srcState
+			if mode == "loadbalancer" {
+				b, _ := os.ReadFile(filepath.Join(srcData, "caddy", "certificate.key"))
+				os.MkdirAll(filepath.Join(o.PersistentDir, "caddy"), 0700)
+				os.WriteFile(filepath.Join(o.PersistentDir, "caddy", "certificate.key"), b, 0600)
+				os.RemoveAll(filepath.Join(srcData, "caddy"))
+			}
+			if e = prepareNodeStorage(mode, o); e != nil {
 				t.Fatal(e)
+			}
+			if mode == "control" {
+				for _, f := range []string{"funnel.db", "funnel.db-wal", "funnel.db-shm"} {
+					b, err := os.ReadFile(filepath.Join(srcData, f))
+					if err == nil {
+						if err = os.WriteFile(filepath.Join(o.DatabaseDir, f), b, 0600); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+
+			}
+			data, err := exportNodeBundle(mode, o)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var initial core.Secret
+			c.Get(context.Background(), types.NamespacedName{Namespace: "system", Name: "identity"}, &initial)
+			initial.Data = data
+			if err = c.Update(context.Background(), &initial); err != nil {
+				t.Fatal(err)
 			}
 			var secret core.Secret
 			c.Get(context.Background(), types.NamespacedName{Namespace: "system", Name: "identity"}, &secret)

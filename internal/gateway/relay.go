@@ -3,7 +3,9 @@ package gateway
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"sort"
 	"strconv"
@@ -12,7 +14,9 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
+	dockerclient "github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 )
 
@@ -37,7 +41,13 @@ func (c Config) ensureRelay(ctx context.Context, r Runtime) (string, error) {
 		}
 	}
 	if err != nil {
-		config := &container.Config{Image: c.RelayImage, Cmd: []string{"docker-gateway", "relay", "serve", "--listen=:10000", "--target=" + target}, ExposedPorts: nat.PortSet{nat.Port(relayPort): {}}, User: "65532:65532", Labels: map[string]string{"tailscale-private-funnel.relay-owner": c.NodeID, "tailscale-private-funnel.target": r.ContainerID}}
+		if !dockerclient.IsErrNotFound(err) {
+			return "", fmt.Errorf("inspect relay: %w", err)
+		}
+		if e := c.ensureRelayImage(ctx); e != nil {
+			return "", e
+		}
+		config := &container.Config{Image: c.RelayImage, Cmd: []string{"native", "runtime", "docker-gateway", "relay", "serve", "--listen=:10000", "--target=" + target}, ExposedPorts: nat.PortSet{nat.Port(relayPort): {}}, User: "65532:65532", Labels: map[string]string{"tailscale-private-funnel.relay-owner": c.NodeID, "tailscale-private-funnel.target": r.ContainerID}}
 		host := &container.HostConfig{ReadonlyRootfs: true, CapDrop: []string{"ALL"}, SecurityOpt: []string{"no-new-privileges:true"}, PortBindings: nat.PortMap{nat.Port(relayPort): {{HostIP: "127.0.0.1", HostPort: "0"}}}, NetworkMode: container.NetworkMode(r.Networks[0].ID)}
 		created, e := c.Docker.ContainerCreate(ctx, config, host, &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{r.Networks[0].Name: {NetworkID: r.Networks[0].ID}}}, nil, name)
 		if e != nil {
@@ -84,6 +94,35 @@ func (c Config) ensureRelay(ctx context.Context, r Runtime) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("relay/backend is unreachable")
+}
+
+// Native installations need the relay image even when no image has previously
+// been pulled on this Docker host. Reuse the pinned local image when available.
+func (c Config) ensureRelayImage(ctx context.Context) error {
+	if _, _, err := c.Docker.ImageInspectWithRaw(ctx, c.RelayImage); err == nil {
+		return nil
+	} else if !dockerclient.IsErrNotFound(err) {
+		return fmt.Errorf("inspect relay image: %w", err)
+	}
+	stream, err := c.Docker.ImagePull(ctx, c.RelayImage, image.PullOptions{})
+	if err != nil {
+		return fmt.Errorf("pull relay image %s: %w", c.RelayImage, err)
+	}
+	defer stream.Close()
+	decoder := json.NewDecoder(stream)
+	for {
+		var progress struct {
+			Error string `json:"error"`
+		}
+		if err := decoder.Decode(&progress); err == io.EOF {
+			return nil
+		} else if err != nil {
+			return fmt.Errorf("read relay image pull: %w", err)
+		}
+		if progress.Error != "" {
+			return fmt.Errorf("pull relay image %s: %s", c.RelayImage, progress.Error)
+		}
+	}
 }
 func (c Config) cleanupRelays(ctx context.Context, targets map[string]bool) {
 	if c.NodeID == "" {
@@ -134,7 +173,7 @@ func (c Config) relayName(r Runtime) string {
 	return "tpf-relay-" + fmt.Sprintf("%x", sha256.Sum256([]byte(c.NodeID+r.ContainerID+target+fmt.Sprint(ids))))[:20]
 }
 func (c Config) checkRelayBackend(ctx context.Context, id, target string) error {
-	exec, err := c.Docker.ContainerExecCreate(ctx, id, container.ExecOptions{Cmd: []string{"/usr/local/bin/tailscale-private-funnel", "docker-gateway", "relay", "check", "--target=" + target}, User: "65532:65532"})
+	exec, err := c.Docker.ContainerExecCreate(ctx, id, container.ExecOptions{Cmd: RelayCheckCommand(target), User: "65532:65532"})
 	if err != nil {
 		return err
 	}
@@ -166,4 +205,9 @@ func CheckRelay(target string) error {
 		conn.Close()
 	}
 	return err
+}
+
+// RelayCheckCommand is shared with the command-tree contract test.
+func RelayCheckCommand(target string) []string {
+	return []string{"/usr/local/bin/tailscale-private-funnel", "native", "runtime", "docker-gateway", "relay", "check", "--target=" + target}
 }

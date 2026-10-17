@@ -1,0 +1,73 @@
+import { useEffect, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { api, deployments } from "./api";
+import { useAdmin } from "./permissions";
+import { Alert, ErrorMessage, Field, Intro, Panel, Submit } from "./components";
+import { create } from "@bufbuild/protobuf";
+import { DeploymentRequestSchema } from "./gen/funnel/v1/provisioning_pb";
+
+const kinds = [
+  ["docker-gateway", "Docker gateway", "Native systemd supervisor; discovers labeled Docker containers and creates isolated TCP relays."],
+  ["tailnet-gateway", "Tailnet gateway", "Native service; forwards to approved tailnet machines. Docker is not required."],
+  ["k8s-gateway", "Kubernetes gateway", "Operator-managed gateway agent and node-local forwarder DaemonSet."],
+];
+export function CommandBlock({ label, command }: { label: string; command: string }) {
+  const [message, setMessage] = useState("");
+  return <section className="pf-command-section"><h3>{label}</h3><pre className="pf-command pf-react-code">{command}</pre><div className="pf-react-actions"><button className="pf-secondary-button" onClick={async () => { try { await navigator.clipboard.writeText(command); setMessage("Copied"); } catch { setMessage("Select the command and copy it manually."); } }}>Copy command</button><button className="pf-secondary-button" onClick={() => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([command + "\n"], { type: "text/plain" })); a.download = "funnel-instructions.sh"; a.click(); URL.revokeObjectURL(a.href); }}>Download instructions</button><span role="status">{message}</span></div></section>;
+}
+export function DeploymentWizard() {
+  const admin = useAdmin();
+  const path = location.pathname;
+  const isControl = path.includes("controls"); const isLB = path.includes("loadbalancers"); const isOperator = path === "/k8s/operator";
+  const [mode, setMode] = useState(isControl ? "control" : isLB ? "loadbalancer" : isOperator ? "operator" : "");
+  const [target, setTarget] = useState(isOperator ? "kubernetes" : "native");
+  const [review, setReview] = useState(false);
+  const health = useQuery({ queryKey: ["health"], queryFn: () => api.health({}) });
+  const [version,setVersion]=useState("");
+  useEffect(()=>{if(health.data?.version)setVersion(current=>current||health.data!.version)},[health.data?.version]);
+  const instructions = useMutation({ mutationFn: (form: FormData) => {
+    const value = (key: string) => String(form.get(key) || "").trim();
+    return deployments.instructions(create(DeploymentRequestSchema, {
+      mode, target: mode === "k8s-gateway" ? "kubernetes" : target,
+      resourceName: value("resourceName"), name: value("resourceName"), displayName: value("displayName"), hostname: value("hostname"), version: value("version"),
+      storageClass:value("storageClass"),storageSize:value("storageSize"),installation: value("installation"), namespace: value("namespace"), context: value("context"), stateDir: value("stateDir"), dataDir: value("dataDir"),
+      tailnet: value("tailnet"), oauthClientIdFile: value("oauthClientIdFile"), oauthClientSecretFile: value("oauthClientSecretFile"),
+      nodeSelector:Object.fromEntries(value("nodeSelector").split(/\n/).filter(Boolean).map(line=>{const i=line.indexOf("=");if(i<=0)throw new Error("Use key=value for each node selector");return [line.slice(0,i).trim(),line.slice(i+1).trim()]})),
+      certificateEmail: value("certificateEmail"), publicHostname: value("publicHostname"), gatewayClass: value("gatewayClass"), ingressClass: value("ingressClass"),
+      watchNamespaces: value("watchNamespaces").split(/\n/).filter(Boolean), managedNamespaces: value("managedNamespaces").split(/\n/).filter(Boolean),
+      labelKeys: value("labelKeys").split(/\n/).filter(Boolean), denyNetworks: value("denyNetworks").split(/\n/).filter(Boolean),
+    }));
+  }, onSuccess: () => setReview(true) });
+  const nodes = useQuery({ queryKey: ["nodes"], queryFn: () => api.listNodes({}), refetchInterval: review ? 5000 : false });
+  const plan = instructions.data;
+  const matches = nodes.data?.items.filter(n => !n.revoked && n.deployment?.resourceName === plan?.deployment?.resourceName && n.hostname === plan?.deployment?.hostname) || [];
+  const title = isOperator ? "Kubernetes operator" : isControl ? "Create control" : isLB ? "Create load balancer" : "Create gateway";
+  const kube = target === "kubernetes" || mode === "k8s-gateway";
+  return <><Intro title={title} subtitle="Generate CLI instructions, execute them on the selected host or cluster, then verify actual enrollment and health. Control does not execute host or cluster changes." />
+    {!admin ? <Alert>Administrator access is required to generate deployment instructions.</Alert> : <>
+      {!mode ? <Panel title="1 · Choose gateway type"><div className="pf-react-three">{kinds.map(([id, label, description]) => <button key={id} className="pf-secondary-button pf-choice" onClick={() => { setMode(id); setTarget(id === "k8s-gateway" ? "kubernetes" : "native"); }}><strong>{label}</strong><span>{description}</span></button>)}</div></Panel> : <>
+      <Panel title="1–2 · Deployment and configuration">{!isOperator&&!isControl&&!isLB&&!review?<button className="pf-secondary-button" onClick={()=>setMode("")}>Change gateway type</button>:null}<details open={!review}><summary>{review ? "View reviewed settings" : "Configure deployment"}</summary><form onSubmit={e => { e.preventDefault(); instructions.mutate(new FormData(e.currentTarget)); }}><fieldset disabled={review || instructions.isPending}>
+        {(isControl || isLB) ? <Field label="Deployment"><select className="pf-input" value={target} onChange={e => setTarget(e.target.value)}><option value="native">Native · systemd</option><option value="kubernetes">Kubernetes · operator</option></select></Field> : null}
+        {!isOperator ? <><Field label="Resource name" hint="Stable CLI handle. Display name is a separate editable label."><input className="pf-input" name="resourceName" required pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" maxLength={53} /></Field><Field label="Display name"><input className="pf-input" name="displayName" maxLength={128} /></Field><Field label="Node hostname" hint="Defaults to the resource name; persistent Tailscale identity survives ordinary restarts."><input className="pf-input" name="hostname" /></Field></> : null}
+        <Field label="Pinned version"><input className="pf-input" name="version" value={version} onChange={e=>setVersion(e.target.value)} placeholder="vX.Y.Z or dev-version" required /></Field>
+        {kube ? <><Field label="Kubernetes context" hint="Run kubectl config get-contexts -o name locally. No kubeconfig is uploaded."><input className="pf-input" name="context" required /></Field>{isOperator ? <Field label="Managed namespaces" hint="One existing or new installation namespace per line. The operator receives permissions only there."><textarea className="pf-input" name="managedNamespaces" defaultValue="tailscale-private-funnel-main-system" required /></Field> : <><Field label="Namespace"><input className="pf-input" name="namespace" defaultValue="tailscale-private-funnel-main-system" required /></Field><Field label="Installation"><input className="pf-input" name="installation" defaultValue="main" /></Field></>}</> : <details><summary>Native paths</summary><Field label="State directory"><input className="pf-input" name="stateDir" placeholder="Automatic Linux state path" /></Field><Field label="Data directory"><input className="pf-input" name="dataDir" placeholder="Automatic Linux data path" /></Field></details>}
+        {isControl ? <><Alert>OAuth files belong on the machine executing create. Remote control scripts reference protected files on the target and never embed OAuth credentials.</Alert><Field label="Tailnet"><input className="pf-input" name="tailnet" placeholder="Use configured tailnet" /></Field><Field label="OAuth client ID file"><input className="pf-input" name="oauthClientIdFile" placeholder="/etc/tailscale-private-funnel/bootstrap/ts-client-id" /></Field><Field label="OAuth client secret file"><input className="pf-input" name="oauthClientSecretFile" placeholder="/etc/tailscale-private-funnel/bootstrap/ts-client-secret" /></Field></> : null}
+        {isLB ? <><Field label="Public hostname"><input className="pf-input" name="publicHostname" required /></Field><Field label="Certificate email"><input className="pf-input" name="certificateEmail" type="email" required /></Field></> : null}
+        {kube&&(isControl||isLB)?<><Field label="Storage class" hint="Leave blank only if your cluster has a default StorageClass. Run kubectl get storageclass locally."><input className="pf-input" name="storageClass" placeholder="e.g. openebs-lvm"/></Field><Field label="Volume size"><input className="pf-input" name="storageSize" defaultValue="1Gi" required/></Field></>:null}
+        {kube&&!isOperator?<Field label={mode==="k8s-gateway"?"Forwarder node selector":"Node selector"} hint="Optional key=value per line. Placement is verified by your cluster."><textarea className="pf-input" name="nodeSelector" placeholder="pool=gateways"/></Field>:null}
+        {mode === "k8s-gateway" ? <><Field label="GatewayClass"><input className="pf-input" name="gatewayClass" placeholder="Automatic unique class" /></Field><Field label="IngressClass"><input className="pf-input" name="ingressClass" placeholder="Same as GatewayClass" /></Field><Field label="Watched namespaces"><textarea className="pf-input" name="watchNamespaces" placeholder="One namespace per line; blank watches all" /></Field></> : null}
+        {mode === "docker-gateway" ? <><Field label="Additional Docker label keys"><textarea className="pf-input" name="labelKeys" placeholder="One alias per line" /></Field><Field label="Local network deny patterns"><textarea className="pf-input" name="denyNetworks" placeholder="One pattern per line" /></Field></> : null}
+        <Submit pending={instructions.isPending} label="Generate instructions" /></fieldset></form></details><ErrorMessage error={instructions.error} /></Panel>
+      {plan && review ? <><Panel title="3 · Review"><dl className="pf-review"><dt>Action</dt><dd>{mode} · {kube ? "Kubernetes" : "Native"} create</dd><dt>Resource</dt><dd>{plan.deployment?.resourceName || "Cluster operator"}</dd><dt>Version</dt><dd>{plan.version}</dd>{kube ? <><dt>Namespace</dt><dd>{plan.namespace}</dd></> : null}</dl><ul>{plan.prerequisites.map(p => <li key={p}>{p}</li>)}</ul><Alert>Instructions generated. Nothing has been installed and no enrollment credentials have been created.</Alert><button className="pf-secondary-button" onClick={() => { setReview(false); instructions.reset(); }}>Edit settings</button></Panel>
+      <Panel title="4 · Execute instructions">{kube ? <><Alert>Run on a machine with the selected Kubernetes context. Install and inspect the operator before creating components.</Alert><CommandBlock label="Run Kubernetes CLI" command={plan.commands.create} /></> : <><CommandBlock label="Run on the target host" command={plan.commands.create} /><CommandBlock label="Generate from an authorized machine" command={plan.commands["create-remote"]} /><CommandBlock label="Pipe to SSH · replace TARGET_HOST" command={plan.commands.ssh} /></>}{plan.example ? <pre className="pf-command pf-react-code">{plan.example}</pre> : null}</Panel>
+      <Panel title="5 · Verify">{isControl ? <p>An independently created control has its own database and management URL. Open its printed private setup URL; it is not automatically monitored here.</p> : isOperator ? <p>Inspect operator readiness and managed namespaces using the selected context.</p> : matches.length === 1 ? <p>{matches[0].revoked ? "Revoked" : Number(matches[0].lastReport) > Date.now()/1000-90 ? "Reporting · inspect backend and public readiness in the node inventory." : "Enrolling or offline · no fresh health report yet."}</p> : <p>{matches.length > 1 ? "Several enrollments match; inspect their immutable node IDs." : "Awaiting CLI execution and enrolled-node health. Command generation is not deployment success."}</p>}<CommandBlock label="Inspect actual deployment" command={plan.commands.get} />{isOperator ? <><CommandBlock label="Update operator" command={plan.commands.update}/><CommandBlock label="Delete operator · refuses while components remain" command={plan.commands.delete}/></> : null}<p>Native stop preserves identity and data. Delete revokes access and removes owned state. Kubernetes conditions are only displayed when reported; otherwise run k8s … get.</p></Panel></> : null}
+      </>}
+    </>}
+  </>;
+}
+export function DeploymentActions() {
+ const admin = useAdmin(); const id = new URLSearchParams(location.search).get("node_id") || "";
+ const [context, setContext] = useState("");
+ const commands = useMutation({ mutationFn: () => deployments.instructions(create(DeploymentRequestSchema,{ nodeId:id, currentControl:new URLSearchParams(location.search).get("control")==="true", context })) });
+ return <><Intro title="Deployment instructions" subtitle="These commands run on your host or selected cluster. Generating them does not execute any changes." />{admin ? <Panel title="Select execution context"><Field label="Kubernetes context (if applicable)"><input className="pf-input" value={context} onChange={e=>setContext(e.target.value)} /></Field><button className="pf-button" onClick={()=>commands.mutate()}>Generate instructions</button><ErrorMessage error={commands.error} /></Panel> : <Alert>Administrator access required.</Alert>}{commands.data ? <Panel title="Available operations"><Alert>Stop preserves identity and data. Delete removes owned identity and storage. Revoke node access is a separate management action and does not remove deployments.</Alert>{Object.entries(commands.data.commands).sort(([a],[b])=>["get","logs","start","stop","restart","update","delete"].indexOf(a)-["get","logs","start","stop","restart","update","delete"].indexOf(b)).filter(([key])=>!['create','create-remote','ssh'].includes(key)).map(([key,value])=><CommandBlock key={key} label={key === 'delete' ? 'Delete deployment · destructive, --yes included' : key} command={value}/>)}</Panel> : null}</>;
+}

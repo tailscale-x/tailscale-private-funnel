@@ -1,0 +1,23 @@
+# Tailscale Private Funnel
+
+> Tailnet-only management for policy-controlled public HTTP services. Prefer the CLI for agent operations.
+
+## Start here
+
+- [CLI reference](/docs/cli.md): command discovery, authentication, JSON input/output, and actual provisioning.
+- [API reference](/docs/api.md): generated RPC methods, request fields and permissions.
+- [OpenAPI](/openapi.json): generated Connect HTTP/JSON contract for integrations.
+- [Interactive reference](/docs): locally bundled API documentation.
+
+## Agent workflow
+
+1. Run the matching binary's manage --help, then manage whoami and manage health against the selected control URL.
+2. Discover resource IDs. Names are display labels, not references.
+3. Configure DNS providers and select vendor-discovered zones. Never create DNS records directly through vendor APIs.
+4. Preview policy changes and DNS reconciliation. Unmanaged overwrites require explicit approval bound to that exact preview.
+5. Use native or k8s component create to execute deployment. Kubernetes always requires an explicit --context. For remote hosts, generate native create-remote --output script and pipe it to your SSH client.
+6. Verify identity, fresh reports, backend reachability and public readiness separately. An accepted mutation or generated instruction is not proof of deployment success.
+
+## Security
+
+Management uses WhoIs and configured roles, not bearer tokens or identity headers. Tagged machines do not inherit human Owner/Admin permissions. Do not broaden ACLs automatically. Keep OAuth/provider credentials in protected files or stdin; never in flags, logs or source control. Bootstrap credentials are temporary and returned once. Ordinary restart preserves identity; deployment deletion/revocation is explicit. Public traffic forwarding does not use RPC.

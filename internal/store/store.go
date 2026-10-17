@@ -347,7 +347,7 @@ func (s *Store) AcceptReport(nodeID, nonce string, payload []byte, publicKey str
 	}
 	var storedKey string
 	var revoked int
-	if err := tx.QueryRow(`SELECT node_key,revoked FROM nodes WHERE id=?`, nodeID).Scan(&storedKey, &revoked); err != nil {
+	if err := tx.QueryRow(`SELECT n.node_key, CASE WHEN n.revoked<>0 OR EXISTS(SELECT 1 FROM kubernetes_forwarders f LEFT JOIN nodes p ON p.id=f.parent_id WHERE f.node_id=n.id AND (p.id IS NULL OR p.revoked<>0)) THEN 1 ELSE 0 END FROM nodes n WHERE n.id=?`, nodeID).Scan(&storedKey, &revoked); err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("unknown node")
 		}
@@ -631,6 +631,13 @@ func (s *Store) BindEnrollment(id, code, publicKey, tailnetID, hostname string, 
 		return err
 	}
 	defer tx.Rollback()
+	var bound int
+	if err = tx.QueryRow(`SELECT count(*) FROM nodes WHERE tailnet_id=?`, tailnetID).Scan(&bound); err != nil {
+		return err
+	}
+	if bound != 0 {
+		return fmt.Errorf("tailnet identity is already enrolled")
+	}
 	sum := sha256.Sum256([]byte(code))
 	result, err := tx.Exec(`UPDATE enrollments SET code_hash='' WHERE id=? AND code_hash=? AND revoked=0`, id, fmt.Sprintf("%x", sum[:]))
 	if err != nil {
@@ -658,7 +665,7 @@ func (s *Store) BindEnrollment(id, code, publicKey, tailnetID, hostname string, 
 }
 
 func (s *Store) Enrollments(mode string) ([]Enrollment, error) {
-	rows, err := s.db.Query(`SELECT id,name,mode,hostname,created_at,revoked FROM enrollments WHERE mode=? ORDER BY created_at DESC`, mode)
+	rows, err := s.db.Query(`SELECT id,name,mode,hostname,created_at,revoked FROM enrollments WHERE (?='' OR mode=?) ORDER BY created_at DESC`, mode, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -715,6 +722,16 @@ func (s *Store) Node(id string) (NodeRecord, error) {
 }
 
 func (s *Store) NodeByTailnetID(tailnetID string) (NodeRecord, error) {
+	if tailnetID == "" {
+		return NodeRecord{}, fmt.Errorf("tailnet identity required")
+	}
+	var matches int
+	if err := s.db.QueryRow(`SELECT count(*) FROM nodes WHERE tailnet_id=?`, tailnetID).Scan(&matches); err != nil {
+		return NodeRecord{}, err
+	}
+	if matches != 1 {
+		return NodeRecord{}, fmt.Errorf("unknown or ambiguous tailnet identity")
+	}
 	var n NodeRecord
 	var revoked int
 	err := s.db.QueryRow(`SELECT id,name,mode,hostname,COALESCE(node_key,''),revoked,last_report,revoked_at,tailnet_id FROM nodes WHERE tailnet_id=?`, tailnetID).Scan(&n.ID, &n.Name, &n.Mode, &n.Hostname, &n.PublicKey, &revoked, &n.LastReport, &n.RevokedAt, &n.TailnetID)
@@ -744,7 +761,7 @@ func (s *Store) TouchNodeReport(id string) error {
 }
 
 func (s *Store) Nodes(mode string) ([]map[string]any, error) {
-	rows, err := s.db.Query(`SELECT id,name,mode,hostname,revoked,last_report FROM nodes WHERE mode=? OR (?='gateways' AND mode IN ('docker-gateway','tailnet-gateway','k8s-gateway')) ORDER BY hostname`, mode, mode)
+	rows, err := s.db.Query(`SELECT id,name,mode,hostname,revoked,last_report FROM nodes WHERE ?='' OR mode=? OR (?='gateways' AND mode IN ('docker-gateway','tailnet-gateway','k8s-gateway')) ORDER BY hostname`, mode, mode, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -903,7 +920,7 @@ func (s *Store) BindNodeIdentity(id, publicKey, tailnetID string, addresses []st
 		return fmt.Errorf("tailnet identity required")
 	}
 	b, _ := json.Marshal(addresses)
-	result, err := s.db.Exec(`UPDATE nodes SET node_key=?,tailnet_id=?,addresses=? WHERE id=? AND revoked=0 AND (tailnet_id='' OR (tailnet_id=? AND node_key=?))`, publicKey, tailnetID, string(b), id, tailnetID, publicKey)
+	result, err := s.db.Exec(`UPDATE nodes SET node_key=?,tailnet_id=?,addresses=? WHERE id=? AND revoked=0 AND (tailnet_id='' OR (tailnet_id=? AND node_key=?)) AND NOT EXISTS(SELECT 1 FROM nodes other WHERE other.tailnet_id=? AND other.id<>?)`, publicKey, tailnetID, string(b), id, tailnetID, publicKey, tailnetID, id)
 	if err != nil {
 		return err
 	}
@@ -1032,9 +1049,28 @@ func (s *Store) UpsertServiceHost(h ServiceHostRecord) error {
 	return err
 }
 
-func (s *Store) UpsertBackend(sc BackendAssignment) error {
+func (s *Store) UpsertBackend(sc BackendAssignment) error { return s.upsertBackend(sc, false) }
+
+// Runtime reports cannot resurrect assignments after either identity is revoked.
+func (s *Store) UpsertEnrolledBackend(sc BackendAssignment) error { return s.upsertBackend(sc, true) }
+func (s *Store) upsertBackend(sc BackendAssignment, enrolled bool) error {
 	networks, _ := json.Marshal(sc.Networks)
-	_, err := s.db.Exec(`INSERT INTO backend_assignments(id,application_id,node_id,container_id,backend_ip,backend_port,networks,reachable,config_revision,last_seen,revoked) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET application_id=excluded.application_id,node_id=excluded.node_id,container_id=excluded.container_id,backend_ip=excluded.backend_ip,backend_port=excluded.backend_port,networks=excluded.networks,reachable=excluded.reachable,config_revision=excluded.config_revision,last_seen=excluded.last_seen,revoked=excluded.revoked`, sc.ID, sc.ApplicationID, sc.NodeID, sc.ContainerID, sc.BackendIP, sc.BackendPort, string(networks), boolInt(sc.Reachable), sc.ConfigRevision, sc.LastSeen, boolInt(sc.Revoked))
+	query := `INSERT INTO backend_assignments(id,application_id,node_id,container_id,backend_ip,backend_port,networks,reachable,config_revision,last_seen,revoked) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET application_id=excluded.application_id,node_id=excluded.node_id,container_id=excluded.container_id,backend_ip=excluded.backend_ip,backend_port=excluded.backend_port,networks=excluded.networks,reachable=excluded.reachable,config_revision=excluded.config_revision,last_seen=excluded.last_seen,revoked=excluded.revoked`
+	args := []any{sc.ID, sc.ApplicationID, sc.NodeID, sc.ContainerID, sc.BackendIP, sc.BackendPort, string(networks), boolInt(sc.Reachable), sc.ConfigRevision, sc.LastSeen, boolInt(sc.Revoked)}
+	if enrolled {
+		query = strings.Replace(query, "VALUES(?,?,?,?,?,?,?,?,?,?,?)", "SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM nodes n WHERE n.id=? AND n.revoked=0 AND NOT EXISTS(SELECT 1 FROM kubernetes_forwarders f LEFT JOIN nodes p ON p.id=f.parent_id WHERE f.node_id=n.id AND (p.id IS NULL OR p.revoked<>0)))", 1)
+		args = append(args, sc.NodeID)
+	}
+	result, err := s.db.Exec(query, args...)
+	if err == nil && enrolled {
+		count, e := result.RowsAffected()
+		if e != nil {
+			return e
+		}
+		if count == 0 {
+			return fmt.Errorf("backend node or parent is unknown or revoked")
+		}
+	}
 	return err
 }
 

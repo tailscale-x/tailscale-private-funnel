@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
+	"sync"
+
 	core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sync"
 	"tailscale.com/ipn"
 )
 
@@ -69,12 +71,19 @@ func (s *RemoteStore) ReadState(k ipn.StateKey) ([]byte, error) {
 func (s *RemoteStore) WriteState(k ipn.StateKey, b []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if e := s.Client.Call(context.Background(), "/v1/state", map[string]any{"key": stateKey(k), "value": b}, nil); e != nil {
+	if e := s.Client.WriteState(context.Background(), stateKey(k), b); e != nil {
 		return fmt.Errorf("persist identity: %w", e)
 	}
 	if s.State == nil {
 		s.State = map[string][]byte{}
 	}
 	s.State[stateKey(k)] = append([]byte{}, b...)
+	return nil
+}
+
+func ownedRuntimeLabels() map[string]string {
+	if uid := os.Getenv("FUNNEL_OWNER_UID"); uid != "" {
+		return map[string]string{"tailscale-private-funnel.io/owner-uid": uid}
+	}
 	return nil
 }

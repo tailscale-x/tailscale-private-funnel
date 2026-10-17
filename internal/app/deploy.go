@@ -22,7 +22,6 @@ type savedConfig struct {
 	DataDir              string   `json:"data_dir"`
 	ManagementURL        string   `json:"management_url"`
 	ControlKey           string   `json:"control_key,omitempty"`
-	BootstrapURL         string   `json:"bootstrap_url"`
 	EnrollmentID         string   `json:"enrollment_id"`
 	LoginServer          string   `json:"login_server"`
 	AcceptDNS            bool     `json:"accept_dns"`
@@ -46,7 +45,7 @@ func writeConfig(mode string, o Options) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	b, err := json.MarshalIndent(savedConfig{Mode: mode, Hostname: o.Hostname, StateDir: o.StateDir, DataDir: o.DataDir, ManagementURL: o.ManagementURL, ControlKey: o.ControlKey, BootstrapURL: o.BootstrapURL, EnrollmentID: o.EnrollmentID, LoginServer: o.LoginServer, AcceptDNS: o.AcceptDNS, Tags: o.Tags, Listen: o.Listen, CertEmail: o.CertEmail, LoadBalancerHostname: o.LoadBalancerHostname, LabelKeys: o.LabelKeys, DenyNetworks: o.DenyNetworks}, "", "  ")
+	b, err := json.MarshalIndent(savedConfig{Mode: mode, Hostname: o.Hostname, StateDir: o.StateDir, DataDir: o.DataDir, ManagementURL: o.ManagementURL, ControlKey: o.ControlKey, EnrollmentID: o.EnrollmentID, LoginServer: o.LoginServer, AcceptDNS: o.AcceptDNS, Tags: o.Tags, Listen: o.Listen, CertEmail: o.CertEmail, LoadBalancerHostname: o.LoadBalancerHostname, LabelKeys: o.LabelKeys, DenyNetworks: o.DenyNetworks}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -77,7 +76,7 @@ func loadConfig(mode string, o Options) (Options, error) {
 		return o, fmt.Errorf("config mode is %q, expected %q", saved.Mode, mode)
 	}
 	o.Hostname, o.StateDir, o.DataDir = saved.Hostname, saved.StateDir, saved.DataDir
-	o.ManagementURL, o.BootstrapURL, o.EnrollmentID = saved.ManagementURL, saved.BootstrapURL, saved.EnrollmentID
+	o.ManagementURL, o.EnrollmentID = saved.ManagementURL, saved.EnrollmentID
 	o.ControlKey = saved.ControlKey
 	o.LoginServer, o.AcceptDNS, o.Tags, o.Listen = saved.LoginServer, saved.AcceptDNS, saved.Tags, saved.Listen
 	o.CertEmail, o.LoadBalancerHostname = saved.CertEmail, saved.LoadBalancerHostname
@@ -103,7 +102,7 @@ func readEnrollmentCode(o Options) (string, error) {
 		}
 		return strings.TrimSpace(string(b)), nil
 	}
-	return "", errors.New("an enrollment code is required via --enrollment-code-file or --enrollment-code-stdin")
+	return "", errors.New("a one-use enrollment bundle from create is required")
 }
 
 func Deploy(ctx context.Context, mode string, o Options) error {
@@ -154,15 +153,12 @@ func Deploy(ctx context.Context, mode string, o Options) error {
 		return errors.New("enrollment code is empty")
 	}
 	o.EnrollmentCode = code
-	if mode == "loadbalancer" && o.InstallService {
-		if err := loadbalancerPreflight(); err != nil {
-			return err
-		}
-	} else if mode == "docker-gateway" {
+	if mode == "docker-gateway" {
 		if err := gatewayPreflight(); err != nil {
 			return err
 		}
 	}
+
 	if err := os.MkdirAll(o.StateDir, 0700); err != nil {
 		return err
 	}
@@ -172,9 +168,6 @@ func Deploy(ctx context.Context, mode string, o Options) error {
 	if err := os.WriteFile(filepath.Join(o.DataDir, "hostname"), []byte(o.Hostname), 0600); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(o.DataDir, "enrollment-code"), []byte(o.EnrollmentCode), 0600); err != nil {
-		return err
-	}
 	if err := writeConfig(mode, o); err != nil {
 		return err
 	}
@@ -182,13 +175,6 @@ func Deploy(ctx context.Context, mode string, o Options) error {
 	if err := Serve(ctx, mode, o); err != nil {
 		return fmt.Errorf("initial enrollment: %w", err)
 	}
-	if !o.InstallService {
-		return nil
-	}
-	if err := installService(mode, o); err != nil {
-		return err
-	}
-	fmt.Printf("%s deployed and started as %s\n", mode, serviceName(mode))
 	return nil
 }
 
@@ -217,84 +203,13 @@ func gatewayPreflight() error {
 	return nil
 }
 
-func serviceName(mode string) string { return "tailscale-private-funnel-" + mode }
-
-func installService(mode string, o Options) error {
-	if os.Geteuid() != 0 {
-		return errors.New("installing a system service requires root; run the generated sudo command")
-	}
-	unitDir := "/etc/systemd/system"
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	args := []string{mode, "serve", "--config", configPath(mode, o)}
-	unit := "[Unit]\nDescription=Tailscale Private Funnel " + mode + "\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nExecStart=" + systemdQuote(exe)
-	for _, arg := range args {
-		unit += " " + systemdQuote(arg)
-	}
-	unit += "\nEnvironment=HOME=" + systemdQuote(o.DataDir) + "\nEnvironment=XDG_CONFIG_HOME=" + systemdQuote(filepath.Join(o.DataDir, "config")) + "\nEnvironment=XDG_DATA_HOME=" + systemdQuote(o.DataDir) + "\nRestart=on-failure\nRestartSec=5s\nTimeoutStopSec=30s\nUMask=0077\n\n[Install]\nWantedBy=multi-user.target\n"
-	path := filepath.Join(unitDir, serviceName(mode)+".service")
-	if err := os.WriteFile(path, []byte(unit), 0600); err != nil {
-		return err
-	}
-	if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
-		return fmt.Errorf("systemd system manager unavailable: %w", err)
-	}
-	if err := exec.Command("systemctl", "enable", "--now", serviceName(mode)).Run(); err != nil {
-		return err
+// Preflight checks local dependencies without joining a tailnet or creating credentials.
+func Preflight(mode string) error {
+	switch mode {
+	case "loadbalancer":
+		return loadbalancerPreflight()
+	case "docker-gateway":
+		return gatewayPreflight()
 	}
 	return nil
-}
-
-func Service(mode, action string, o Options) error {
-	if mode != "loadbalancer" && !store.IsGateway(mode) {
-		return errors.New("service management is available for loadbalancer and gateway only")
-	}
-	if action == "" {
-		return errors.New("service action is required")
-	}
-	if action == "install" {
-		var err error
-		o, err = defaults(mode, o)
-		if err != nil {
-			return err
-		}
-		return installService(mode, o)
-	}
-	if action == "uninstall" {
-		_ = exec.Command("systemctl", "disable", "--now", serviceName(mode)).Run()
-		return os.Remove(filepath.Join("/etc/systemd/system", serviceName(mode)+".service"))
-	}
-	args := []string{action, serviceName(mode)}
-	if action == "logs" {
-		args = []string{"status", serviceName(mode), "--no-pager"}
-	}
-	return exec.Command("systemctl", args...).Run()
-}
-
-func Doctor(mode string, o Options) error {
-	var err error
-	o, err = defaults(mode, o)
-	if err != nil {
-		return err
-	}
-	if mode == "loadbalancer" && o.InstallService {
-		if err := loadbalancerPreflight(); err != nil {
-			return err
-		}
-	} else if mode == "docker-gateway" {
-		if err := gatewayPreflight(); err != nil {
-			return err
-		}
-	}
-	if _, err := os.Stat(filepath.Join(o.StateDir, "state.json")); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	fmt.Printf("%s prerequisites are ready\n", mode)
-	return nil
-}
-
-func systemdQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }

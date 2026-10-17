@@ -1,8 +1,9 @@
 package app
 
 import (
-	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	"testing"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
 )

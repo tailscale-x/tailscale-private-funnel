@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -57,5 +58,38 @@ func TestEnvelopeRejectsStale(t *testing.T) {
 	e, _ := NewEnvelope("gateway-1", map[string]any{}, pub, priv, now)
 	if _, _, err := Verify(e, now.Add(2*time.Minute), time.Minute); err == nil {
 		t.Fatal("stale report accepted")
+	}
+}
+
+func TestSignedBytesSurvivePrettyJSONAndPurposeBinding(t *testing.T) {
+	pub, key, e := GenerateKey()
+	if e != nil {
+		t.Fatal(e)
+	}
+	payload := json.RawMessage("{\n  \"exposures\": [],\n  \"expires_at\": 123\n}")
+	env, e := NewEnvelopeWithPurpose("peers", "node", payload, pub, key, time.Now())
+	if e != nil {
+		t.Fatal(e)
+	}
+	wire, e := Wire(env)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = FromWire(wire, "report"); e == nil {
+		t.Fatal("cross-purpose replay accepted")
+	}
+	encoded, e := json.MarshalIndent(env, "", "  ")
+	if e != nil {
+		t.Fatal(e)
+	}
+	var restored Envelope
+	if e = json.Unmarshal(encoded, &restored); e != nil {
+		t.Fatal(e)
+	}
+	if _, _, e = Verify(restored, time.Now(), time.Minute); e != nil {
+		t.Fatal(e)
+	}
+	if string(env.Payload) != string(restored.Payload) {
+		t.Fatal("signed payload bytes changed")
 	}
 }

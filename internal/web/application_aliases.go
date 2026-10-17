@@ -1,11 +1,12 @@
 package web
 
 import (
-	"encoding/json"
-	"net/http"
+	"context"
+	"errors"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
+	"connectrpc.com/connect"
+
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
@@ -46,20 +47,10 @@ func (c *Control) expandDockerAliasesForPolicy(exposures []dns.GatewayExposure, 
 	return out
 }
 
-func (c *Control) applicationAlias(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Hostname string `json:"hostname"`
-	}
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&in) != nil {
-		http.Error(w, "Only hostname is accepted", 400)
-		return
-	}
-	in.Hostname = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(in.Hostname), "."))
-	if err := policy.ValidateHostname(in.Hostname); err != nil {
-		http.Error(w, err.Error(), 400)
-		return
+func (c *Control) addAliasOperation(ctx context.Context, id, hostname, actor string) (store.ApplicationRecord, error) {
+	hostname = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(hostname), "."))
+	if err := policy.ValidateHostname(hostname); err != nil {
+		return store.ApplicationRecord{}, rpcFailure(connect.CodeInvalidArgument, errors.New(err.Error()))
 	}
 	c.cleanupMu.Lock()
 	defer c.cleanupMu.Unlock()
@@ -67,32 +58,27 @@ func (c *Control) applicationAlias(w http.ResponseWriter, r *http.Request) {
 	defer c.provisionMu.Unlock()
 	apps, err := c.Store.Applications()
 	if err != nil {
-		http.Error(w, "Unable to read applications", 503)
-		return
+		return store.ApplicationRecord{}, rpcFailure(connect.CodeUnavailable, errors.New("Unable to read applications"))
 	}
 	var app store.ApplicationRecord
 	for _, candidate := range apps {
-		if candidate.ID == chi.URLParam(r, "id") {
+		if candidate.ID == id {
 			app = candidate
 		}
 		for _, host := range candidate.PublicHostnames {
-			if host == in.Hostname {
-				http.Error(w, "Hostname already assigned", 409)
-				return
+			if host == hostname {
+				return store.ApplicationRecord{}, rpcFailure(connect.CodeAborted, errors.New("Hostname already assigned"))
 			}
 		}
 	}
 	if app.ID == "" {
-		http.NotFound(w, r)
-		return
+		return store.ApplicationRecord{}, rpcFailure(connect.CodeNotFound, errors.New("Resource not found"))
 	}
 	if !app.Enabled || app.BackendSource == "tailnet" {
-		http.Error(w, "Select an enabled Docker application", 400)
-		return
+		return store.ApplicationRecord{}, rpcFailure(connect.CodeInvalidArgument, errors.New("Select an enabled Docker application"))
 	}
-	if _, err = c.managedZone(in.Hostname); err != nil {
-		http.Error(w, err.Error(), 400)
-		return
+	if _, err = c.managedZone(hostname); err != nil {
+		return store.ApplicationRecord{}, rpcFailure(connect.CodeInvalidArgument, errors.New(err.Error()))
 	}
 	allowed := false
 	for _, id := range app.AllowedGatewayNodes {
@@ -102,20 +88,18 @@ func (c *Control) applicationAlias(w http.ResponseWriter, r *http.Request) {
 		}
 		var roles []string
 		_ = c.Store.GetJSON("node_policy_roles:"+id, &roles)
-		if c.anyEdgeAllows(c.loadExposurePolicy(), in.Hostname, []string{id, n.TailnetID}, roles) {
+		if c.anyEdgeAllows(c.loadExposurePolicy(), hostname, []string{id, n.TailnetID}, roles) {
 			allowed = true
 			break
 		}
 	}
 	if !allowed {
-		http.Error(w, "Alias denied by exposure policy", 403)
-		return
+		return store.ApplicationRecord{}, rpcFailure(connect.CodePermissionDenied, errors.New("Alias denied by exposure policy"))
 	}
-	app.PublicHostnames = append(app.PublicHostnames, in.Hostname)
+	app.PublicHostnames = append(app.PublicHostnames, hostname)
 	if err = c.Store.UpsertApplication(app); err != nil {
-		http.Error(w, "Unable to save alias", 500)
-		return
+		return store.ApplicationRecord{}, rpcFailure(connect.CodeInternal, errors.New("Unable to save alias"))
 	}
-	_ = c.Store.Audit("application.alias:"+app.ID+":"+in.Hostname, identityFromRequest(r))
-	writeJSON(w, map[string]any{"application": app, "status": "DNS reconciliation pending; existing backend reports determine availability"})
+	_ = c.Store.Audit("application.alias:"+app.ID+":"+hostname, actor)
+	return app, nil
 }

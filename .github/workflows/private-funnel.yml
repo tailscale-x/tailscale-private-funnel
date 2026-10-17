@@ -23,34 +23,36 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: ui/package-lock.json
-      - name: Generate templ and build UI assets
+      - name: Generate RPC contracts and build embedded UI
         run: |
           npm ci --prefix ui
+          go install github.com/bufbuild/buf/cmd/buf@v1.74.0
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
+          go install connectrpc.com/connect/cmd/protoc-gen-connect-go@v1.21.1
+          go install github.com/sudorandom/protoc-gen-connect-openapi@v0.28.0
+          go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.20.0
+          scripts/generate-operator.sh
+          buf lint
+          scripts/generate-rpc.sh
           npm run build --prefix ui
-          go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate ./internal/web/ui
-          # Templ and icon assets must be byte-for-byte reproducible. Tailwind
-          # can vary only in the final newline across supported Node runners;
-          # compare normalized bytes while still failing on real CSS drift.
-          python3 - <<'PY'
-          from pathlib import Path
-          import subprocess
-
-          generated = Path("internal/web/assets/app.css").read_bytes().replace(b"\r\n", b"\n").rstrip()
-          committed = subprocess.check_output(["git", "show", "HEAD:internal/web/assets/app.css"]).replace(b"\r\n", b"\n").rstrip()
-          if generated != committed:
-              raise SystemExit("generated app.css differs from the committed asset")
-          PY
-          git diff --exit-code -- internal/web/ui/layout_templ.go internal/web/assets/icons
+          git diff --exit-code -- internal/gen internal/rpc/descriptor.bin internal/web/assets ui/src/gen config/crd config/rbac api/kubernetes charts/tailscale-private-funnel/crds charts/tailscale-private-funnel/templates/rbac.yaml docs/KUBERNETES_API.md
+          python3 scripts/code-surface.py --output /tmp/code-surface.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-surface
+          path: /tmp/code-surface.json
       - uses: azure/setup-helm@v4
       - name: Validate Kubernetes chart
         run: |
-          helm lint charts/tailscale-private-funnel --set bootstrap.existingSecret=ci-bootstrap
-          for component in control loadbalancer k8s-gateway; do
-            helm lint charts/tailscale-private-funnel --set component="$component" --set bootstrap.existingSecret=ci-bootstrap
-            helm template ci charts/tailscale-private-funnel --set component="$component" --set bootstrap.existingSecret=ci-bootstrap > "/tmp/funnel-$component.yaml"
-          done
+          helm lint charts/tailscale-private-funnel --set managedNamespaces[0]=ci-system
+          helm template ci charts/tailscale-private-funnel --set managedNamespaces[0]=ci-system > /tmp/funnel-operator.yaml
           scripts/package-chart.sh v0.0.0-ci /tmp/funnel-chart-package
-          helm template ci /tmp/funnel-chart-package/tailscale-private-funnel-0.0.0-ci.tgz --set bootstrap.existingSecret=ci-bootstrap > /tmp/funnel-packaged-chart.yaml
+          helm template ci /tmp/funnel-chart-package/tailscale-private-funnel-0.0.0-ci.tgz --set managedNamespaces[0]=ci-system > /tmp/funnel-packaged-chart.yaml
+      - name: API-server contract tests
+        run: |
+          go install sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.0.0-20260305142021-f9589b9f2b9d
+          export KUBEBUILDER_ASSETS="$(setup-envtest use -p path 1.35.x)"
+          go test ./internal/operator -run TestEnvtest -count=1
       - run: go test ./...
       - run: go vet ./...
       - run: go test -tags caddy ./...
@@ -70,9 +72,9 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             targets="$targets linux-arm64 darwin-arm64"
           fi
-          for target in $targets; do
-            GOOS=${target%-*} GOARCH=${target#*-} CGO_ENABLED=0 go build -tags caddy -trimpath -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" -o "dist/tailscale-private-funnel-${target}" ./cmd/tailscale-private-funnel
-          done
+          version="$GITHUB_REF_NAME"
+          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then version="dev-${GITHUB_SHA:0:12}"; fi
+          scripts/build-artifacts.sh "$version" $targets
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             sha256sum dist/* > dist/SHA256SUMS
             printf '{"version":"%s","commit":"%s","image":"ghcr.io/tailscale-x/tailscale-private-funnel:%s"}\n' "$GITHUB_REF_NAME" "$GITHUB_SHA" "$GITHUB_REF_NAME" > dist/release-metadata.json
@@ -94,10 +96,13 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - name: Package the prebuilt binary
         run: |
-          docker buildx build --load --platform linux/amd64 --file Dockerfile --tag private-funnel:ci .
+          version="$GITHUB_REF_NAME"
+          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then version="dev-${GITHUB_SHA:0:12}"; fi
+          docker buildx build --load --platform linux/amd64 --file Dockerfile --build-arg VERSION="$version" --tag private-funnel:ci .
+          FUNNEL_IMAGE_LOCAL_ONLY=1 scripts/verify-image.sh private-funnel:ci linux/amd64
           docker run --rm private-funnel:ci version
-          docker run --rm private-funnel:ci k8s-gateway controller serve --help
-          docker run --rm private-funnel:ci k8s-gateway forwarder serve --help
+          docker run --rm private-funnel:ci k8s runtime gateway serve --help
+          docker run --rm private-funnel:ci k8s runtime forwarder serve --help
 
   image:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -140,6 +145,7 @@ jobs:
           platforms = {(m.get('platform', {}).get('os'), m.get('platform', {}).get('architecture')) for m in index.get('manifests', [])}
           assert {('linux', 'amd64'), ('linux', 'arm64')} <= platforms, platforms
           PY
+          scripts/verify-image.sh ghcr.io/tailscale-x/tailscale-private-funnel:$GITHUB_REF_NAME linux/amd64 linux/arm64
 
   chart:
     if: startsWith(github.ref, 'refs/tags/v')

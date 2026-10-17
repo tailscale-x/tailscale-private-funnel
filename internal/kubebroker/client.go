@@ -1,27 +1,23 @@
 package kubebroker
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
-	"fmt"
-	"io"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"connectrpc.com/connect"
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1/funnelv1connect"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 )
 
 type Client struct {
-	URL, TokenFile string
-	HTTP           *http.Client
-}
-type Session struct {
-	NodeUID, NodeName, NodeID, AuthKey, ManagementURL, ControlKey, ControllerID string
-	Identity                                                                    []byte
-	State                                                                       map[string][]byte
+	rpc funnelv1connect.BrokerServiceClient
 }
 
 func NewClient(url, tokenFile, caFile string) (*Client, error) {
@@ -31,36 +27,45 @@ func NewClient(url, tokenFile, caFile string) (*Client, error) {
 	}
 	roots := x509.NewCertPool()
 	if !roots.AppendCertsFromPEM(b) {
-		return nil, fmt.Errorf("invalid broker CA")
+		return nil, errors.New("invalid broker CA")
 	}
-	return &Client{URL: strings.TrimRight(url, "/"), TokenFile: tokenFile, HTTP: &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}}}}, nil
+	transport := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}}
+	httpClient := &http.Client{Timeout: 10 * time.Second, Transport: transport}
+	token := connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
+		return func(ctx context.Context, r connect.AnyRequest) (connect.AnyResponse, error) {
+			b, e := os.ReadFile(tokenFile)
+			if e != nil {
+				return nil, e
+			}
+			r.Header().Set("Authorization", "Bearer "+strings.TrimSpace(string(b)))
+			return next(ctx, r)
+		}
+	})
+	return &Client{rpc: funnelv1connect.NewBrokerServiceClient(httpClient, url, connect.WithInterceptors(token))}, nil
 }
-func (c *Client) Call(ctx context.Context, path string, in, out any) error {
-	b, e := json.Marshal(in)
+func (c *Client) OpenSession(ctx context.Context) (*v1.BrokerSession, error) {
+	r, e := c.rpc.OpenSession(ctx, connect.NewRequest(&v1.Empty{}))
 	if e != nil {
-		return e
+		return nil, e
 	}
-	token, e := os.ReadFile(c.TokenFile)
+	return r.Msg, nil
+}
+func (c *Client) GetConfig(ctx context.Context) (report.Envelope, error) {
+	r, e := c.rpc.GetConfig(ctx, connect.NewRequest(&v1.Empty{}))
 	if e != nil {
-		return e
+		return report.Envelope{}, e
 	}
-	req, e := http.NewRequestWithContext(ctx, "POST", c.URL+path, bytes.NewReader(b))
-	if e != nil {
-		return e
-	}
-	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(token)))
-	req.Header.Set("Content-Type", "application/json")
-	res, e := c.HTTP.Do(req)
-	if e != nil {
-		return e
-	}
-	defer res.Body.Close()
-	if res.StatusCode/100 != 2 {
-		body, _ := io.ReadAll(io.LimitReader(res.Body, 1024))
-		return fmt.Errorf("broker HTTP %d: %s", res.StatusCode, body)
-	}
-	if out != nil {
-		return json.NewDecoder(io.LimitReader(res.Body, 2<<20)).Decode(out)
-	}
-	return nil
+	return report.FromWire(r.Msg, "configuration")
+}
+func (c *Client) RenewLease(ctx context.Context) error {
+	_, e := c.rpc.RenewLease(ctx, connect.NewRequest(&v1.Empty{}))
+	return e
+}
+func (c *Client) WriteState(ctx context.Context, key string, value []byte) error {
+	_, e := c.rpc.WriteState(ctx, connect.NewRequest(&v1.StateUpdate{Key: key, Value: value}))
+	return e
+}
+func (c *Client) ReleaseLease(ctx context.Context) error {
+	_, e := c.rpc.ReleaseLease(ctx, connect.NewRequest(&v1.Empty{}))
+	return e
 }

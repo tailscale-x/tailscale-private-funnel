@@ -1,0 +1,96 @@
+syntax = "proto3";
+package funnel.v1;
+
+import "buf/validate/validate.proto";
+import "funnel/v1/management.proto";
+import "funnel/v1/options.proto";
+
+option go_package = "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1;funnelv1";
+// DeploymentService authorizes deployments. Execution is performed by the invoking CLI.
+service DeploymentService {
+  // Resolve deployment choices without creating enrollment or bootstrap keys.
+  rpc Instructions(DeploymentRequest) returns (DeploymentInstructions) {
+    option (permission) = PERMISSION_ADMIN;
+  }
+  // Create one-use enrollment and return credentials once, without server-side execution.
+  rpc Authorize(DeploymentRequest) returns (DeploymentInstructions) {
+    option (permission) = PERMISSION_ADMIN;
+    option (sensitive) = true;
+    option (audit) = true;
+  }
+}
+message DeploymentRequest {
+  string mode = 1 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.in = "operator",
+    (buf.validate.field).string.in = "control",
+    (buf.validate.field).string.in = "loadbalancer",
+    (buf.validate.field).string.in = "docker-gateway",
+    (buf.validate.field).string.in = "tailnet-gateway",
+    (buf.validate.field).string.in = "k8s-gateway"
+  ];
+  string target = 2 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.in = "native",
+    (buf.validate.field).string.in = "kubernetes"
+  ];
+  string runtime = 3;
+  string name = 4;
+  string hostname = 5;
+  string state_dir = 6;
+  string data_dir = 7;
+  string installation = 8;
+  string resource_name = 9;
+  string gateway_class = 10;
+  string ingress_class = 11;
+  repeated string watch_namespaces = 12;
+  map<string, string> node_selector = 13;
+  string certificate_email = 14;
+  string public_hostname = 15;
+  repeated string label_keys = 16;
+  repeated string deny_networks = 17;
+  string namespace = 18;
+  string context = 19;
+  string version = 20;
+  string display_name = 21;
+  string tailnet = 22;
+  string oauth_client_id_file = 23;
+  string oauth_client_secret_file = 24;
+  string node_id = 25;
+  repeated string managed_namespaces = 26;
+  bool wait = 27;
+  uint32 timeout_seconds = 28;
+  bool current_control = 29;
+  repeated string administrators = 30;
+  string storage_class = 31;
+  string storage_size = 32;
+}
+// Bootstrap credentials must not be persisted in plans, logs or receipts.
+message BootstrapCredentials {
+  string enrollment_id = 1;
+  string enrollment_code = 2;
+  string auth_key = 3;
+  string control_key = 4;
+  int64 expires_at = 5;
+}
+message DeploymentInstructions {
+  DeploymentRequest deployment = 1;
+  string management_url = 2;
+  string version = 3;
+  string image = 4;
+  string chart = 5;
+  string chart_version = 6;
+  string namespace = 7;
+  repeated DeploymentStep steps = 8;
+  repeated string prerequisites = 9;
+  BootstrapCredentials credentials = 10;
+  string script = 11;
+  string example = 12;
+  Enrollment enrollment = 13;
+  map<string, string> commands = 14;
+}
+message DeploymentStep {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+}

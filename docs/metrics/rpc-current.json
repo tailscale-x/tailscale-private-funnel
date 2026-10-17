@@ -1,0 +1,63 @@
+{
+  "commit": "724e77a783f7f1ccddbe2391bdd1e679151d90f1",
+  "exclusions": "binary assets, lockfiles, vendored dependencies, build output, measurement output; generated and bundled sources reported separately",
+  "groups": {
+    "business_and_runtime": {
+      "bytes": 349001,
+      "files": 75,
+      "nonblank_lines": 10076
+    },
+    "cli": {
+      "bytes": 48033,
+      "files": 4,
+      "nonblank_lines": 1061
+    },
+    "clients": {
+      "bytes": 10143,
+      "files": 3,
+      "nonblank_lines": 278
+    },
+    "contracts": {
+      "bytes": 27360,
+      "files": 4,
+      "nonblank_lines": 973
+    },
+    "documentation": {
+      "bytes": 164936,
+      "files": 32,
+      "nonblank_lines": 2025
+    },
+    "frontend": {
+      "bytes": 138847,
+      "files": 19,
+      "nonblank_lines": 4018
+    },
+    "generated_or_bundled": {
+      "bytes": 6364196,
+      "files": 23,
+      "nonblank_lines": 34128
+    },
+    "provisioning": {
+      "bytes": 41611,
+      "files": 5,
+      "nonblank_lines": 949
+    },
+    "server_interface": {
+      "bytes": 175045,
+      "files": 33,
+      "nonblank_lines": 4591
+    },
+    "tests": {
+      "bytes": 194284,
+      "files": 46,
+      "nonblank_lines": 4786
+    },
+    "tooling": {
+      "bytes": 18602,
+      "files": 8,
+      "nonblank_lines": 442
+    }
+  },
+  "manual_http_request_sites": 18,
+  "metric": "UTF-8 source bytes and nonblank source lines"
+}

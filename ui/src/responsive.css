@@ -1,0 +1,219 @@
+.pf-react-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.pf-react-stat {
+  font-size: 36px;
+}
+.pf-react-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.pf-react-topology {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 24px;
+  padding: 24px 0;
+}
+.pf-react-topology > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+.pf-react-topology small,
+.pf-react-event small {
+  display: block;
+  color: #61708d;
+}
+.pf-react-event {
+  padding: 12px 0;
+  border-bottom: 1px solid #dce4f0;
+  overflow-wrap: anywhere;
+}
+.pf-react-dialog {
+  border: 1px solid #dce4f0;
+  border-radius: 16px;
+  padding: 24px;
+  max-width: min(720px, calc(100vw - 32px));
+  width: 100%;
+  max-height: 90vh;
+  overflow: auto;
+  color: #10213f;
+}
+.pf-react-dialog::backdrop {
+  background: rgb(16 33 63 / 0.35);
+}
+.pf-dialog-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.pf-react-dialog h2 {
+  font-size: 22px;
+  font-weight: 700;
+}
+.pf-react-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pf-react-inline-editor {
+  padding: 20px;
+  background: #f4f7fb;
+  border-radius: 8px;
+}
+.pf-react-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 16px 0;
+}
+.pf-react-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(16 33 63 / 0.25);
+  z-index: 29;
+}
+.pf-react-code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 440px;
+  overflow: auto;
+}
+.pf-react-pill-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pf-react-pattern {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+.pf-react-pattern input {
+  flex: 1;
+  min-width: 0;
+}
+dialog textarea {
+  width: 100%;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+details summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin: 16px 0;
+}
+td {
+  overflow-wrap: anywhere;
+}
+textarea.pf-input {
+  white-space: pre-wrap;
+  min-height: 140px;
+}
+form .pf-help {
+  margin: 0;
+}
+.pf-surface .pf-button,
+.pf-surface .pf-secondary-button {
+  margin-right: 6px;
+}
+h2 {
+  margin-bottom: 12px;
+}
+@media (max-width: 1023px) {
+  .pf-sidebar-open {
+    z-index: 30;
+  }
+  .pf-topbar-right .pf-identity {
+    display: none;
+  }
+}
+@media (max-width: 640px) {
+  .pf-react-stats,
+  .pf-react-two {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .pf-react-two {
+    grid-template-columns: 1fr;
+  }
+  .pf-react-topology {
+    flex-direction: column;
+  }
+  .pf-react-topology > span {
+    transform: rotate(90deg);
+  }
+  .pf-react-dialog {
+    padding: 16px;
+  }
+  .pf-table thead {
+    display: none;
+  }
+  .pf-table,
+  .pf-table tbody,
+  .pf-table tr,
+  .pf-table td {
+    display: block;
+    width: 100%;
+  }
+  .pf-table tr {
+    border-bottom: 1px solid #dce4f0;
+    padding: 12px 0;
+  }
+  .pf-table td {
+    border: 0;
+    padding: 6px 12px;
+  }
+  .pf-page-intro {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  .pf-react-stats .pf-surface {
+    padding: 16px;
+  }
+  .pf-react-stat {
+    font-size: 28px;
+  }
+}
+
+.pf-react-stats > .pf-surface,
+.pf-react-two > .pf-surface {
+  margin-top: 0;
+}
+
+.pf-react-plan-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.pf-react-plan-summary dt {
+  color: #61708d;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.pf-react-plan-summary dd {
+  overflow-wrap: anywhere;
+}
+fieldset:disabled {
+  opacity: 0.75;
+}
+@media (max-width: 640px) {
+  .pf-react-plan-summary {
+    grid-template-columns: 1fr;
+  }
+}

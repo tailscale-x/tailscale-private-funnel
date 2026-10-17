@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/netip"
 	"strings"
 	"time"
@@ -46,14 +45,7 @@ func (c *Control) selected(host, id string) bool {
 	e, ok := c.mapping(host)
 	return ok && e.Active
 }
-func containsExact(ids []string, id string) bool {
-	for _, v := range ids {
-		if v == id {
-			return true
-		}
-	}
-	return false
-}
+
 func (c *Control) anyEdgeAllows(d policy.Document, host string, gatewayIDs, roles []string) bool {
 	if e, exists := c.mapping(host); exists && !e.Active {
 		return false
@@ -263,26 +255,6 @@ func (c *Control) reconcileExposures(ctx context.Context) error {
 		return fmt.Errorf("%s", strings.Join(failures, "; "))
 	}
 	return nil
-}
-func (c *Control) exposureMappingList(w http.ResponseWriter, r *http.Request) {
-	es, err := c.Store.Exposures()
-	if err != nil {
-		http.Error(w, "Unable to read exposures", 503)
-		return
-	}
-	type view struct {
-		store.ExposureRecord
-		Edges []map[string]any `json:"edges"`
-	}
-	out := []view{}
-	for _, e := range es {
-		if !e.Active {
-			continue
-		}
-		_, states := c.exposureDesired(e, c.loadExposurePolicy())
-		out = append(out, view{e, states})
-	}
-	writeJSON(w, out)
 }
 
 func (c *Control) applicationAnyEdgeAllowed(app store.ApplicationRecord, ids, roles []string) bool {

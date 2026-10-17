@@ -19,11 +19,9 @@ services reachable through a public HTTPS load balancer. The control plane owns 
 enrollment, signed gateway reports, and every DNS mutation.
 
 ```text
-tailscale-private-funnel control ...
-tailscale-private-funnel loadbalancer ...
-tailscale-private-funnel docker-gateway ...
-tailscale-private-funnel tailnet-gateway ...
-tailscale-private-funnel k8s-gateway ...
+tailscale-private-funnel native controls|gateways|loadbalancers ...
+tailscale-private-funnel k8s operator|controls|gateways|loadbalancers ...
+tailscale-private-funnel manage ...
 ```
 
 ## See the console
@@ -33,11 +31,11 @@ review policy, and apply only the DNS records this installation owns.
 
 | Dashboard | Policy and authorization |
 | --- | --- |
-| ![Dashboard](docs/screenshots/control-dashboard-v1.png) | ![Policy editor](docs/screenshots/control-policy-v1.png) |
+| ![Dashboard](docs/screenshots/control-dashboard-connect.png) | ![Policy editor](docs/screenshots/control-policy-connect.png) |
 
-| Enrollment command | Ownership preview |
+| Gateway setup instructions | Ownership preview |
 | --- | --- |
-| ![Enrollment](docs/screenshots/control-enrollment-v1.png) | ![Operations](docs/screenshots/control-operations-v1.png) |
+| ![Enrollment](docs/screenshots/control-enrollment-connect.png) | ![Operations](docs/screenshots/control-operations-connect.png) |
 
 The dashboard makes the security boundary visible: the control plane owns policy and
 DNS, the load balancer is the only public edge, and specialized gateways report only the
@@ -71,7 +69,7 @@ or host networking.
 
 ## How it works
 
-1. **Control joins the tailnet.** Run `control join` once; the service keeps its tsnet identity and serves the management UI on a private address.
+1. **Control joins the tailnet.** Run `native controls create` once; the service keeps its tsnet identity and serves the management UI on a private address.
 2. **Policy and enrollment are created in the UI.** Administrators configure public load balancers, specialized gateways, hostname rules, and provider zones. Generated commands contain the exact release and paths to run.
 3. **The load balancer terminates HTTPS.** Load balancer mode runs Caddy with the process's persistent tsnet transport. All backend types are reached through private Tailscale Services and their selected gateway.
 4. **Gateways discover HTTP services.** Docker labels, tailnet-machine selection, and Kubernetes routing resources produce policy-authorized assignments and signed, expiring reports.
@@ -80,8 +78,8 @@ or host networking.
 ## Quick start
 
 Quick start only boots the control node. After the management UI is available,
-use **Load balancers** or **Gateways → Add gateway** to create an enrollment and copy the complete
-provisioning command. Those commands are generated from the selected policy,
+use **Load balancers** or **Gateways → Add gateway** to generate complete
+provisioning instructions. Enrollment begins when the CLI command runs. Those commands are generated from the selected policy,
 release, hostname, tags, and storage paths; they are intentionally not
 duplicated in this README.
 
@@ -94,19 +92,35 @@ Owner/Admin roles for web UI access; it does not allow changing users or roles.
 Store the client ID and secret in the protected files used below.
 
 Release workflows publish ready-to-run binaries for Linux amd64, Linux arm64,
-and macOS arm64. This one-line bootstrap downloads and verifies the matching
-binary, creates a short-lived node key from protected OAuth files, and starts the
-tailnet-only management UI:
+and macOS arm64. Use matching v3 binary, image, and operator chart versions.
+The UI generates additional gateway and load-balancer instructions after control
+starts; only control bootstrap needs local OAuth credential files.
+
+Native deployments are system-level Linux services. Configuration is under
+`/etc/tailscale-private-funnel/native`; owned identity/data directories are under
+`/var/lib/tailscale-private-funnel/native`. Use explicit paths when needed.
+Stop preserves identity and data; delete revokes access and removes owned state.
+Open the private control URL, configure DNS providers and policy, then generate
+node commands in the UI.
+
+The control-only quick start is one command:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/tailscale-x/tailscale-private-funnel/v2.0.0/scripts/control.sh | sh -s -- --version v2.0.0 --tailnet example.ts.net --oauth-client-id-file "$HOME/.config/tailscale-private-funnel/ts-client-id" --oauth-client-secret-file "$HOME/.config/tailscale-private-funnel/ts-client-secret"
+curl -fsSL https://raw.githubusercontent.com/tailscale-x/tailscale-private-funnel/v3.0.0/scripts/control.sh | sh -s -- --version v3.0.0 --tailnet example.ts.net --oauth-client-id-file ./ts-client-id --oauth-client-secret-file ./ts-client-secret
 ```
 
-The default state and data locations follow XDG conventions. Pass
-`--state-dir`, `--data-dir`, or `--install-dir` when a system service needs
-explicit paths. Open the private setup URL printed by `control join`, then
-configure providers, zones, access roles, exposure policy, and
-node enrollments there.
+The helper downloads the release binary and verifies its checksum. Use
+`--name` and `--hostname` to select the native control deployment handle and node
+hostname. It leaves gateway and load-balancer provisioning to the web UI.
+
+The unified CLI separates deployment infrastructure from installation management:
+
+```sh
+tailscale-private-funnel native controls create main \
+  --version v3.0.0 --tailnet example.ts.net \
+  --oauth-client-id-file ./ts-client-id \
+  --oauth-client-secret-file ./ts-client-secret --wait
+```
 
 ## Security and ownership
 
@@ -145,8 +159,8 @@ They are never rendered into pages or generated enrollment commands.
 | Other pinned libdns providers | Metadata only | Catalog-dependent | Visible as unavailable until an adapter is linked |
 
 Image tags are immutable release inputs. Replace `vX.Y.Z` below with a published
-release tag. To roll back, stop the current containers and pull the prior
-immutable tag, then restore the control data backup if the schema changed:
+release tag. To roll back, use `native … update` or `k8s … update` with the prior pinned
+version. Restore matching control data and identity backups if the schema changed:
 
 The Docker image is a thin distroless wrapper around the matching release
 binary. CI builds each target once, then packages that artifact for the native
@@ -165,7 +179,7 @@ See the [latest release](https://github.com/tailscale-x/tailscale-private-funnel
 ```sh
 npm ci --prefix ui
 npm run build --prefix ui
-go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate ./internal/web/ui
+scripts/generate-rpc.sh
 go test ./...
 go test -tags caddy ./...
 go vet ./...
@@ -203,19 +217,57 @@ to distinguish duplicate names. Renaming a resource does not modify its operatio
 ## Gateway provisioning
 
 Open **Gateways → Add gateway** in the control UI. Choose Docker, Tailnet or Kubernetes
-and follow the generated, type-specific installation instructions. Kubernetes installs a version-pinned [OCI Helm chart](PRIVATE_FUNNEL.md#kubernetes-control-load-balancers-and-gateways) from GHCR;
+and follow the generated, type-specific installation instructions. Kubernetes uses the [cluster operator](docs/KUBERNETES.md) and component CRs;
 Docker and Tailnet gateways use native systemd services. Control automatically assigns
 load balancers—there are no gateway-side load-balancer IDs.
 
 See [operations and supported
 Kubernetes routing](PRIVATE_FUNNEL.md) for the feature matrix, annotations, persistence,
-and rollback instructions. See the [v2.0.0 release notes](docs/releases/v2.0.0.md) for breaking changes and migration.
+and rollback instructions. See the [v3.0.0 release notes](docs/releases/v3.0.0.md) for breaking changes and verification limits.
 
 ### Kubernetes deployment
 
-Run control, additional public load balancers, and node-local gateways with the same
-[OCI Helm chart](docs/KUBERNETES.md). Each installation has one namespace. Control and
-load balancers use single-replica Recreate Deployments with Secret-backed identities;
-PVCs hold SQLite and Caddy storage respectively. Forwarders have no Kubernetes API
-permissions, and load-balancer DNS follows the Kubernetes Service address rather than
-Pod egress. See the [migration verification](docs/qa-secret-deployments.md).
+Install the [Kubernetes operator](docs/KUBERNETES.md) once per cluster with the
+OCI Helm chart. Create controls, load balancers and gateways as typed CRs with
+`k8s … create --context CLUSTER`. Each installation has one namespace.
+Control/load balancers use Recreate Deployments and Secret-backed identities;
+PVCs hold SQLite and certificates. Gateways use a broker and node-local forwarder
+DaemonSet. Forwarders have no Kubernetes API permissions.
+
+## Agent and CLI management
+
+v3.0.0 introduces the generated Connect interface, executable provisioning, and
+Kubernetes operator. It replaces the v2 command surface without compatibility aliases.
+
+The browser and CLI use generated Connect contracts. Infrastructure commands are
+separate from installation management:
+
+| Namespace | Purpose |
+|---|---|
+| `native controls/gateways/loadbalancers` | Create, inspect, update and delete services on this Linux machine; start/stop/restart/logs |
+| `native … create-remote` | Generate a complete pinned installer; no SSH connection |
+| `k8s operator` | Install/update/remove the singleton cluster operator |
+| `k8s controls/gateways/loadbalancers` | Manage component CRs with explicit context |
+| `manage` | Authorized providers, zones, policies, enrollment, nodes, exposures, settings and access |
+
+```sh
+tailscale-private-funnel manage whoami --control-url http://CONTROL:8080
+tailscale-private-funnel native gateways create-remote site-tailnet \
+  --type tailnet --control-url http://CONTROL:8080 --version VERSION \
+  --output script | ssh ubuntu@TARGET 'sh -s'
+```
+
+UI **Generate instructions** actions are read-only. Enrollment begins when the
+CLI executes; the browser never uploads kubeconfigs or executes deployment.
+Use `--output json`, `--dry-run`, `--wait`, and explicit `--yes` for deletion.
+Control hosts `/llms.txt`, generated CLI help at `/docs/cli.md`, and `/docs` for
+interactive API documentation. See [API and CLI architecture](docs/API.md).
+
+### Maintenance continuity
+
+Kubernetes forwarders preserve already-authorized traffic during short control updates within the five-minute
+configuration window. New enrollment still requires control. Invalid signatures,
+revocation, lost ownership leases and expired configuration fail closed.
+See [Kubernetes update behavior](docs/KUBERNETES.md#control-updates-and-bounded-forwarding-continuity).
+
+Release validation and limitations: [control-update acceptance](docs/qa-control-update-continuity.md).

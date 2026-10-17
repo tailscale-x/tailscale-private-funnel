@@ -2,8 +2,8 @@ package app
 
 import (
 	"bufio"
-	"bytes"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -12,15 +12,17 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
+
+	"connectrpc.com/connect"
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1/funnelv1connect"
 
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
@@ -135,7 +137,7 @@ func Setup(ctx context.Context, mode string, o Options) error {
 func controlWizard(o *Options) error {
 	info, err := os.Stdin.Stat()
 	if err != nil || info.Mode()&os.ModeCharDevice == 0 {
-		return errors.New("control join requires OAuth credential files; use --non-interactive for scripted setup")
+		return errors.New("control creation requires protected OAuth credential files")
 	}
 	reader := bufio.NewReader(os.Stdin)
 	read := func(label, current string) (string, error) {
@@ -196,42 +198,22 @@ func controlWizard(o *Options) error {
 }
 
 func bindSigningKey(ctx context.Context, mode string, o Options, publicKey string, client *http.Client) error {
-	managementURL := o.ManagementURL
-	if managementURL == "" {
-		managementURL = o.BootstrapURL
-	}
-	u, err := url.Parse(managementURL)
-	if err != nil {
-		return err
-	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/api/enrollments/" + url.PathEscape(o.EnrollmentID) + "/signing-key"
-	q := u.Query()
-	q.Set("code", o.EnrollmentCode)
-	u.RawQuery = q.Encode()
-	body, _ := json.Marshal(map[string]string{"public_key": publicKey})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
 	if client == nil {
-		client = http.DefaultClient
+		return errors.New("process-owned Tailscale HTTP client required")
 	}
-	res, err := client.Do(req)
-	if err != nil {
-		return err
+	base := o.ManagementURL
+	key, e := base64.RawStdEncoding.DecodeString(publicKey)
+	if e != nil {
+		return e
 	}
-	defer res.Body.Close()
-	if res.StatusCode/100 != 2 {
-		message, _ := io.ReadAll(res.Body)
-		return fmt.Errorf("signing-key enrollment failed: HTTP %d: %s", res.StatusCode, strings.TrimSpace(string(message)))
-	}
-	return nil
+	_, e = funnelv1connect.NewEnrollmentServiceClient(client, base).BindSigningKey(ctx, connect.NewRequest(&v1.BindSigningKeyRequest{EnrollmentId: o.EnrollmentID, Code: o.EnrollmentCode, PublicKey: key}))
+	return e
 }
 
 func tsnetHTTPClient(s *tsnet.Server) *http.Client {
 	client := s.HTTPClient()
 	client.Timeout = 30 * time.Second
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return client
 }
 
@@ -301,6 +283,17 @@ func controlOAuthAuthKey(ctx context.Context, o Options) (string, bool, error) {
 	if err := st.SetSecret("tailscale_oauth_client_secret", secret); err != nil {
 		return "", true, err
 	}
+	if len(o.Administrators) > 0 {
+		var existing map[string]any
+		if e := st.GetJSON("access_roles", &existing); errors.Is(e, sql.ErrNoRows) {
+			selectors := append([]string{"autogroup:owner"}, o.Administrators...)
+			if e = st.SetJSON("access_roles", map[string]any{"roles": map[string][]string{"admin": selectors}}); e != nil {
+				return "", true, e
+			}
+		} else if e != nil {
+			return "", true, e
+		}
+	}
 	settings := map[string]any{}
 	_ = st.GetJSON("tailnet", &settings)
 	settings["name"] = tailnet
@@ -312,6 +305,7 @@ func controlOAuthAuthKey(ctx context.Context, o Options) (string, bool, error) {
 }
 
 type runtimeStatus struct {
+	Ready    bool     `json:"ready"`
 	Mode     string   `json:"mode"`
 	Hostname string   `json:"hostname"`
 	State    string   `json:"state"`
@@ -328,35 +322,6 @@ func writeRuntimeStatus(dataDir string, status runtimeStatus) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dataDir, "runtime-status.json"), b, 0600)
-}
-
-func processAlive(pid string) bool {
-	var process *os.Process
-	parsed := 0
-	if _, err := fmt.Sscanf(strings.TrimSpace(pid), "%d", &parsed); err != nil || parsed <= 0 {
-		return false
-	}
-	process, err := os.FindProcess(parsed)
-	if err != nil {
-		return false
-	}
-	return process.Signal(syscall.Signal(0)) == nil
-}
-
-func readRuntimeStatus(dataDir string) (runtimeStatus, bool) {
-	pid, err := os.ReadFile(filepath.Join(dataDir, "serve.pid"))
-	if err != nil || !processAlive(string(pid)) {
-		return runtimeStatus{}, false
-	}
-	b, err := os.ReadFile(filepath.Join(dataDir, "runtime-status.json"))
-	if err != nil {
-		return runtimeStatus{}, false
-	}
-	var status runtimeStatus
-	if json.Unmarshal(b, &status) != nil || status.Mode == "" {
-		return runtimeStatus{}, false
-	}
-	return status, true
 }
 
 func serveOptions(mode string, o Options) (Options, error) {
@@ -417,11 +382,6 @@ func Serve(ctx context.Context, mode string, o Options) error {
 		return err
 	}
 	defer st.Close()
-	if mode != "control" && o.EnrollmentCode == "" {
-		if b, readErr := os.ReadFile(filepath.Join(o.DataDir, "enrollment-code")); readErr == nil {
-			o.EnrollmentCode = strings.TrimSpace(string(b))
-		}
-	}
 	// A persistent node only needs its enrollment material during its first
 	// bind. Subsequent starts reuse the identity already stored in StateDir.
 	joinedMarker := filepath.Join(o.StateDir, "joined")
@@ -477,6 +437,16 @@ func Serve(ctx context.Context, mode string, o Options) error {
 	if err := os.WriteFile(joinedMarker, []byte("persistent\n"), 0600); err != nil {
 		return err
 	}
+	if mode == "control" {
+		ip4, ip6 := s.TailscaleIPs()
+		address := ip4.String()
+		if !ip4.IsValid() {
+			address = ip6.String()
+		}
+		if err := initializeControlManagement(st, address, o.Listen, BuildVersion); err != nil {
+			return err
+		}
+	}
 	s.AuthKey = ""
 	_ = os.Unsetenv("TS_AUTHKEY")
 	if o.BootstrapOnly {
@@ -514,12 +484,13 @@ func Serve(ctx context.Context, mode string, o Options) error {
 			return err
 		}
 		defer proxy.Stop()
+		markRuntimeReady(o.DataDir)
 		runtimeReady.Store(true)
 		if o.KubernetesService != "" {
 			go reportKubernetesEndpoint(ctx, s, o)
 		}
 		if o.ManagementURL != "" {
-			go reportLoadBalancerHealth(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.LoadBalancerHostname)
+			go reportLoadBalancerHealth(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.LoadBalancerHostname, o.DataDir)
 			go reportLoadBalancerPeers(ctx, s, o)
 		}
 		if o.ManagementURL != "" {
@@ -534,15 +505,15 @@ func Serve(ctx context.Context, mode string, o Options) error {
 						config, fetchErr := fetchLoadBalancerConfig(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.ControlKey)
 						if fetchErr != nil {
 							slog.Warn("load balancer route refresh failed", "error", fetchErr)
-							reportLoadBalancerHealth(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.LoadBalancerHostname)
+							reportLoadBalancerHealth(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.LoadBalancerHostname, o.DataDir)
 							continue
 						}
 						if reloadErr := proxy.ReloadRoutes(config.Routes); reloadErr != nil {
 							slog.Error("load balancer route reload failed", "error", reloadErr)
 						} else {
-							_ = (gateway.HTTPResolver{BaseURL: o.ManagementURL, NodeID: loadBalancerNodeID(o.DataDir), Client: tsnetHTTPClient(s)}).Acknowledge(ctx, config.Revision, nil)
+							_ = (gateway.RPCResolver{BaseURL: o.ManagementURL, NodeID: loadBalancerNodeID(o.DataDir), Client: tsnetHTTPClient(s)}).Acknowledge(ctx, config.Revision, nil)
 						}
-						reportLoadBalancerHealth(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.LoadBalancerHostname)
+						reportLoadBalancerHealth(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.LoadBalancerHostname, o.DataDir)
 						go reportLoadBalancerPeers(ctx, s, o)
 					}
 				}
@@ -632,21 +603,17 @@ func Serve(ctx context.Context, mode string, o Options) error {
 	})
 	server := &http.Server{Handler: identityHandler}
 	go func() { <-ctx.Done(); _ = server.Shutdown(context.Background()) }()
-	if o.BootstrapListen != "" {
-		bootstrap := &http.Server{Addr: o.BootstrapListen, Handler: control.BootstrapHandler()}
-		go func() {
-			<-ctx.Done()
-			_ = bootstrap.Shutdown(context.Background())
-		}()
-		go func() { _ = bootstrap.ListenAndServe() }()
-		fmt.Printf("enrollment bootstrap listening on %s\n", o.BootstrapListen)
-	}
 	fmt.Printf("control listening on tailnet %s\n", o.Listen)
 	if mode != "control" {
 		return fmt.Errorf("unsupported serve mode %q", mode)
 	}
+	markRuntimeReady(o.DataDir)
 	runtimeReady.Store(true)
-	return server.Serve(ln)
+	err = server.Serve(ln)
+	if errors.Is(err, http.ErrServerClosed) && ctx.Err() != nil {
+		return nil
+	}
+	return err
 }
 
 func waitTSNetReady(ctx context.Context, s *tsnet.Server, timeout time.Duration) error {
@@ -681,44 +648,10 @@ func waitTSNetReady(ctx context.Context, s *tsnet.Server, timeout time.Duration)
 	}
 }
 
-func notifyNodeShutdown(ctx context.Context, client *http.Client, managementURL string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(managementURL, "/")+"/api/node/shutdown", strings.NewReader(`{}`))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	res, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-	if res.StatusCode/100 != 2 {
-		return fmt.Errorf("shutdown cleanup: HTTP %d", res.StatusCode)
-	}
-	return nil
-}
-
 type loadBalancerConfig = nodeconfig.Configuration
 
 func fetchLoadBalancerConfig(ctx context.Context, client *http.Client, managementURL, nodeID, controlKey string) (loadBalancerConfig, error) {
-	var payload loadBalancerConfig
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(managementURL, "/")+"/api/node/config", nil)
-	if err != nil {
-		return payload, err
-	}
-	res, err := client.Do(req)
-	if err != nil {
-		return payload, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode/100 != 2 {
-		return payload, fmt.Errorf("management route config: HTTP %d", res.StatusCode)
-	}
-	var envelope report.Envelope
-	if err := json.NewDecoder(res.Body).Decode(&envelope); err != nil {
-		return payload, err
-	}
-	return nodeconfig.Verify(envelope, controlKey, nodeID, time.Now())
+	return (gateway.RPCResolver{Client: client, BaseURL: managementURL, NodeID: nodeID, ControlKey: controlKey}).Configuration(ctx)
 }
 
 func reportLoadBalancerPeers(ctx context.Context, s *tsnet.Server, o Options) {
@@ -777,27 +710,15 @@ func loadBalancerNodeID(dataDir string) string {
 	return strings.TrimSpace(string(b))
 }
 
-func reportLoadBalancerHealth(ctx context.Context, client *http.Client, managementURL, nodeID, hostname string) {
+func reportLoadBalancerHealth(ctx context.Context, client *http.Client, managementURL, nodeID, hostname, dataDir string) {
 	if nodeID == "" || managementURL == "" {
 		return
 	}
-	body, _ := json.Marshal(map[string]any{
-		"mode": "loadbalancer", "ready": true,
-		"loadbalancer_hostname": hostname, "reported_at": time.Now().Unix(),
-	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(managementURL, "/")+"/api/node/health", bytes.NewReader(body))
-	if err != nil {
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	res, err := client.Do(req)
-	if err != nil {
-		slog.Warn("load balancer health report failed", "error", err)
-		return
-	}
-	defer res.Body.Close()
-	if res.StatusCode/100 != 2 {
-		slog.Warn("load balancer health report rejected", "status", res.StatusCode)
+	_, e := funnelv1connect.NewNodeServiceClient(client, managementURL).ReportHealth(ctx, connect.NewRequest(&v1.NodeHealth{LoadbalancerHostname: hostname, Online: true, LastReport: time.Now().Unix()}))
+	if e != nil {
+		slog.Warn("load balancer health report failed", "error", e)
+	} else {
+		(report.Agent{DataDir: dataDir}).RecordContact()
 	}
 }
 
@@ -812,7 +733,7 @@ func runGatewaySupervisor(ctx context.Context, o Options, s *tsnet.Server) error
 	nodeIDBytes, _ := os.ReadFile(filepath.Join(o.DataDir, "node-id"))
 	nodeID := strings.TrimSpace(string(nodeIDBytes))
 	var configRevision string
-	resolver := gateway.HTTPResolver{BaseURL: o.ManagementURL, NodeID: nodeID, ControlKey: o.ControlKey, Client: managementClient, Revision: &configRevision}
+	resolver := gateway.RPCResolver{BaseURL: o.ManagementURL, NodeID: nodeID, ControlKey: o.ControlKey, Client: managementClient, Revision: &configRevision}
 	listenerManager := gateway.NewListenerManager(s)
 	go func() { <-ctx.Done(); listenerManager.Close() }()
 	supervisor := gateway.Config{Docker: client, NodeID: nodeID, RelayImage: "ghcr.io/tailscale-x/tailscale-private-funnel:" + BuildVersion, LabelKeys: o.LabelKeys, DenyNetworks: o.DenyNetworks, Resolver: resolver, ListenerManager: listenerManager, DeferListenerCleanup: true}
@@ -915,95 +836,35 @@ func setEnvIfPresent(name, value string) {
 		_ = os.Setenv(name, value)
 	}
 }
-func Status(mode string, o Options) error {
-	explicitHostname := strings.TrimSpace(o.Hostname)
-	o, err := defaults(mode, o)
-	if err != nil {
-		return err
+func markRuntimeReady(dir string) {
+	b, e := os.ReadFile(filepath.Join(dir, "runtime-status.json"))
+	if e != nil {
+		return
 	}
-	if o.ConfigFile != "" {
-		o, err = loadConfig(mode, o)
-		if err != nil {
-			return err
-		}
-		o, err = defaults(mode, o)
-		if err != nil {
-			return err
-		}
+	var status runtimeStatus
+	if json.Unmarshal(b, &status) == nil {
+		status.Ready = true
+		_ = writeRuntimeStatus(dir, status)
 	}
-	if explicitHostname == "" {
-		if b, readErr := os.ReadFile(filepath.Join(o.DataDir, "hostname")); readErr == nil && strings.TrimSpace(string(b)) != "" {
-			o.Hostname = strings.TrimSpace(string(b))
-		}
-	}
-	if current, ok := readRuntimeStatus(o.DataDir); ok {
-		fmt.Printf("mode: %s\nhostname: %s\nstate: %s\nips: %v\nstate_dir: %s\ndata_dir: %s\n", current.Mode, current.Hostname, current.State, current.IPs, o.StateDir, o.DataDir)
-		printStoredNode(o.DataDir)
-		if store.IsGateway(mode) {
-			if b, err := os.ReadFile(filepath.Join(o.DataDir, "gateway-status.json")); err == nil {
-				fmt.Printf("gateway: %s\n", b)
-			}
-		}
-		if len(current.Health) > 0 {
-			fmt.Printf("health: %s\n", strings.Join(current.Health, "; "))
-		} else {
-			fmt.Println("health: ok")
-		}
-		return nil
-	}
-	fmt.Printf("mode: %s\nhostname: %s\nstate: stopped\nstate_dir: %s\ndata_dir: %s\n", mode, o.Hostname, o.StateDir, o.DataDir)
-	if _, stateErr := os.Stat(filepath.Join(o.StateDir, "tailscaled.state")); stateErr == nil {
-		fmt.Println("identity: persistent (saved Tailscale state)")
-	}
-	printStoredNode(o.DataDir)
-	return nil
 }
 
-func printStoredNode(dataDir string) {
-	nodeIDBytes, readErr := os.ReadFile(filepath.Join(dataDir, "node-id"))
-	if readErr != nil {
-		return
-	}
-	fmt.Printf("node_id: %s\n", strings.TrimSpace(string(nodeIDBytes)))
-	st, storeErr := store.Open(dataDir)
-	if storeErr != nil {
-		return
-	}
-	defer st.Close()
-	if node, nodeErr := st.Node(strings.TrimSpace(string(nodeIDBytes))); nodeErr == nil {
-		fmt.Printf("node_id: %s\nnode_mode: %s\nnode_hostname: %s\nlast_report: %d\nrevoked: %t\n", node.ID, node.Mode, node.Hostname, node.LastReport, node.Revoked)
-	}
-}
-func Reset(mode string, o Options) error {
-	o, err := defaults(mode, o)
-	if err != nil {
+// Bootstrap leaves a usable canonical URL without requiring a manual settings
+// mutation before the first gateway can enroll. Explicit administrator values
+// survive restarts and version changes.
+func initializeControlManagement(st *store.Store, address, listen, version string) error {
+	settings := map[string]any{}
+	if err := st.GetJSON("tailnet", &settings); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if !o.Force {
-		return errors.New("reset requires --force")
-	}
-	if o.ConfigFile != "" || mode != "control" {
-		if loaded, loadErr := loadConfig(mode, o); loadErr == nil {
-			o = loaded
+	if current, _ := settings["management_url"].(string); strings.TrimSpace(current) == "" {
+		_, port, err := net.SplitHostPort(listen)
+		if err != nil {
+			return fmt.Errorf("control listener: %w", err)
 		}
+		settings["management_url"] = "http://" + net.JoinHostPort(address, port)
 	}
-	if strings.TrimSpace(o.ManagementURL) != "" {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		s := &tsnet.Server{Hostname: o.Hostname, Dir: o.StateDir, Ephemeral: false}
-		if _, upErr := s.Up(cleanupCtx); upErr == nil {
-			if notifyErr := notifyNodeShutdown(cleanupCtx, s.HTTPClient(), o.ManagementURL); notifyErr != nil {
-				slog.Warn("control cleanup during reset failed; local state will still be removed", "error", notifyErr)
-			}
-		}
-		_ = s.Close()
+	if current, _ := settings["release_version"].(string); current == "" && version != "" && version != "dev" {
+		settings["release_version"] = version
 	}
-	if err := os.RemoveAll(o.StateDir); err != nil {
-		return err
-	}
-	if err := os.RemoveAll(o.DataDir); err != nil {
-		return err
-	}
-	fmt.Printf("removed local %s state and data; revoke the node or enrollment in the control UI if it is still registered\n", mode)
-	return nil
+	return st.SetJSON("tailnet", settings)
 }

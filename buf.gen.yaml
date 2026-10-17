@@ -1,0 +1,35 @@
+version: v2
+plugins:
+  - local: protoc-gen-go
+    out: internal/gen
+    opt: paths=source_relative
+  - local: protoc-gen-connect-go
+    out: internal/gen
+    opt: paths=source_relative
+  - local: ui/node_modules/.bin/protoc-gen-es
+    out: ui/src/gen
+    include_imports: true
+    opt: target=ts
+  - local: protoc-gen-connect-openapi
+    out: internal/web/assets/api
+    strategy: all
+    opt:
+      - format=json
+      - path=openapi.json
+      - services=funnel.v1.ManagementService
+      - services=funnel.v1.ProvisioningService
+  - local: protoc-gen-connect-openapi
+    out: internal/web/assets/api
+    strategy: all
+    opt:
+      - format=json
+      - path=node-openapi.json
+      - services=funnel.v1.NodeService
+      - services=funnel.v1.EnrollmentService
+  - local: protoc-gen-connect-openapi
+    out: internal/web/assets/api
+    strategy: all
+    opt:
+      - format=json
+      - path=broker-openapi.json
+      - services=funnel.v1.BrokerService

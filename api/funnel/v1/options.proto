@@ -1,0 +1,31 @@
+syntax = "proto3";
+package funnel.v1;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1;funnelv1";
+// Permission is checked against verified transport identity, never client metadata.
+enum Permission {
+  PERMISSION_UNSPECIFIED = 0;
+  PERMISSION_VIEWER = 1;
+  PERMISSION_OPERATOR = 2;
+  PERMISSION_ADMIN = 3;
+  PERMISSION_NODE = 4;
+  PERMISSION_ENROLLMENT = 5;
+  PERMISSION_BROKER = 6;
+}
+extend google.protobuf.MethodOptions {
+  Permission permission = 50001;
+  // Space-separated CLI path, excluding the executable and control prefix.
+  string cli = 50002;
+  bool sensitive = 50003;
+  // Fully qualified protobuf model carried in signed payload bytes.
+  string payload_type = 50004;
+  // Record the operation outcome without logging request or secret values.
+  bool audit = 50005;
+}
+
+// Secret fields are accepted only from files/stdin in generated CLI commands.
+extend google.protobuf.FieldOptions {
+  bool secret = 50011;
+}

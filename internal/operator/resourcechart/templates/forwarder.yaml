@@ -1,0 +1,72 @@
+{{- if eq .Values.component "k8s-gateway" }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-forwarder
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ .Release.Name }}-forwarder
+spec:
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 1, maxSurge: 0}
+  selector:
+    matchLabels: {tailscale-private-funnel.io/installation: {{ .Values.installation }}, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: forwarder}
+  template:
+    metadata:
+      labels: {tailscale-private-funnel.io/installation: {{ .Values.installation }}, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: forwarder}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-forwarder
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      nodeSelector: {{ toYaml .Values.forwarder.nodeSelector | nindent 8 }}
+      affinity: {{ toYaml .Values.forwarder.affinity | nindent 8 }}
+      tolerations: {{ toYaml .Values.forwarder.tolerations | nindent 8 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: forwarder
+          image: {{ .Values.image.reference | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [k8s, runtime, forwarder, serve, --broker-url=https://{{ .Release.Name }}-broker.{{ .Release.Namespace }}.svc:9443]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources: {{ toYaml .Values.forwarder.resources | nindent 12 }}
+          ports: [{name: health, containerPort: 9091}]
+          readinessProbe:
+            httpGet: {path: /readyz, port: health}
+          livenessProbe:
+            httpGet: {path: /healthz, port: health}
+          volumeMounts:
+            - {name: identity, mountPath: /identity, readOnly: true}
+            - {name: broker-ca, mountPath: /broker, readOnly: true}
+            - {name: runtime, mountPath: /var/lib/tailscale-private-funnel}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: identity
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: tailscale-private-funnel/{{ .Release.Name }}
+                  expirationSeconds: 600
+        - name: broker-ca
+          secret:
+            secretName: {{ .Release.Name }}-broker-tls
+            optional: true
+            items: [{key: ca.crt, path: ca.crt}]
+        - name: runtime
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+
+{{- end }}

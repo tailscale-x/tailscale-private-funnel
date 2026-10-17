@@ -1,0 +1,31 @@
+domain: tailscale-private-funnel.io
+layout:
+- go.kubebuilder.io/v4
+projectName: tailscale-private-funnel
+repo: github.com/tailscale-x/tailscale-private-funnel
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: tailscale-private-funnel.io
+  kind: FunnelControl
+  path: github.com/tailscale-x/tailscale-private-funnel/api/kubernetes/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: tailscale-private-funnel.io
+  kind: FunnelLoadBalancer
+  path: github.com/tailscale-x/tailscale-private-funnel/api/kubernetes/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: tailscale-private-funnel.io
+  kind: FunnelGateway
+  path: github.com/tailscale-x/tailscale-private-funnel/api/kubernetes/v1alpha1
+  version: v1alpha1
+version: "3"

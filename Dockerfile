@@ -1,6 +1,6 @@
 FROM gcr.io/distroless/static-debian12:nonroot
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+ARG TARGETOS
+ARG TARGETARCH
 ARG VERSION=dev
 LABEL org.opencontainers.image.source="https://github.com/tailscale-x/tailscale-private-funnel" \
       org.opencontainers.image.title="tailscale-private-funnel" \

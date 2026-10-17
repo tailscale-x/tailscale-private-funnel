@@ -48,3 +48,59 @@ Implementation evidence:
 ## Result
 
 final result: passed
+
+
+## Connect frontend migration verification
+
+The React/Connect frontend replaces the historical templ/HTMX implementation.
+Chrome DevTools MCP checked desktop 1440×1024 and mobile 390×844 using synthetic
+fixtures. Provider editing, discovered-zone selection, policy patterns and
+selectors, enrollment review/edit preservation, viewer controls and mobile
+navigation were exercised. No horizontal overflow or console errors were found.
+New screenshots: `control-dashboard-connect.png`, `control-policy-connect.png`,
+`control-enrollment-connect.png`, and `control-operations-connect.png` under
+`docs/screenshots`. This UI result does not imply live-fleet migration or new
+public ACME acceptance; see `docs/qa-connect-migration.md`.
+
+final result: passed
+
+## Operator and unified CLI deployment UI — 2026-10-17
+
+Chrome DevTools checked Controls, Gateways, Load balancers, Kubernetes operator,
+all type-specific create flows and backend-rendered resource actions, alongside
+installation-management pages. Desktop 1440×1024 and mobile 390×844 were checked
+with synthetic data. No horizontal overflow or console errors were observed.
+Instructions distinguish generation, target execution, enrollment and real health;
+viewer/operator mutation controls remain hidden. Copy/download and mobile menu
+interactions passed. The browser neither builds commands nor uploads kubeconfigs.
+See `docs/qa-kubernetes-operator.md` and the two `kubernetes-operator-*` screenshots.
+
+final result: passed
+
+Final operator screenshot set also includes `kubernetes-control-instructions.png`,
+`kubernetes-control-mobile.png`, `control-enrollment-operator.png`, and
+`control-dashboard-operator.png`. Storage settings, native instruction generation,
+and the dashboard were rechecked after the final UI changes.
+
+final result: passed
+
+## Access self-removal follow-up — 2026-10-17
+
+Chrome verified the explicit confirmation at 1440×1024 and 390×844. A save that
+would remove the current administrator is rejected without confirmation. Successful
+saves reset the checkbox and refresh identity permissions. Mobile document width
+is exactly 390px with no horizontal overflow. The synthetic negative test's HTTP
+400 is expected. Live CLI acceptance verifies Owner retention and rejection of the
+removed QA identity. See `docs/qa-control-update-continuity.md`.
+
+final result: passed
+
+## v3 release verification
+
+The previously captured synthetic Connect/operator UI screenshots remain current;
+release fixes affect Docker image fetching and bootstrap failure diagnostics, not
+the layout. Contract/assets regeneration verified all 57 generated files unchanged.
+See [v3 release acceptance](docs/qa-v3.0.0-release.md) for live authorization and
+recovery results.
+
+final result: passed

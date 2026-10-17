@@ -3,6 +3,15 @@ package kubebroker
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/tailscale-x/tailscale-private-funnel/internal/kube"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	apps "k8s.io/api/apps/v1"
@@ -13,13 +22,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	kfake "k8s.io/client-go/kubernetes/fake"
 	ktest "k8s.io/client-go/testing"
-	"net/http"
-	"net/http/httptest"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"strings"
 	"tailscale.com/ipn"
-	"testing"
-	"time"
 )
 
 func fixture(t *testing.T) (*Broker, *auth.TokenReviewStatus) {
@@ -39,7 +43,12 @@ func fixture(t *testing.T) (*Broker, *auth.TokenReviewStatus) {
 	return b, status
 }
 func call(b *Broker, path, body string) *httptest.ResponseRecorder {
+	if body == "" {
+		body = "{}"
+	}
 	r := httptest.NewRequest("POST", path, strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Connect-Protocol-Version", "1")
 	r.Header.Set("Authorization", "Bearer test")
 	w := httptest.NewRecorder()
 	b.Handler().ServeHTTP(w, r)
@@ -47,25 +56,25 @@ func call(b *Broker, path, body string) *httptest.ResponseRecorder {
 }
 func TestSessionStatePersistenceAndNoAuthKeyStorage(t *testing.T) {
 	b, _ := fixture(t)
-	w := call(b, "/v1/session", "")
+	w := call(b, "/funnel.v1.BrokerService/OpenSession", "")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	var session Session
-	if json.Unmarshal(w.Body.Bytes(), &session) != nil || session.NodeID != "child" {
+	var session v1.BrokerSession
+	if protojson.Unmarshal(w.Body.Bytes(), &session) != nil || session.NodeId != "child" {
 		t.Fatal(w.Body.String())
 	}
-	w = call(b, "/v1/state", `{"key":"tsnet.dGVzdA","value":"c2VjcmV0"}`)
-	if w.Code != 204 {
+	w = call(b, "/funnel.v1.BrokerService/WriteState", `{"key":"tsnet.dGVzdA","value":"c2VjcmV0"}`)
+	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	b.Enroll = func(context.Context, string, string, string) (Enrollment, error) {
 		t.Fatal("must restore identity without reenrollment")
 		return Enrollment{}, nil
 	}
-	w = call(b, "/v1/session", "")
-	var restored Session
-	_ = json.Unmarshal(w.Body.Bytes(), &restored)
+	w = call(b, "/funnel.v1.BrokerService/OpenSession", "")
+	var restored v1.BrokerSession
+	_ = protojson.Unmarshal(w.Body.Bytes(), &restored)
 	if w.Code != 200 || restored.AuthKey != "" || string(restored.Identity) != string(session.Identity) || string(restored.State["tsnet.dGVzdA"]) != "secret" {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -95,7 +104,7 @@ func TestBrokerRejectsWrongIdentity(t *testing.T) {
 				p.Spec.NodeName = "missing"
 				_ = b.Kube.Update(context.Background(), &p)
 			}
-			if w := call(b, "/v1/session", `{"node_name":"node-a"}`); w.Code != 403 {
+			if w := call(b, "/funnel.v1.BrokerService/OpenSession", `{}`); w.Code != 403 {
 				t.Fatal(kind, w.Code)
 			}
 		})
@@ -146,7 +155,7 @@ func TestBrokerReadOnlyHealth(t *testing.T) {
 
 func TestTerminatingPodCanFlushAndReleaseButCannotRenew(t *testing.T) {
 	b, _ := fixture(t)
-	if w := call(b, "/v1/session", ""); w.Code != 200 {
+	if w := call(b, "/funnel.v1.BrokerService/OpenSession", ""); w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	var p core.Pod
@@ -159,19 +168,19 @@ func TestTerminatingPodCanFlushAndReleaseButCannotRenew(t *testing.T) {
 	if e := b.Kube.Delete(context.Background(), &p); e != nil {
 		t.Fatal(e)
 	}
-	if w := call(b, "/v1/session", ""); w.Code != 403 {
+	if w := call(b, "/funnel.v1.BrokerService/OpenSession", ""); w.Code != 403 {
 		t.Fatal("terminating pod reacquired identity", w.Code)
 	}
-	if w := call(b, "/v1/renew", ""); w.Code != 403 {
+	if w := call(b, "/funnel.v1.BrokerService/RenewLease", ""); w.Code != 403 {
 		t.Fatal("terminating pod renewed lease", w.Code)
 	}
-	if w := call(b, "/v1/state", `{"key":"tsnet.dGVzdA","value":"Y2xlYW4="}`); w.Code != 204 {
+	if w := call(b, "/funnel.v1.BrokerService/WriteState", `{"key":"tsnet.dGVzdA","value":"Y2xlYW4="}`); w.Code != 200 {
 		t.Fatal("final state flush failed", w.Code, w.Body.String())
 	}
-	if w := call(b, "/v1/release", ""); w.Code != 204 {
+	if w := call(b, "/funnel.v1.BrokerService/ReleaseLease", ""); w.Code != 200 {
 		t.Fatal("lease not released", w.Code, w.Body.String())
 	}
-	if w := call(b, "/v1/state", `{"key":"tsnet.dGVzdA","value":"c3RhbGU="}`); w.Code != 409 {
+	if w := call(b, "/funnel.v1.BrokerService/WriteState", `{"key":"tsnet.dGVzdA","value":"c3RhbGU="}`); w.Code != 409 {
 		t.Fatal("released pod still wrote state", w.Code)
 	}
 }
@@ -179,19 +188,23 @@ func TestTerminatingPodCanFlushAndReleaseButCannotRenew(t *testing.T) {
 func TestConfigurationRequiresBoundPodAndOwnedLease(t *testing.T) {
 	b, status := fixture(t)
 	b.Configuration = func(context.Context) (report.Envelope, error) {
-		return report.Envelope{NodeID: "parent", PublicKey: "control"}, nil
+		pub, key, e := report.GenerateKey()
+		if e != nil {
+			return report.Envelope{}, e
+		}
+		return report.NewEnvelopeWithPurpose("configuration", "parent", map[string]string{"node_id": "parent"}, pub, key, time.Now())
 	}
-	if w := call(b, "/v1/config", ""); w.Code != 409 {
+	if w := call(b, "/funnel.v1.BrokerService/GetConfig", ""); w.Code != 409 {
 		t.Fatal("configuration before lease", w.Code)
 	}
-	if w := call(b, "/v1/session", ""); w.Code != 200 {
+	if w := call(b, "/funnel.v1.BrokerService/OpenSession", ""); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
-	if w := call(b, "/v1/config", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"node_id":"parent"`) {
+	if w := call(b, "/funnel.v1.BrokerService/GetConfig", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"nodeId":"parent"`) {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	status.User.Username = "system:serviceaccount:other:one-forwarder"
-	if w := call(b, "/v1/config", ""); w.Code != 403 {
+	if w := call(b, "/funnel.v1.BrokerService/GetConfig", ""); w.Code != 403 {
 		t.Fatal("cross-installation configuration access", w.Code)
 	}
 }
@@ -204,9 +217,12 @@ func TestBrokerReadinessDoesNotBypassAuthentication(t *testing.T) {
 	for _, tc := range []struct {
 		method, path string
 		want         int
-	}{{"GET", "/healthz", 200}, {"GET", "/readyz", 503}, {"POST", "/v1/session", 503}} {
+	}{{"GET", "/healthz", 200}, {"GET", "/readyz", 503}, {"POST", "/funnel.v1.BrokerService/OpenSession", 503}} {
 		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, nil))
+		request := httptest.NewRequest(tc.method, tc.path, strings.NewReader("{}"))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Connect-Protocol-Version", "1")
+		handler.ServeHTTP(w, request)
 		if w.Code != tc.want {
 			t.Fatalf("%s: %d", tc.path, w.Code)
 		}
@@ -218,8 +234,18 @@ func TestBrokerReadinessDoesNotBypassAuthentication(t *testing.T) {
 		t.Fatal(w.Code)
 	}
 	w = httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest("POST", "/v1/session", nil))
+	request := httptest.NewRequest("POST", "/funnel.v1.BrokerService/OpenSession", strings.NewReader("{}"))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Connect-Protocol-Version", "1")
+	handler.ServeHTTP(w, request)
 	if w.Code != 403 {
 		t.Fatal("readiness bypassed token authentication", w.Code)
+	}
+}
+
+func TestBrokerRejectsClientNodeClaim(t *testing.T) {
+	b, _ := fixture(t)
+	if w := call(b, "/funnel.v1.BrokerService/OpenSession", `{"node_name":"spoof"}`); w.Code != 400 {
+		t.Fatalf("unknown identity field accepted: %d", w.Code)
 	}
 }

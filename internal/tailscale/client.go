@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/oauth2"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 type Client struct {
@@ -15,6 +17,7 @@ type Client struct {
 	ClientID, ClientSecret, Tailnet string
 	APIBase                         string
 	OAuthBase                       string
+	oauthSource                     oauth2.TokenSource
 }
 type authKeyRequest struct {
 	Capabilities  map[string]any `json:"capabilities"`
@@ -328,31 +331,36 @@ func (c Client) ApproveServiceDevice(ctx context.Context, serviceName, deviceID 
 	return out.Approved, nil
 }
 
-func (c Client) oauthToken(ctx context.Context) (string, error) {
+func (c Client) retrieveOAuthToken(ctx context.Context) (*oauth2.Token, error) {
 	tokenReq := url.Values{"client_id": {c.ClientID}, "client_secret": {c.ClientSecret}, "grant_type": {"client_credentials"}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(c.oauthBase(), "/")+"/api/v2/oauth/token", strings.NewReader(tokenReq.Encode()))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	res, err := c.client().Do(req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer res.Body.Close()
 	if res.StatusCode/100 != 2 {
-		return "", fmt.Errorf("Tailscale OAuth token: HTTP %d", res.StatusCode)
+		return nil, fmt.Errorf("Tailscale OAuth token: HTTP %d", res.StatusCode)
 	}
 	var token struct {
 		AccessToken string `json:"access_token"`
+		ExpiresIn   int64  `json:"expires_in"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&token); err != nil {
-		return "", err
+		return nil, err
 	}
 	if token.AccessToken == "" {
-		return "", fmt.Errorf("Tailscale OAuth returned an empty token")
+		return nil, fmt.Errorf("Tailscale OAuth returned an empty token")
 	}
-	return token.AccessToken, nil
+	expiry := time.Now()
+	if token.ExpiresIn > 0 {
+		expiry = expiry.Add(time.Duration(token.ExpiresIn) * time.Second)
+	}
+	return &oauth2.Token{AccessToken: token.AccessToken, TokenType: "Bearer", Expiry: expiry}, nil
 }
 
 func (c Client) apiBase() string {
@@ -365,7 +373,7 @@ func (c Client) oauthBase() string {
 	if c.OAuthBase != "" {
 		return c.OAuthBase
 	}
-	return "https://login.tailscale.com"
+	return "https://api.tailscale.com"
 }
 
 func (c Client) client() *http.Client {

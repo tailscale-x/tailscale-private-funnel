@@ -7,8 +7,10 @@ LoadBalancer/NodePort Service, Docker socket mount, TUN device, or host-network 
 ## Apply and maintain
 
 Use an explicit kubeconfig for this cluster. Apply `workload.yaml` and
-`network-policy.yaml`, install the published OCI gateway chart in `tailscale-private-funnel-main-system`
-with `watchNamespaces: [voice]`, then apply `routes.yaml`.
+`network-policy.yaml`, install the Kubernetes operator, then run `k8s gateways create site` with an
+explicit context, namespace `tailscale-private-funnel-main-system`, classes
+`tailscale-private-funnel`, and `--watch-namespace voice`. Apply `routes.yaml`
+after the component reports ready. See [operator deployment](../../docs/KUBERNETES.md).
 
 The Voice image is imported from the existing Docker deployment, with the fixed
 local tag `localhost/voice-server:sha-c61b8c365c70` and `imagePullPolicy: Never`.
@@ -17,9 +19,10 @@ The model cache is on the `voice-models` PVC; the original Docker volume is reta
 This is a single-node deployment, not highly available. Back up the PVC and k3s
 state before deleting the host or cluster.
 
-Gateway installation uses the control UI's generated enrollment and a temporary
-bootstrap Secret. Delete it after enrollment and verified healthy reports. A bootstrap
-Job persists the controller bundle; one Recreate controller Deployment uses its Secret-backed identity.
+The control UI generates CLI instructions without minting enrollment. The CLI
+authorizes enrollment and creates an owned bootstrap Secret; the operator removes
+it after initialization. A bootstrap Job persists the agent bundle and a Recreate
+Deployment uses its Secret-backed identity.
 The forwarding DaemonSet owns one additional persistent identity per selected node.
 Identity Secrets replace the former gateway PVC and must be backed up with the cluster.
 Only the controller broker can read/update its namespace's identity Secrets. Forwarders
@@ -30,9 +33,12 @@ mount only the broker CA and have no Kubernetes API permissions.
 - Both namespaces enforce the Kubernetes **restricted** Pod Security Standard.
 - Workloads run nonroot with seccomp RuntimeDefault, all capabilities dropped,
   no privilege escalation, and read-only root filesystems.
-- Voice has no service-account token. Its HTTP port accepts only this installation’s forwarder pods.
-- Gateway namespaced RBAC and cache watches are restricted to `voice` and
-  `tailscale-private-funnel-main-system`. Cluster access includes TokenReview creation and read-only node/namespace/class discovery,
+- Voice has no service-account token. Its HTTP port accepts only this installation’s
+  `site` forwarder Pods. If the FunnelGateway deployment handle changes, update
+  that exact NetworkPolicy selector; do not broaden it to all namespace Pods.
+- Broker Secret and lease access is restricted to its installation namespace.
+  Gateway routing/backend metadata reads are cluster-scoped, with `voice` as a
+  processing filter. Cluster access includes TokenReview and node/class discovery,
   with status writes only for the configured GatewayClass.
 - Gateway `allowedRoutes` permits the labeled Voice namespace only.
   Cross-namespace backend references still require ReferenceGrant.

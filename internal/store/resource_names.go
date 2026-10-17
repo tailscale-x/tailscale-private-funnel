@@ -272,6 +272,21 @@ func (s *Store) migrateResourceNames() error {
 		if err = json.Unmarshal([]byte(v.value), &data); err != nil {
 			return err
 		}
+		// Stored signatures cover the original payload bytes. Normalize only the
+		// derived snapshot; never alter the signed reports.payload column.
+		if envelope, ok := data.(map[string]any); ok {
+			if encoded, ok := envelope["payload"].(string); ok {
+				payload, decodeErr := base64.StdEncoding.DecodeString(encoded)
+				if decodeErr != nil {
+					return fmt.Errorf("decode stored report payload: %w", decodeErr)
+				}
+				var decoded any
+				if err = json.Unmarshal(payload, &decoded); err != nil {
+					return err
+				}
+				envelope["payload"] = decoded
+			}
+		}
 		if err = rewrite(data, "report"); err != nil {
 			return err
 		}

@@ -25,3 +25,29 @@ func TestVerifiedHostnameRefreshPreservesIdentity(t *testing.T) {
 		t.Fatal("revoked identity updated")
 	}
 }
+
+func TestTailnetIdentityCannotBindTwoNodes(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	_ = s.UpsertNode("first", "docker-gateway", "first")
+	_ = s.UpsertNode("second", "tailnet-gateway", "second")
+	if err = s.BindNodeIdentity("first", "key", "stable-device", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.BindNodeIdentity("second", "key", "stable-device", nil); err == nil {
+		t.Fatal("same verified identity bound to two resources")
+	}
+	enrollment, code, err := s.CreateEnrollment("tailnet-gateway", "new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.BindEnrollment(enrollment.ID, code, "key", "stable-device", "new", nil); err == nil {
+		t.Fatal("enrollment reused an existing identity")
+	}
+	if _, err = s.RedeemEnrollment(enrollment.ID, code); err != nil {
+		t.Fatal("failed identity binding consumed the code", err)
+	}
+}

@@ -3,17 +3,19 @@ package app
 import (
 	"context"
 	"fmt"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/gateway"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/kubebroker"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sync/atomic"
-	"tailscale.com/tsnet"
 	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/gateway"
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/kubebroker"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
+	"tailscale.com/tsnet"
 )
 
 func ServeKubernetesForwarder(ctx context.Context, o Options) error {
@@ -31,11 +33,11 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 	})}
 	go func() { _ = health.ListenAndServe() }()
 	defer health.Close()
-	var state kubebroker.Session
+	var state *v1.BrokerSession
 	for {
-		e = client.Call(ctx, "/v1/session", nil, &state)
+		state, e = client.OpenSession(ctx)
 		if e == nil {
-			if state.ControllerID == "" || state.NodeID == "" || state.NodeUID == "" || state.NodeName == "" || state.ControlKey == "" {
+			if state.ControllerId == "" || state.NodeId == "" || state.NodeUid == "" || state.NodeName == "" || state.ControlKey == "" {
 				return fmt.Errorf("broker returned an incomplete identity binding")
 			}
 			break
@@ -70,7 +72,7 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 				}
 				lastAttempt = time.Now()
 				renew, stop := context.WithTimeout(ctx, 5*time.Second)
-				err := client.Call(renew, "/v1/renew", nil, nil)
+				err := client.RenewLease(renew)
 				stop()
 				if err == nil {
 					lastRenew.Store(time.Now().UnixNano())
@@ -91,7 +93,7 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 	if e = os.WriteFile(filepath.Join(data, "report-identity.json"), state.Identity, 0600); e != nil {
 		return e
 	}
-	s := &tsnet.Server{Dir: dir, Hostname: state.NodeName + "-" + state.NodeID, Store: &kubebroker.RemoteStore{Client: client, State: state.State}, AuthKey: state.AuthKey, Ephemeral: false}
+	s := &tsnet.Server{Dir: dir, Hostname: state.NodeName + "-" + state.NodeId, Store: &kubebroker.RemoteStore{Client: client, State: state.State}, AuthKey: state.AuthKey, Ephemeral: false}
 	defer s.Close()
 	upCtx, upCancel := context.WithTimeout(ctx, 60*time.Second)
 	defer upCancel()
@@ -101,8 +103,8 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 	s.AuthKey = ""
 	state.AuthKey = ""
 	httpClient := tsnetHTTPClient(s)
-	agent := report.Agent{NodeID: state.NodeID, ManagementURL: state.ManagementURL, DataDir: data, HTTPClient: httpClient}
-	if e = agent.SendSnapshot(ctx, "/api/node/bind", map[string]bool{"bind": true}); e != nil {
+	agent := report.Agent{NodeID: state.NodeId, ManagementURL: state.ManagementUrl, DataDir: data, HTTPClient: httpClient}
+	if e = agent.BindForwarder(ctx); e != nil {
 		return e
 	}
 	listeners := gateway.NewListenerManager(s)
@@ -119,24 +121,23 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 		_ = s.Close()
 		release, stop := context.WithTimeout(context.Background(), 5*time.Second)
 		defer stop()
-		_ = client.Call(release, "/v1/release", nil, nil)
+		_ = client.ReleaseLease(release)
 	}()
 
-	resolver := gateway.HTTPResolver{NodeID: state.NodeID, BaseURL: state.ManagementURL, ControlKey: state.ControlKey, Client: httpClient}
+	resolver := gateway.RPCResolver{NodeID: state.NodeId, BaseURL: state.ManagementUrl, ControlKey: state.ControlKey, Client: httpClient}
 	session := gateway.Session{Resolver: resolver, Listeners: listeners, Agent: agent}
 	pools := map[string]*gateway.LocalPool{}
-	lastConfig := time.Now()
+	configExpires := time.Now()
 	tick := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
 	for {
-		var envelope report.Envelope
-		err := client.Call(ctx, "/v1/config", nil, &envelope)
+		envelope, err := client.GetConfig(ctx)
 		var config nodeconfig.Configuration
 		if err == nil {
-			config, err = nodeconfig.Verify(envelope, state.ControlKey, state.ControllerID, time.Now())
+			config, err = nodeconfig.Verify(envelope, state.ControlKey, state.ControllerId, time.Now())
 		}
 		if err == nil {
-			lastConfig = time.Now()
+			configExpires = time.Unix(envelope.Timestamp, 0).Add(5 * time.Minute)
 			runtimes := []gateway.Runtime{}
 			services := []string{}
 			endpointCount := 0
@@ -153,7 +154,7 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 						pool = &gateway.LocalPool{}
 						pools[backend.Key] = pool
 					}
-					pool.Update(backend.Endpoints, state.NodeUID, state.NodeName)
+					pool.Update(backend.Endpoints, state.NodeUid, state.NodeName)
 					if !counted[backend.Key] {
 						endpointCount += pool.Count()
 						counted[backend.Key] = true
@@ -199,13 +200,17 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 					reason = "No authorized applications"
 				}
 			}
-			session.HealthExtras = map[string]any{"node_uid": state.NodeUID, "node_name": state.NodeName, "local_endpoints": endpointCount, "withdrawal_reason": reason, "advertised_services": services}
-			err = session.Publish(ctx, config, runtimes, services)
-			ready.Store(err == nil)
+			session.HealthExtras = map[string]any{"node_uid": state.NodeUid, "node_name": state.NodeName, "local_endpoints": endpointCount, "withdrawal_reason": reason, "advertised_services": services}
+			publishCtx, stopPublish := context.WithTimeout(ctx, 30*time.Second)
+			err = session.Publish(publishCtx, config, runtimes, services)
+			stopPublish()
+			// Local forwarding readiness does not depend on report delivery.
+			// The signed configuration and independently renewed owner lease bound it.
+			ready.Store(true)
 		}
 		if err != nil {
 			slog.Warn("forwarder reconciliation failed", "error", err)
-			if time.Since(lastConfig) > 40*time.Second {
+			if !time.Now().Before(configExpires) {
 				listeners.Close()
 				ready.Store(false)
 			}

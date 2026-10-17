@@ -1,0 +1,50 @@
+{{- if not .Values.managedNamespaces }}{{ fail "managedNamespaces must explicitly list at least one installation namespace" }}{{ end }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tailscale-private-funnel-k8s-operator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tailscale-private-funnel-k8s-operator
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/name: tailscale-private-funnel-k8s-operator}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: tailscale-private-funnel-k8s-operator}
+    spec:
+      serviceAccountName: tailscale-private-funnel-k8s-operator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      nodeSelector: {{ toYaml .Values.placement.nodeSelector | nindent 8 }}
+      affinity: {{ toYaml .Values.placement.affinity | nindent 8 }}
+      tolerations: {{ toYaml .Values.placement.tolerations | nindent 8 }}
+      containers:
+        - name: operator
+          image: {{ .Values.image.reference | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - k8s
+            - runtime
+            - operator
+            - serve
+            {{- range uniq .Values.managedNamespaces }}
+            - --managed-namespace={{ . }}
+            {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          ports: [{name: health, containerPort: 9090}]
+          readinessProbe: {httpGet: {path: /readyz, port: health}}
+          livenessProbe: {httpGet: {path: /healthz, port: health}}
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]

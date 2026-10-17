@@ -1,9 +1,5 @@
 export default {
-  content: [
-    "../internal/web/**/*.go",
-    "../internal/web/**/*.templ",
-    "../internal/web/**/*.html"
-  ],
+  content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {

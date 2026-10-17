@@ -9,8 +9,9 @@ usage() {
   cat <<'EOF'
 Usage: install.sh [--version VERSION] [--install-dir DIR]
 
-Downloads the matching signed release artifact for this host and installs it
-as tailscale-private-funnel. The release must contain SHA256SUMS.
+Downloads the matching checksummed release artifact for this host and installs it
+as tailscale-private-funnel. The release must contain SHA256SUMS. From a matching checkout, dev-* versions
+use the same digest-verified OCI extractor as generated remote installers.
 EOF
 }
 
@@ -37,6 +38,16 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+case "$VERSION" in
+  dev-*)
+    command -v python3 >/dev/null || { echo 'Development installation requires Python 3' >&2; exit 1; }
+    script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    extractor="$script_dir/../internal/provision/assets/install-oci.py"
+    [ -f "$extractor" ] || { echo 'Install development artifacts from their matching checkout' >&2; exit 1; }
+    XDG_BIN_HOME="$INSTALL_DIR" exec python3 "$extractor" "ghcr.io/tailscale-x/tailscale-private-funnel:$VERSION"
+    ;;
+esac
 
 if [ -z "$VERSION" ]; then
   latest_url=$(curl -fsSIL -o /dev/null -w '%{url_effective}' "https://github.com/$REPOSITORY/releases/latest")

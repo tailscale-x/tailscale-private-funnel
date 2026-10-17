@@ -1,0 +1,477 @@
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "./api";
+import { useAdmin } from "./permissions";
+import {
+  Alert,
+  Badge,
+  ErrorMessage,
+  Field,
+  Intro,
+  Modal,
+  Panel,
+  Submit,
+  Table,
+  date,
+  formValues,
+} from "./components";
+import type { Application } from "./gen/funnel/v1/management_pb";
+export function ExposuresPage({
+  applications = false,
+}: {
+  applications?: boolean;
+}) {
+  const admin = useAdmin();
+  const exposures = useQuery({
+    queryKey: ["exposures"],
+    queryFn: () => api.listExposures({}),
+    refetchInterval: 15_000,
+  });
+  const apps = useQuery({
+    queryKey: ["applications"],
+    queryFn: () => api.listApplications({}),
+  });
+  const serviceHosts = useQuery({
+    queryKey: ["service-hosts"],
+    queryFn: () => api.listServiceHosts({}),
+    enabled: applications,
+    refetchInterval: 15000,
+  });
+  const [alias, setAlias] = useState<Application>();
+  const qc = useQueryClient();
+  const addAlias = useMutation({
+    mutationFn: (form: FormData) =>
+      api.addAlias({
+        applicationId: alias!.id,
+        hostname: String(form.get("hostname") || ""),
+      }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["applications"] });
+      await qc.invalidateQueries({ queryKey: ["exposures"] });
+      setAlias(undefined);
+    },
+  });
+  return (
+    <>
+      <Intro
+        title={applications ? "Applications" : "Exposures"}
+        subtitle="Public routing is published only for authorized, healthy backends. Control assigns eligible load balancers automatically."
+        action={
+          admin ? (
+            <a className="pf-button" href="/tailnet-exposures">
+              Expose a tailnet machine
+            </a>
+          ) : null
+        }
+      />
+      <ErrorMessage
+        error={exposures.error || apps.error || serviceHosts.error}
+      />
+      <Panel title={applications ? "Application Services" : "Public hostnames"}>
+        <Table
+          headers={[
+            "Hostname / application",
+            "Backend",
+            "Service",
+            "Public readiness",
+            "Actions",
+          ]}
+          empty={!exposures.isPending && !exposures.data?.items.length}
+        >
+          {exposures.data?.items.map((e) => {
+            const app = apps.data?.items.find((a) => a.id === e.applicationId);
+            return (
+              <tr key={e.id}>
+                <td>
+                  <strong>{e.hostname}</strong>
+                  <small className="pf-help">
+                    {app?.name || e.applicationId}
+                  </small>
+                </td>
+                <td>
+                  {app?.backendSource || "—"} · {app?.backendPort || "—"}
+                </td>
+                <td>
+                  <code>
+                    {app?.serviceFqdn ||
+                      app?.serviceName ||
+                      "Pending assignment"}
+                  </code>
+                  {applications ? (
+                    <small className="pf-help">
+                      {serviceHosts.data?.items.filter(
+                        (host) =>
+                          host.serviceName === app?.serviceName &&
+                          host.approved,
+                      ).length || 0}{" "}
+                      approved Service hosts
+                    </small>
+                  ) : null}
+                </td>
+                <td>
+                  {!e.edges.length ? (
+                    <Badge ok={false} label="No eligible load balancer" />
+                  ) : null}
+                  {e.edges.map((edge) => (
+                    <div key={edge.id}>
+                      <Badge
+                        ok={edge.ready}
+                        label={edge.ready ? "Ready" : edge.reason || "Pending"}
+                      />
+                      <small className="pf-help">
+                        {edge.name} · {edge.publicIpv4.join(", ")}
+                      </small>
+                    </div>
+                  ))}
+                </td>
+                <td>
+                  {admin && app?.backendSource === "tailnet" ? (
+                    <a
+                      className="pf-text-link"
+                      href={
+                        "/tailnet-exposures?application_id=" +
+                        encodeURIComponent(app.id)
+                      }
+                    >
+                      Manage exposure
+                    </a>
+                  ) : admin && app?.backendSource === "docker" ? (
+                    <button
+                      className="pf-secondary-button"
+                      onClick={() => setAlias(app)}
+                    >
+                      Add alias
+                    </button>
+                  ) : (
+                    <span className="pf-help">
+                      Managed by gateway discovery
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </Table>
+      </Panel>
+      {alias ? (
+        <Modal
+          title={`Add alias to ${alias.name}`}
+          onClose={() => setAlias(undefined)}
+        >
+          <form onSubmit={(e) => addAlias.mutate(formValues(e))}>
+            <Field label="Public hostname">
+              <input className="pf-input" name="hostname" required />
+            </Field>
+            <p className="pf-help">
+              The alias shares this application's Service and backend freshness.
+              Exposure policy and managed-zone validation still apply.
+            </p>
+            <Submit pending={addAlias.isPending} label="Add alias" />
+            <ErrorMessage error={addAlias.error} />
+          </form>
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+export function TailnetPage() {
+  const admin = useAdmin();
+  const nodes = useQuery({
+    queryKey: ["nodes"],
+    queryFn: () => api.listNodes({}),
+  });
+  const apps = useQuery({
+    queryKey: ["applications"],
+    queryFn: () => api.listApplications({}),
+  });
+  const qc = useQueryClient();
+  const initialGateway =
+    new URLSearchParams(location.search).get("gateway_id") || "";
+  const initialApp =
+    new URLSearchParams(location.search).get("application_id") || "";
+  const [gateway, setGateway] = useState(initialGateway);
+  const [device, setDevice] = useState("");
+  const [port, setPort] = useState(8080);
+  const [hostname, setHostname] = useState("");
+  const [name, setName] = useState("");
+  const [enabled, setEnabled] = useState(true);
+  const [editing, setEditing] = useState<Application>();
+  const [probeId, setProbeId] = useState("");
+  const [initialized, setInitialized] = useState(false);
+  const peers = useQuery({
+    queryKey: ["peers", gateway],
+    queryFn: () => api.getPeers({ id: gateway }),
+    enabled: !!gateway,
+    refetchInterval: probeId ? 3000 : 15_000,
+    retry: false,
+  });
+  const probe = useMutation({
+    mutationFn: () =>
+      api.probeBackend({ nodeId: gateway, deviceId: device, port }),
+    onSuccess: (r) => setProbeId(r.id),
+  });
+  const policy = useMutation({
+    mutationFn: () => api.testPolicy({ hostname, gatewayIds: [gateway] }),
+  });
+  const save = useMutation({
+    mutationFn: () =>
+      api.saveTailnetExposure({
+        id: editing?.id || "",
+        name,
+        nodeId: gateway,
+        backendDeviceId: device,
+        backendPort: port,
+        publicHostname: hostname,
+        enabled,
+        revision: editing?.revision || 0n,
+        probeId,
+      }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["applications"] });
+      await qc.invalidateQueries({ queryKey: ["exposures"] });
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (app: Application) =>
+      api.deleteTailnetExposure({ id: app.id, revision: app.revision }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["applications"] }),
+  });
+  const edit = (a: Application) => {
+    setEditing(a);
+    setGateway(a.gatewayIds[0] || "");
+    setDevice(a.backendDeviceId);
+    setPort(a.backendPort);
+    setHostname(a.publicHostnames[0] || "");
+    setName(a.name);
+    setEnabled(a.enabled);
+    setProbeId("");
+  };
+  if (!initialized && apps.data) {
+    setInitialized(true);
+    const a = apps.data.items.find((a) => a.id === initialApp);
+    if (a) edit(a);
+  }
+  const result = peers.data?.results.find((r) => r.id === probeId);
+  if (!admin)
+    return (
+      <Alert>
+        Administrator access is required to manage tailnet exposures.
+      </Alert>
+    );
+  return (
+    <>
+      <Intro
+        title="Expose a tailnet machine"
+        subtitle="Public HTTPS → Load balancer → Tailscale Service → Selected gateway → Tailnet backend."
+      />
+      <Alert>
+        Additional access tags and grants are managed in Tailscale. Peer
+        visibility is not proof of connectivity; a successful backend test is
+        required.
+      </Alert>
+      <Panel title={editing ? "Edit tailnet exposure" : "New tailnet exposure"}>
+        <form
+          className="pf-form-grid"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate();
+          }}
+        >
+          <Field label="Gateway">
+            <select
+              className="pf-input"
+              value={gateway}
+              required
+              onChange={(e) => {
+                setGateway(e.target.value);
+                setDevice("");
+                setProbeId("");
+              }}
+            >
+              <option value="">Select tailnet gateway</option>
+              {nodes.data?.items
+                .filter((n) => n.mode === "tailnet-gateway" && !n.revoked)
+                .map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.name} · {n.hostname}
+                  </option>
+                ))}
+            </select>
+          </Field>
+          <Field label="Backend machine">
+            <select
+              className="pf-input"
+              value={device}
+              required
+              disabled={!peers.data}
+              onChange={(e) => {
+                setDevice(e.target.value);
+                setProbeId("");
+              }}
+            >
+              <option value="">Select reported peer</option>
+              {peers.data?.peers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.hostname || p.dnsName} · {p.addresses.join(", ")}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {peers.data ? (
+            <p className="pf-help pf-field-wide">
+              Effective tags: {peers.data.tags.join(", ")} · Peer report:{" "}
+              {date(peers.data.receivedAt)}. Visibility does not prove access.
+            </p>
+          ) : null}
+          <Field label="HTTP port">
+            <input
+              className="pf-input"
+              type="number"
+              min={1}
+              max={65535}
+              value={port}
+              required
+              onChange={(e) => {
+                setPort(Number(e.target.value));
+                setProbeId("");
+              }}
+            />
+          </Field>
+          <Field label="Public hostname">
+            <input
+              className="pf-input"
+              value={hostname}
+              required
+              onChange={(e) => setHostname(e.target.value)}
+            />
+          </Field>
+          <Field label="Name">
+            <input
+              className="pf-input"
+              value={name}
+              maxLength={128}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </Field>
+          <label className="pf-check-field">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+            />
+            <span>Enable exposure</span>
+          </label>
+          <div className="pf-form-actions">
+            <button
+              type="button"
+              className="pf-secondary-button"
+              disabled={!hostname || policy.isPending}
+              onClick={() => policy.mutate()}
+            >
+              Check policy
+            </button>
+            <button
+              type="button"
+              className="pf-secondary-button"
+              disabled={!gateway || !device || probe.isPending}
+              onClick={() => probe.mutate()}
+            >
+              Test backend
+            </button>
+            <Submit pending={save.isPending} />
+            {editing ? (
+              <button
+                type="button"
+                className="pf-secondary-button"
+                onClick={() => {
+                  setEditing(undefined);
+                  setHostname("");
+                  setName("");
+                  setProbeId("");
+                }}
+              >
+                Cancel edit
+              </button>
+            ) : null}
+          </div>
+          {policy.data ? (
+            <Alert>
+              {policy.data.allowed
+                ? `Allowed by ${policy.data.matchedRule}`
+                : "Policy denied"}
+            </Alert>
+          ) : null}
+          {probeId ? (
+            <Alert>
+              {result
+                ? result.reachable
+                  ? "Backend reachable"
+                  : `Backend unreachable: ${result.error}`
+                : "Waiting for the gateway to execute the connection test…"}
+            </Alert>
+          ) : null}
+          {save.data ? (
+            <Alert>
+              Exposure saved. Routing and DNS readiness are available in
+              Exposures.
+            </Alert>
+          ) : null}
+          <ErrorMessage
+            error={peers.error || probe.error || save.error || policy.error}
+          />
+        </form>
+      </Panel>
+      <Panel title="Tailnet exposures">
+        <Table
+          headers={["Name / hostname", "Port", "State", "Actions"]}
+          empty={
+            !apps.isPending &&
+            !apps.data?.items.some((a) => a.backendSource === "tailnet")
+          }
+        >
+          {apps.data?.items
+            .filter((a) => a.backendSource === "tailnet")
+            .map((a) => (
+              <tr key={a.id}>
+                <td>
+                  <strong>{a.name}</strong>
+                  <small>{a.publicHostnames.join(", ")}</small>
+                </td>
+                <td>{a.backendPort}</td>
+                <td>
+                  <Badge
+                    ok={a.enabled}
+                    label={a.enabled ? "Enabled" : "Disabled"}
+                  />
+                </td>
+                <td>
+                  <button
+                    className="pf-secondary-button"
+                    onClick={() => edit(a)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="pf-secondary-button"
+                    disabled={remove.isPending}
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `Delete ${a.name}? Its owned routing and DNS will be withdrawn.`,
+                        )
+                      )
+                        remove.mutate(a);
+                    }}
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+        </Table>
+        <ErrorMessage error={remove.error} />
+        {remove.data ? <Alert>{remove.data.message}</Alert> : null}
+      </Panel>
+    </>
+  );
+}

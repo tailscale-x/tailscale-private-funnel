@@ -24,7 +24,5 @@ if count != 1:
     raise SystemExit('image.reference default missing')
 path.write_text(content)
 PY
-for component in control loadbalancer k8s-gateway; do
-  helm lint "$staging/chart" --set component="$component" --set bootstrap.existingSecret=package-validation
-done
+helm lint "$staging/chart" --set managedNamespaces[0]=package-validation
 helm package "$staging/chart" --version "$chart_version" --app-version "$version" --destination "$output"

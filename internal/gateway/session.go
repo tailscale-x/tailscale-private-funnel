@@ -17,7 +17,7 @@ import (
 // listeners and reports, irrespective of the backend discovery mechanism.
 type Session struct {
 	HealthExtras map[string]any
-	Resolver     HTTPResolver
+	Resolver     RPCResolver
 	Listeners    *ListenerManager
 	Agent        report.Agent
 }

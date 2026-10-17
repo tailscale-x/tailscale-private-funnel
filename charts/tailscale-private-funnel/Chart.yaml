@@ -1,6 +1,6 @@
 apiVersion: v2
 name: tailscale-private-funnel
-description: Policy-controlled Kubernetes HTTP gateway over Tailscale
+description: Kubernetes operator for Tailscale Private Funnel components
 version: 0.1.0
 appVersion: dev
 type: application

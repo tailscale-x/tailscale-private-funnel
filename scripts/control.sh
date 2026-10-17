@@ -11,10 +11,13 @@ OAUTH_SECRET_FILE="${TAILSCALE_PRIVATE_FUNNEL_OAUTH_CLIENT_SECRET_FILE:-}"
 TAILNET="${TAILSCALE_PRIVATE_FUNNEL_TAILNET:-}"
 STATE_DIR=""
 DATA_DIR=""
-LOGIN_SERVER=""
+RESOURCE_NAME="main"
+CONTROL_HOSTNAME=""
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --name) [ "$#" -ge 2 ] || exit 2; RESOURCE_NAME=$2; shift 2 ;;
+        --hostname) [ "$#" -ge 2 ] || exit 2; CONTROL_HOSTNAME=$2; shift 2 ;;
         --version) [ "$#" -ge 2 ] || { echo "--version requires a value" >&2; exit 2; }; VERSION=$2; shift 2 ;;
         --install-dir) [ "$#" -ge 2 ] || { echo "--install-dir requires a value" >&2; exit 2; }; INSTALL_DIR=$2; shift 2 ;;
         --oauth-client-id-file) [ "$#" -ge 2 ] || { echo "--oauth-client-id-file requires a value" >&2; exit 2; }; OAUTH_ID_FILE=$2; shift 2 ;;
@@ -22,9 +25,8 @@ while [ "$#" -gt 0 ]; do
         --tailnet) [ "$#" -ge 2 ] || { echo "--tailnet requires a value" >&2; exit 2; }; TAILNET=$2; shift 2 ;;
         --state-dir) [ "$#" -ge 2 ] || { echo "--state-dir requires a value" >&2; exit 2; }; STATE_DIR=$2; shift 2 ;;
         --data-dir) [ "$#" -ge 2 ] || { echo "--data-dir requires a value" >&2; exit 2; }; DATA_DIR=$2; shift 2 ;;
-        --login-server) [ "$#" -ge 2 ] || { echo "--login-server requires a value" >&2; exit 2; }; LOGIN_SERVER=$2; shift 2 ;;
         -h|--help)
-            echo "Usage: curl -fsSL https://raw.githubusercontent.com/$REPOSITORY/main/scripts/control.sh | sh -s -- --tailnet example.ts.net --oauth-client-id-file ./ts-client-id --oauth-client-secret-file ./ts-client-secret [--version vX.Y.Z]"
+            echo "Usage: curl -fsSL https://raw.githubusercontent.com/$REPOSITORY/main/scripts/control.sh | sh -s -- --tailnet example.ts.net --oauth-client-id-file ./ts-client-id --oauth-client-secret-file ./ts-client-secret --version VERSION [--name main] [--hostname funnel-control]"
             exit 0
             ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
@@ -37,25 +39,26 @@ done
 [ -f "$OAUTH_ID_FILE" ] || { echo "OAuth client ID file does not exist: $OAUTH_ID_FILE" >&2; exit 2; }
 [ -f "$OAUTH_SECRET_FILE" ] || { echo "OAuth client secret file does not exist: $OAUTH_SECRET_FILE" >&2; exit 2; }
 
-if [ -n "$VERSION" ]; then
-    curl -fsSL "https://raw.githubusercontent.com/$REPOSITORY/main/scripts/install.sh" | sh -s -- --version "$VERSION" --install-dir "$INSTALL_DIR"
+[ -n "$VERSION" ] || { echo "--version is required; use a matching pinned artifact" >&2; exit 2; }
+# Prefer the checked-out installer so an unreleased development interface never
+# downloads an older installer's behavior from main.
+installer=""
+case "$0" in
+    */control.sh) script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd); installer="$script_dir/install.sh" ;;
+esac
+if [ -n "$installer" ] && [ -f "$installer" ]; then
+    sh "$installer" --version "$VERSION" --install-dir "$INSTALL_DIR"
 else
-    curl -fsSL "https://raw.githubusercontent.com/$REPOSITORY/main/scripts/install.sh" | sh -s -- --install-dir "$INSTALL_DIR"
+    case "$VERSION" in
+        v*) curl -fsSL "https://raw.githubusercontent.com/$REPOSITORY/$VERSION/scripts/install.sh" | sh -s -- --version "$VERSION" --install-dir "$INSTALL_DIR" ;;
+        *) echo "Run the development control installer from its matching checkout" >&2; exit 2 ;;
+    esac
 fi
 
 binary="$INSTALL_DIR/tailscale-private-funnel"
-set -- control join --non-interactive --tailnet "$TAILNET" --oauth-client-id-file "$OAUTH_ID_FILE" --oauth-client-secret-file "$OAUTH_SECRET_FILE"
+set -- native controls create "$RESOURCE_NAME" --non-interactive --tailnet "$TAILNET" --oauth-client-id-file "$OAUTH_ID_FILE" --oauth-client-secret-file "$OAUTH_SECRET_FILE"
+[ -n "$CONTROL_HOSTNAME" ] && set -- "$@" --hostname "$CONTROL_HOSTNAME"
 [ -n "$STATE_DIR" ] && set -- "$@" --state-dir "$STATE_DIR"
 [ -n "$DATA_DIR" ] && set -- "$@" --data-dir "$DATA_DIR"
-[ -n "$LOGIN_SERVER" ] && set -- "$@" --login-server "$LOGIN_SERVER"
-"$binary" "$@"
-
-if [ -n "$STATE_DIR" ] && [ -n "$DATA_DIR" ]; then
-    exec "$binary" control serve --state-dir "$STATE_DIR" --data-dir "$DATA_DIR"
-elif [ -n "$STATE_DIR" ]; then
-    exec "$binary" control serve --state-dir "$STATE_DIR"
-elif [ -n "$DATA_DIR" ]; then
-    exec "$binary" control serve --data-dir "$DATA_DIR"
-else
-    exec "$binary" control serve
-fi
+[ -n "$VERSION" ] && set -- "$@" --version "$VERSION"
+exec "$binary" "$@" --wait

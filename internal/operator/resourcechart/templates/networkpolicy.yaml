@@ -1,0 +1,58 @@
+{{- if eq .Values.component "k8s-gateway" }}
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-agent
+spec:
+  podSelector:
+    matchLabels: {tailscale-private-funnel.io/installation: {{ .Values.installation }}, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: agent}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {tailscale-private-funnel.io/installation: {{ .Values.installation }}, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: forwarder}
+      ports: [{protocol: TCP, port: 9443}]
+  egress:
+    - ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 6443}, {protocol: UDP, port: 53}, {protocol: TCP, port: 53}, {protocol: UDP, port: 1, endPort: 65535}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-forwarder
+spec:
+  podSelector:
+    matchLabels: {tailscale-private-funnel.io/installation: {{ .Values.installation }}, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: forwarder}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {tailscale-private-funnel.io/installation: {{ .Values.installation }}, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: agent}
+      ports: [{protocol: TCP, port: 9443}]
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to:
+        {{- if .Values.watchNamespaces }}
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values: {{ toYaml (uniq (append .Values.watchNamespaces .Release.Namespace)) | nindent 18 }}
+        {{- else }}
+        - namespaceSelector: {}
+        {{- end }}
+      # Only signed, verified node-local Pod endpoints are dialed by the process.
+      ports: [{protocol: TCP, port: 1, endPort: 65535}]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, 127.0.0.0/8]
+      ports: [{protocol: TCP, port: 443}, {protocol: UDP, port: 1, endPort: 65535}]
+{{- end }}
+
+{{- end }}

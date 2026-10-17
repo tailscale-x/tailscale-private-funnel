@@ -1,0 +1,3624 @@
+{
+  "components": {
+    "schemas": {
+      "connect-protocol-version": {
+        "const": 1,
+        "description": "Define the version of the Connect protocol",
+        "examples": [
+          1
+        ],
+        "title": "Connect-Protocol-Version",
+        "type": "number"
+      },
+      "connect-timeout-header": {
+        "description": "Define the timeout, in ms",
+        "examples": [
+          1000
+        ],
+        "title": "Connect-Timeout-Ms",
+        "type": "number"
+      },
+      "connect.error": {
+        "additionalProperties": true,
+        "description": "Error type returned by Connect: https://connectrpc.com/docs/go/errors/#http-representation",
+        "properties": {
+          "code": {
+            "description": "The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].",
+            "enum": [
+              "canceled",
+              "unknown",
+              "invalid_argument",
+              "deadline_exceeded",
+              "not_found",
+              "already_exists",
+              "permission_denied",
+              "resource_exhausted",
+              "failed_precondition",
+              "aborted",
+              "out_of_range",
+              "unimplemented",
+              "internal",
+              "unavailable",
+              "data_loss",
+              "unauthenticated"
+            ],
+            "examples": [
+              "not_found"
+            ],
+            "type": "string"
+          },
+          "details": {
+            "description": "A list of messages that carry the error details. There is no limit on the number of messages.",
+            "items": {
+              "$ref": "#/components/schemas/connect.error_details.Any"
+            },
+            "type": "array"
+          },
+          "message": {
+            "description": "A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.",
+            "type": "string"
+          }
+        },
+        "title": "Connect Error",
+        "type": "object"
+      },
+      "connect.error_details.Any": {
+        "additionalProperties": true,
+        "description": "Contains an arbitrary serialized message along with a @type that describes the type of the serialized message, with an additional debug field for ConnectRPC error details.",
+        "properties": {
+          "debug": {
+            "additionalProperties": true,
+            "description": "Deserialized error detail payload. The 'type' field indicates the schema. This field is for easier debugging and should not be relied upon for application logic.",
+            "title": "Debug",
+            "type": "object"
+          },
+          "type": {
+            "description": "A URL that acts as a globally unique identifier for the type of the serialized message. For example: `type.googleapis.com/google.rpc.ErrorInfo`.",
+            "type": "string"
+          },
+          "value": {
+            "description": "The Protobuf message, serialized as bytes and base64-encoded. The specific message type is identified by the `type` field.",
+            "format": "byte",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "funnel.v1.AccessSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "capability": {
+            "title": "capability",
+            "type": "string"
+          },
+          "confirmSelfRemoval": {
+            "description": "One-shot confirmation; requires a verified active Owner in replacement roles.",
+            "title": "confirm_self_removal",
+            "type": "boolean"
+          },
+          "roles": {
+            "additionalProperties": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/funnel.v1.Selectors"
+                }
+              ],
+              "title": "value"
+            },
+            "title": "roles",
+            "type": "object"
+          }
+        },
+        "title": "AccessSettings",
+        "type": "object"
+      },
+      "funnel.v1.AddZoneRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "minLength": 1,
+            "title": "domain",
+            "type": "string"
+          },
+          "providerId": {
+            "minLength": 1,
+            "title": "provider_id",
+            "type": "string"
+          }
+        },
+        "title": "AddZoneRequest",
+        "type": "object"
+      },
+      "funnel.v1.AliasRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "title": "application_id",
+            "type": "string"
+          },
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          }
+        },
+        "title": "AliasRequest",
+        "type": "object"
+      },
+      "funnel.v1.Application": {
+        "additionalProperties": false,
+        "properties": {
+          "backendDeviceId": {
+            "title": "backend_device_id",
+            "type": "string"
+          },
+          "backendPort": {
+            "title": "backend_port",
+            "type": "integer"
+          },
+          "backendSource": {
+            "title": "backend_source",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "enabled",
+            "type": "boolean"
+          },
+          "gatewayIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "gateway_ids",
+            "type": "array"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "name": {
+            "title": "name",
+            "type": "string"
+          },
+          "publicHostnames": {
+            "items": {
+              "type": "string"
+            },
+            "title": "public_hostnames",
+            "type": "array"
+          },
+          "revision": {
+            "format": "int64",
+            "title": "revision",
+            "type": "string"
+          },
+          "serviceFqdn": {
+            "title": "service_fqdn",
+            "type": "string"
+          },
+          "serviceName": {
+            "title": "service_name",
+            "type": "string"
+          },
+          "servicePort": {
+            "title": "service_port",
+            "type": "integer"
+          }
+        },
+        "title": "Application",
+        "type": "object"
+      },
+      "funnel.v1.Applications": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.Application"
+            },
+            "title": "items",
+            "type": "array"
+          }
+        },
+        "title": "Applications",
+        "type": "object"
+      },
+      "funnel.v1.AuditEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "title": "action",
+            "type": "string"
+          },
+          "actor": {
+            "title": "actor",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "int64",
+            "title": "created_at",
+            "type": "string"
+          }
+        },
+        "title": "AuditEvent",
+        "type": "object"
+      },
+      "funnel.v1.AuditEvents": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.AuditEvent"
+            },
+            "title": "items",
+            "type": "array"
+          }
+        },
+        "title": "AuditEvents",
+        "type": "object"
+      },
+      "funnel.v1.AuditRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "maximum": 1000,
+            "title": "limit",
+            "type": "integer"
+          }
+        },
+        "title": "AuditRequest",
+        "type": "object"
+      },
+      "funnel.v1.BindSigningKeyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "code",
+            "type": "string"
+          },
+          "enrollmentId": {
+            "title": "enrollment_id",
+            "type": "string"
+          },
+          "publicKey": {
+            "format": "byte",
+            "maxLength": 32,
+            "minLength": 32,
+            "title": "public_key",
+            "type": "string"
+          }
+        },
+        "title": "BindSigningKeyRequest",
+        "type": "object"
+      },
+      "funnel.v1.BootstrapCredentials": {
+        "additionalProperties": false,
+        "description": "Bootstrap credentials must not be persisted in plans, logs or receipts.",
+        "properties": {
+          "authKey": {
+            "title": "auth_key",
+            "type": "string"
+          },
+          "controlKey": {
+            "title": "control_key",
+            "type": "string"
+          },
+          "enrollmentCode": {
+            "title": "enrollment_code",
+            "type": "string"
+          },
+          "enrollmentId": {
+            "title": "enrollment_id",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "int64",
+            "title": "expires_at",
+            "type": "string"
+          }
+        },
+        "title": "BootstrapCredentials",
+        "type": "object"
+      },
+      "funnel.v1.BrokerSession": {
+        "additionalProperties": false,
+        "properties": {
+          "authKey": {
+            "title": "auth_key",
+            "type": "string"
+          },
+          "controlKey": {
+            "title": "control_key",
+            "type": "string"
+          },
+          "controllerId": {
+            "title": "controller_id",
+            "type": "string"
+          },
+          "identity": {
+            "format": "byte",
+            "title": "identity",
+            "type": "string"
+          },
+          "managementUrl": {
+            "title": "management_url",
+            "type": "string"
+          },
+          "nodeId": {
+            "title": "node_id",
+            "type": "string"
+          },
+          "nodeName": {
+            "title": "node_name",
+            "type": "string"
+          },
+          "nodeUid": {
+            "title": "node_uid",
+            "type": "string"
+          },
+          "state": {
+            "additionalProperties": {
+              "format": "byte",
+              "title": "value",
+              "type": "string"
+            },
+            "title": "state",
+            "type": "object"
+          }
+        },
+        "title": "BrokerSession",
+        "type": "object"
+      },
+      "funnel.v1.ConfigAck": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "minLength": 1,
+            "title": "revision",
+            "type": "string"
+          },
+          "services": {
+            "items": {
+              "type": "string"
+            },
+            "title": "services",
+            "type": "array"
+          }
+        },
+        "title": "ConfigAck",
+        "type": "object"
+      },
+      "funnel.v1.ConfigurationPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "applications": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.RuntimeApplication"
+            },
+            "title": "applications",
+            "type": "array"
+          },
+          "issuedAt": {
+            "format": "int64",
+            "title": "issued_at",
+            "type": "string"
+          },
+          "labelAliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "label_aliases",
+            "type": "array"
+          },
+          "nodeId": {
+            "title": "node_id",
+            "type": "string"
+          },
+          "probes": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.Probe"
+            },
+            "title": "probes",
+            "type": "array"
+          },
+          "publishedAddresses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "published_addresses",
+            "type": "array"
+          },
+          "publishedHostnames": {
+            "items": {
+              "type": "string"
+            },
+            "title": "published_hostnames",
+            "type": "array"
+          },
+          "revision": {
+            "title": "revision",
+            "type": "string"
+          },
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.HTTPRoute"
+            },
+            "title": "routes",
+            "type": "array"
+          }
+        },
+        "title": "ConfigurationPayload",
+        "type": "object"
+      },
+      "funnel.v1.DNSPartitionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "addCount": {
+            "title": "add_count",
+            "type": "integer"
+          },
+          "approvalToken": {
+            "title": "approval_token",
+            "type": "string"
+          },
+          "desiredRecords": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.DNSRecord"
+            },
+            "title": "desired_records",
+            "type": "array"
+          },
+          "error": {
+            "title": "error",
+            "type": "string"
+          },
+          "existingRecords": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.DNSRecord"
+            },
+            "title": "existing_records",
+            "type": "array"
+          },
+          "name": {
+            "title": "name",
+            "type": "string"
+          },
+          "removeCount": {
+            "title": "remove_count",
+            "type": "integer"
+          },
+          "requiresApproval": {
+            "title": "requires_approval",
+            "type": "boolean"
+          },
+          "resourceId": {
+            "title": "resource_id",
+            "type": "string"
+          }
+        },
+        "title": "DNSPartitionResult",
+        "type": "object"
+      },
+      "funnel.v1.DNSRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "title": "data",
+            "type": "string"
+          },
+          "management": {
+            "title": "management",
+            "type": "string"
+          },
+          "name": {
+            "title": "name",
+            "type": "string"
+          },
+          "node": {
+            "title": "node",
+            "type": "string"
+          },
+          "type": {
+            "title": "type",
+            "type": "string"
+          }
+        },
+        "title": "DNSRecord",
+        "type": "object"
+      },
+      "funnel.v1.DNSRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "approvals": {
+            "additionalProperties": {
+              "title": "value",
+              "type": "string"
+            },
+            "title": "approvals",
+            "type": "object"
+          },
+          "zoneId": {
+            "title": "zone_id",
+            "type": "string"
+          }
+        },
+        "title": "DNSRequest",
+        "type": "object"
+      },
+      "funnel.v1.DNSResult": {
+        "additionalProperties": false,
+        "properties": {
+          "dryRun": {
+            "title": "dry_run",
+            "type": "boolean"
+          },
+          "pending": {
+            "title": "pending",
+            "type": "boolean"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.DNSPartitionResult"
+            },
+            "title": "results",
+            "type": "array"
+          }
+        },
+        "title": "DNSResult",
+        "type": "object"
+      },
+      "funnel.v1.DeleteRuleRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "title": "revision",
+            "type": "string"
+          }
+        },
+        "title": "DeleteRuleRequest",
+        "type": "object"
+      },
+      "funnel.v1.DeploymentInstructions": {
+        "additionalProperties": false,
+        "properties": {
+          "chart": {
+            "title": "chart",
+            "type": "string"
+          },
+          "chartVersion": {
+            "title": "chart_version",
+            "type": "string"
+          },
+          "commands": {
+            "additionalProperties": {
+              "title": "value",
+              "type": "string"
+            },
+            "title": "commands",
+            "type": "object"
+          },
+          "credentials": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.BootstrapCredentials"
+              }
+            ],
+            "title": "credentials"
+          },
+          "deployment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.DeploymentRequest"
+              }
+            ],
+            "title": "deployment"
+          },
+          "enrollment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.Enrollment"
+              }
+            ],
+            "title": "enrollment"
+          },
+          "example": {
+            "title": "example",
+            "type": "string"
+          },
+          "image": {
+            "title": "image",
+            "type": "string"
+          },
+          "managementUrl": {
+            "title": "management_url",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "namespace",
+            "type": "string"
+          },
+          "prerequisites": {
+            "items": {
+              "type": "string"
+            },
+            "title": "prerequisites",
+            "type": "array"
+          },
+          "script": {
+            "title": "script",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.DeploymentStep"
+            },
+            "title": "steps",
+            "type": "array"
+          },
+          "version": {
+            "title": "version",
+            "type": "string"
+          }
+        },
+        "title": "DeploymentInstructions",
+        "type": "object"
+      },
+      "funnel.v1.DeploymentMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "conditions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "conditions",
+            "type": "array"
+          },
+          "conditionsReported": {
+            "title": "conditions_reported",
+            "type": "boolean"
+          },
+          "contextHint": {
+            "title": "context_hint",
+            "type": "string"
+          },
+          "dataDir": {
+            "title": "data_dir",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "namespace",
+            "type": "string"
+          },
+          "resourceName": {
+            "title": "resource_name",
+            "type": "string"
+          },
+          "stateDir": {
+            "title": "state_dir",
+            "type": "string"
+          },
+          "target": {
+            "title": "target",
+            "type": "string"
+          },
+          "version": {
+            "title": "version",
+            "type": "string"
+          }
+        },
+        "title": "DeploymentMetadata",
+        "type": "object"
+      },
+      "funnel.v1.DeploymentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "administrators": {
+            "items": {
+              "type": "string"
+            },
+            "title": "administrators",
+            "type": "array"
+          },
+          "certificateEmail": {
+            "title": "certificate_email",
+            "type": "string"
+          },
+          "context": {
+            "title": "context",
+            "type": "string"
+          },
+          "currentControl": {
+            "title": "current_control",
+            "type": "boolean"
+          },
+          "dataDir": {
+            "title": "data_dir",
+            "type": "string"
+          },
+          "denyNetworks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "deny_networks",
+            "type": "array"
+          },
+          "displayName": {
+            "title": "display_name",
+            "type": "string"
+          },
+          "gatewayClass": {
+            "title": "gateway_class",
+            "type": "string"
+          },
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          },
+          "ingressClass": {
+            "title": "ingress_class",
+            "type": "string"
+          },
+          "installation": {
+            "title": "installation",
+            "type": "string"
+          },
+          "labelKeys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "label_keys",
+            "type": "array"
+          },
+          "managedNamespaces": {
+            "items": {
+              "type": "string"
+            },
+            "title": "managed_namespaces",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "operator",
+              "control",
+              "loadbalancer",
+              "docker-gateway",
+              "tailnet-gateway",
+              "k8s-gateway"
+            ],
+            "title": "mode",
+            "type": "string"
+          },
+          "name": {
+            "title": "name",
+            "type": "string"
+          },
+          "namespace": {
+            "title": "namespace",
+            "type": "string"
+          },
+          "nodeId": {
+            "title": "node_id",
+            "type": "string"
+          },
+          "nodeSelector": {
+            "additionalProperties": {
+              "title": "value",
+              "type": "string"
+            },
+            "title": "node_selector",
+            "type": "object"
+          },
+          "oauthClientIdFile": {
+            "title": "oauth_client_id_file",
+            "type": "string"
+          },
+          "oauthClientSecretFile": {
+            "title": "oauth_client_secret_file",
+            "type": "string"
+          },
+          "publicHostname": {
+            "title": "public_hostname",
+            "type": "string"
+          },
+          "resourceName": {
+            "title": "resource_name",
+            "type": "string"
+          },
+          "runtime": {
+            "title": "runtime",
+            "type": "string"
+          },
+          "stateDir": {
+            "title": "state_dir",
+            "type": "string"
+          },
+          "storageClass": {
+            "title": "storage_class",
+            "type": "string"
+          },
+          "storageSize": {
+            "title": "storage_size",
+            "type": "string"
+          },
+          "tailnet": {
+            "title": "tailnet",
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "native",
+              "kubernetes"
+            ],
+            "title": "target",
+            "type": "string"
+          },
+          "timeoutSeconds": {
+            "title": "timeout_seconds",
+            "type": "integer"
+          },
+          "version": {
+            "title": "version",
+            "type": "string"
+          },
+          "wait": {
+            "title": "wait",
+            "type": "boolean"
+          },
+          "watchNamespaces": {
+            "items": {
+              "type": "string"
+            },
+            "title": "watch_namespaces",
+            "type": "array"
+          }
+        },
+        "title": "DeploymentRequest",
+        "type": "object"
+      },
+      "funnel.v1.DeploymentStep": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "title": "description",
+            "type": "string"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "title": {
+            "title": "title",
+            "type": "string"
+          }
+        },
+        "title": "DeploymentStep",
+        "type": "object"
+      },
+      "funnel.v1.DiscoveredZone": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "title": "domain",
+            "type": "string"
+          },
+          "managed": {
+            "title": "managed",
+            "type": "boolean"
+          }
+        },
+        "title": "DiscoveredZone",
+        "type": "object"
+      },
+      "funnel.v1.DiscoveredZones": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.DiscoveredZone"
+            },
+            "title": "items",
+            "type": "array"
+          }
+        },
+        "title": "DiscoveredZones",
+        "type": "object"
+      },
+      "funnel.v1.Edge": {
+        "additionalProperties": false,
+        "properties": {
+          "backendReachable": {
+            "title": "backend_reachable",
+            "type": "boolean"
+          },
+          "healthy": {
+            "title": "healthy",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "name": {
+            "title": "name",
+            "type": "string"
+          },
+          "policyAllowed": {
+            "title": "policy_allowed",
+            "type": "boolean"
+          },
+          "publicIpv4": {
+            "items": {
+              "type": "string"
+            },
+            "title": "public_ipv4",
+            "type": "array"
+          },
+          "ready": {
+            "title": "ready",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "reason",
+            "type": "string"
+          }
+        },
+        "title": "Edge",
+        "type": "object"
+      },
+      "funnel.v1.Empty": {
+        "additionalProperties": false,
+        "title": "Empty",
+        "type": "object"
+      },
+      "funnel.v1.EnableRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "id",
+            "type": "string"
+          }
+        },
+        "title": "EnableRequest",
+        "type": "object"
+      },
+      "funnel.v1.Enrollment": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "int64",
+            "title": "created_at",
+            "type": "string"
+          },
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "mode": {
+            "title": "mode",
+            "type": "string"
+          },
+          "name": {
+            "title": "name",
+            "type": "string"
+          },
+          "revoked": {
+            "title": "revoked",
+            "type": "boolean"
+          }
+        },
+        "title": "Enrollment",
+        "type": "object"
+      },
+      "funnel.v1.EnrollmentDefaults": {
+        "additionalProperties": false,
+        "properties": {
+          "managementUrl": {
+            "title": "management_url",
+            "type": "string"
+          },
+          "releaseVersion": {
+            "title": "release_version",
+            "type": "string"
+          }
+        },
+        "title": "EnrollmentDefaults",
+        "type": "object"
+      },
+      "funnel.v1.Enrollments": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.Enrollment"
+            },
+            "title": "items",
+            "type": "array"
+          }
+        },
+        "title": "Enrollments",
+        "type": "object"
+      },
+      "funnel.v1.Exposure": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "active",
+            "type": "boolean"
+          },
+          "applicationId": {
+            "title": "application_id",
+            "type": "string"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.Edge"
+            },
+            "title": "edges",
+            "type": "array"
+          },
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          }
+        },
+        "title": "Exposure",
+        "type": "object"
+      },
+      "funnel.v1.ExposureReport": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "format": "int64",
+            "title": "expires_at",
+            "type": "string"
+          },
+          "exposures": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.ReportedExposure"
+            },
+            "title": "exposures",
+            "type": "array"
+          }
+        },
+        "title": "ExposureReport",
+        "type": "object"
+      },
+      "funnel.v1.Exposures": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.Exposure"
+            },
+            "title": "items",
+            "type": "array"
+          }
+        },
+        "title": "Exposures",
+        "type": "object"
+      },
+      "funnel.v1.ForwarderBindingPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "bind": {
+            "title": "bind",
+            "type": "boolean"
+          }
+        },
+        "title": "ForwarderBindingPayload",
+        "type": "object"
+      },
+      "funnel.v1.ForwarderEnrollment": {
+        "additionalProperties": false,
+        "properties": {
+          "authKey": {
+            "title": "auth_key",
+            "type": "string"
+          },
+          "nodeId": {
+            "title": "node_id",
+            "type": "string"
+          }
+        },
+        "title": "ForwarderEnrollment",
+        "type": "object"
+      },
+      "funnel.v1.ForwarderEnrollmentPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          },
+          "nodeUid": {
+            "title": "node_uid",
+            "type": "string"
+          },
+          "publicKey": {
+            "title": "public_key",
+            "type": "string"
+          }
+        },
+        "title": "ForwarderEnrollmentPayload",
+        "type": "object"
+      },
+      "funnel.v1.HTTPBackend": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "title": "address",
+            "type": "string"
+          },
+          "endpoints": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.PodEndpoint"
+            },
+            "title": "endpoints",
+            "type": "array"
+          },
+          "key": {
+            "title": "key",
+            "type": "string"
+          },
+          "port": {
+            "title": "port",
+            "type": "integer"
+          },
+          "service": {
+            "title": "service",
+            "type": "string"
+          },
+          "serviceName": {
+            "title": "service_name",
+            "type": "string"
+          },
+          "weight": {
+            "format": "int32",
+            "title": "weight",
+            "type": "integer"
+          }
+        },
+        "title": "HTTPBackend",
+        "type": "object"
+      },
+      "funnel.v1.HTTPMatch": {
+        "additionalProperties": false,
+        "properties": {
+          "exact": {
+            "title": "exact",
+            "type": "boolean"
+          },
+          "headers": {
+            "additionalProperties": {
+              "title": "value",
+              "type": "string"
+            },
+            "title": "headers",
+            "type": "object"
+          },
+          "method": {
+            "title": "method",
+            "type": "string"
+          },
+          "path": {
+            "title": "path",
+            "type": "string"
+          },
+          "query": {
+            "additionalProperties": {
+              "title": "value",
+              "type": "string"
+            },
+            "title": "query",
+            "type": "object"
+          }
+        },
+        "title": "HTTPMatch",
+        "type": "object"
+      },
+      "funnel.v1.HTTPRedirect": {
+        "additionalProperties": false,
+        "properties": {
+          "host": {
+            "title": "host",
+            "type": "string"
+          },
+          "port": {
+            "title": "port",
+            "type": "integer"
+          },
+          "scheme": {
+            "title": "scheme",
+            "type": "string"
+          },
+          "status": {
+            "format": "int32",
+            "title": "status",
+            "type": "integer"
+          }
+        },
+        "title": "HTTPRedirect",
+        "type": "object"
+      },
+      "funnel.v1.HTTPRoute": {
+        "additionalProperties": false,
+        "properties": {
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          },
+          "port": {
+            "title": "port",
+            "type": "integer"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.HTTPRule"
+            },
+            "title": "rules",
+            "type": "array"
+          },
+          "service": {
+            "title": "service",
+            "type": "string"
+          }
+        },
+        "title": "HTTPRoute",
+        "type": "object"
+      },
+      "funnel.v1.HTTPRule": {
+        "additionalProperties": false,
+        "properties": {
+          "backendRequestTimeout": {
+            "title": "backend_request_timeout",
+            "type": "string"
+          },
+          "backendTimeout": {
+            "title": "backend_timeout",
+            "type": "string"
+          },
+          "backends": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.HTTPBackend"
+            },
+            "title": "backends",
+            "type": "array"
+          },
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.HTTPMatch"
+            },
+            "title": "matches",
+            "type": "array"
+          },
+          "maxRequestBodyBytes": {
+            "format": "int64",
+            "title": "max_request_body_bytes",
+            "type": "string"
+          },
+          "priority": {
+            "format": "int32",
+            "title": "priority",
+            "type": "integer"
+          },
+          "redirect": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.HTTPRedirect"
+              }
+            ],
+            "title": "redirect"
+          },
+          "requestHeaders": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.HeaderFilter"
+              }
+            ],
+            "title": "request_headers"
+          },
+          "requestTimeout": {
+            "title": "request_timeout",
+            "type": "string"
+          },
+          "responseHeaders": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.HeaderFilter"
+              }
+            ],
+            "title": "response_headers"
+          }
+        },
+        "title": "HTTPRule",
+        "type": "object"
+      },
+      "funnel.v1.HeaderFilter": {
+        "additionalProperties": false,
+        "properties": {
+          "add": {
+            "additionalProperties": {
+              "title": "value",
+              "type": "string"
+            },
+            "title": "add",
+            "type": "object"
+          },
+          "remove": {
+            "items": {
+              "type": "string"
+            },
+            "title": "remove",
+            "type": "array"
+          },
+          "set": {
+            "additionalProperties": {
+              "title": "value",
+              "type": "string"
+            },
+            "title": "set",
+            "type": "object"
+          }
+        },
+        "title": "HeaderFilter",
+        "type": "object"
+      },
+      "funnel.v1.HealthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "applications": {
+            "title": "applications",
+            "type": "integer"
+          },
+          "deployment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.DeploymentMetadata"
+              }
+            ],
+            "title": "deployment"
+          },
+          "nodes": {
+            "title": "nodes",
+            "type": "integer"
+          },
+          "providers": {
+            "title": "providers",
+            "type": "integer"
+          },
+          "version": {
+            "title": "version",
+            "type": "string"
+          },
+          "zones": {
+            "title": "zones",
+            "type": "integer"
+          }
+        },
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "funnel.v1.Identity": {
+        "additionalProperties": false,
+        "properties": {
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          },
+          "login": {
+            "title": "login",
+            "type": "string"
+          },
+          "nodeId": {
+            "title": "node_id",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "roles",
+            "type": "array"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "tags",
+            "type": "array"
+          }
+        },
+        "title": "Identity",
+        "type": "object"
+      },
+      "funnel.v1.KubernetesHost": {
+        "additionalProperties": false,
+        "properties": {
+          "backends": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.HTTPBackend"
+            },
+            "title": "backends",
+            "type": "array"
+          },
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          },
+          "resourceIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "resource_ids",
+            "type": "array"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.HTTPRule"
+            },
+            "title": "rules",
+            "type": "array"
+          }
+        },
+        "title": "KubernetesHost",
+        "type": "object"
+      },
+      "funnel.v1.KubernetesPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "clusterId": {
+            "title": "cluster_id",
+            "type": "string"
+          },
+          "errors": {
+            "additionalProperties": {
+              "title": "value",
+              "type": "string"
+            },
+            "title": "errors",
+            "type": "object"
+          },
+          "expiresAt": {
+            "format": "int64",
+            "title": "expires_at",
+            "type": "string"
+          },
+          "hosts": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.KubernetesHost"
+            },
+            "title": "hosts",
+            "type": "array"
+          }
+        },
+        "title": "KubernetesPayload",
+        "type": "object"
+      },
+      "funnel.v1.ListNodesRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "title": "mode",
+            "type": "string"
+          }
+        },
+        "title": "ListNodesRequest",
+        "type": "object"
+      },
+      "funnel.v1.Node": {
+        "additionalProperties": false,
+        "properties": {
+          "backends": {
+            "title": "backends",
+            "type": "integer"
+          },
+          "configRevision": {
+            "title": "config_revision",
+            "type": "string"
+          },
+          "deployment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.DeploymentMetadata"
+              }
+            ],
+            "title": "deployment"
+          },
+          "diagnostics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "diagnostics",
+            "type": "array"
+          },
+          "effectiveTags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "effective_tags",
+            "type": "array"
+          },
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "lastReport": {
+            "format": "int64",
+            "title": "last_report",
+            "type": "string"
+          },
+          "listeners": {
+            "title": "listeners",
+            "type": "integer"
+          },
+          "mode": {
+            "title": "mode",
+            "type": "string"
+          },
+          "name": {
+            "title": "name",
+            "type": "string"
+          },
+          "parentId": {
+            "title": "parent_id",
+            "type": "string"
+          },
+          "publicIpv4": {
+            "items": {
+              "type": "string"
+            },
+            "title": "public_ipv4",
+            "type": "array"
+          },
+          "publicReady": {
+            "title": "public_ready",
+            "type": "boolean"
+          },
+          "revoked": {
+            "title": "revoked",
+            "type": "boolean"
+          },
+          "tailnetId": {
+            "title": "tailnet_id",
+            "type": "string"
+          }
+        },
+        "title": "Node",
+        "type": "object"
+      },
+      "funnel.v1.NodeHealth": {
+        "additionalProperties": false,
+        "properties": {
+          "advertisedServices": {
+            "items": {
+              "type": "string"
+            },
+            "title": "advertised_services",
+            "type": "array"
+          },
+          "backends": {
+            "title": "backends",
+            "type": "integer"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "errors",
+            "type": "array"
+          },
+          "lastReport": {
+            "format": "int64",
+            "title": "last_report",
+            "type": "string"
+          },
+          "listeners": {
+            "items": {
+              "type": "string"
+            },
+            "title": "listeners",
+            "type": "array"
+          },
+          "loadbalancerHostname": {
+            "title": "loadbalancer_hostname",
+            "type": "string"
+          },
+          "localEndpoints": {
+            "title": "local_endpoints",
+            "type": "integer"
+          },
+          "nodeName": {
+            "title": "node_name",
+            "type": "string"
+          },
+          "nodeUid": {
+            "title": "node_uid",
+            "type": "string"
+          },
+          "online": {
+            "title": "online",
+            "type": "boolean"
+          },
+          "reachable": {
+            "title": "reachable",
+            "type": "integer"
+          },
+          "revision": {
+            "title": "revision",
+            "type": "string"
+          },
+          "withdrawalReason": {
+            "title": "withdrawal_reason",
+            "type": "string"
+          }
+        },
+        "title": "NodeHealth",
+        "type": "object"
+      },
+      "funnel.v1.NodeReport": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "format": "int64",
+            "title": "expires_at",
+            "type": "string"
+          },
+          "exposures": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.ReportedExposure"
+            },
+            "title": "exposures",
+            "type": "array"
+          },
+          "fresh": {
+            "title": "fresh",
+            "type": "boolean"
+          },
+          "mode": {
+            "title": "mode",
+            "type": "string"
+          },
+          "name": {
+            "title": "name",
+            "type": "string"
+          },
+          "nodeId": {
+            "title": "node_id",
+            "type": "string"
+          },
+          "receivedAt": {
+            "format": "int64",
+            "title": "received_at",
+            "type": "string"
+          }
+        },
+        "title": "NodeReport",
+        "type": "object"
+      },
+      "funnel.v1.Nodes": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.Node"
+            },
+            "title": "items",
+            "type": "array"
+          }
+        },
+        "title": "Nodes",
+        "type": "object"
+      },
+      "funnel.v1.OAuthRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "clientId": {
+            "title": "client_id",
+            "type": "string"
+          },
+          "clientSecret": {
+            "title": "client_secret",
+            "type": "string"
+          }
+        },
+        "title": "OAuthRequest",
+        "type": "object"
+      },
+      "funnel.v1.Peer": {
+        "additionalProperties": false,
+        "properties": {
+          "addresses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "addresses",
+            "type": "array"
+          },
+          "dnsName": {
+            "title": "dns_name",
+            "type": "string"
+          },
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "online": {
+            "title": "online",
+            "type": "boolean"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "tags",
+            "type": "array"
+          }
+        },
+        "title": "Peer",
+        "type": "object"
+      },
+      "funnel.v1.PeerSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "format": "int64",
+            "title": "expires_at",
+            "type": "string"
+          },
+          "peers": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.Peer"
+            },
+            "title": "peers",
+            "type": "array"
+          },
+          "receivedAt": {
+            "format": "int64",
+            "title": "received_at",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.ProbeResult"
+            },
+            "title": "results",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "roles",
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "sources",
+            "type": "array"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "tags",
+            "type": "array"
+          }
+        },
+        "title": "PeerSnapshot",
+        "type": "object"
+      },
+      "funnel.v1.Permission": {
+        "description": "Permission is checked against verified transport identity, never client metadata.",
+        "enum": [
+          "PERMISSION_UNSPECIFIED",
+          "PERMISSION_VIEWER",
+          "PERMISSION_OPERATOR",
+          "PERMISSION_ADMIN",
+          "PERMISSION_NODE",
+          "PERMISSION_ENROLLMENT",
+          "PERMISSION_BROKER"
+        ],
+        "title": "Permission",
+        "type": "string"
+      },
+      "funnel.v1.PodEndpoint": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "title": "address",
+            "type": "string"
+          },
+          "nodeName": {
+            "title": "node_name",
+            "type": "string"
+          },
+          "nodeUid": {
+            "title": "node_uid",
+            "type": "string"
+          },
+          "podUid": {
+            "title": "pod_uid",
+            "type": "string"
+          }
+        },
+        "title": "PodEndpoint",
+        "type": "object"
+      },
+      "funnel.v1.Policy": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "format": "int64",
+            "title": "revision",
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.Rule"
+            },
+            "title": "rules",
+            "type": "array"
+          }
+        },
+        "title": "Policy",
+        "type": "object"
+      },
+      "funnel.v1.PolicyImpact": {
+        "additionalProperties": false,
+        "properties": {
+          "affectedHostnames": {
+            "items": {
+              "type": "string"
+            },
+            "title": "affected_hostnames",
+            "type": "array"
+          }
+        },
+        "title": "PolicyImpact",
+        "type": "object"
+      },
+      "funnel.v1.PolicySaveResult": {
+        "additionalProperties": false,
+        "properties": {
+          "cleanupPending": {
+            "title": "cleanup_pending",
+            "type": "boolean"
+          },
+          "policy": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.Policy"
+              }
+            ],
+            "title": "policy"
+          }
+        },
+        "title": "PolicySaveResult",
+        "type": "object"
+      },
+      "funnel.v1.PolicyTestRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "gatewayIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "gateway_ids",
+            "type": "array"
+          },
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "roles",
+            "type": "array"
+          }
+        },
+        "title": "PolicyTestRequest",
+        "type": "object"
+      },
+      "funnel.v1.PolicyTestResult": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed": {
+            "title": "allowed",
+            "type": "boolean"
+          },
+          "matchedRule": {
+            "title": "matched_rule",
+            "type": "string"
+          }
+        },
+        "title": "PolicyTestResult",
+        "type": "object"
+      },
+      "funnel.v1.Probe": {
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "title": "device_id",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "int64",
+            "title": "expires_at",
+            "type": "string"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "port": {
+            "title": "port",
+            "type": "integer"
+          }
+        },
+        "title": "Probe",
+        "type": "object"
+      },
+      "funnel.v1.ProbeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "title": "device_id",
+            "type": "string"
+          },
+          "nodeId": {
+            "title": "node_id",
+            "type": "string"
+          },
+          "port": {
+            "exclusiveMinimum": 0,
+            "maximum": 65535,
+            "title": "port",
+            "type": "integer"
+          }
+        },
+        "title": "ProbeRequest",
+        "type": "object"
+      },
+      "funnel.v1.ProbeResult": {
+        "additionalProperties": false,
+        "properties": {
+          "checkedAt": {
+            "format": "int64",
+            "title": "checked_at",
+            "type": "string"
+          },
+          "deviceId": {
+            "title": "device_id",
+            "type": "string"
+          },
+          "error": {
+            "title": "error",
+            "type": "string"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "port": {
+            "title": "port",
+            "type": "integer"
+          },
+          "reachable": {
+            "title": "reachable",
+            "type": "boolean"
+          }
+        },
+        "title": "ProbeResult",
+        "type": "object"
+      },
+      "funnel.v1.Provider": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "title": "account_id",
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "capabilities",
+            "type": "array"
+          },
+          "enabled": {
+            "title": "enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "name": {
+            "title": "name",
+            "type": "string"
+          },
+          "testedAt": {
+            "format": "int64",
+            "title": "tested_at",
+            "type": "string"
+          },
+          "vendor": {
+            "title": "vendor",
+            "type": "string"
+          }
+        },
+        "title": "Provider",
+        "type": "object"
+      },
+      "funnel.v1.Providers": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.Provider"
+            },
+            "title": "items",
+            "type": "array"
+          }
+        },
+        "title": "Providers",
+        "type": "object"
+      },
+      "funnel.v1.PublicEndpointPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "ingress": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.PublicIngress"
+            },
+            "title": "ingress",
+            "type": "array"
+          },
+          "namespace": {
+            "title": "namespace",
+            "type": "string"
+          },
+          "observedAt": {
+            "format": "int64",
+            "title": "observed_at",
+            "type": "string"
+          },
+          "service": {
+            "title": "service",
+            "type": "string"
+          },
+          "uid": {
+            "title": "uid",
+            "type": "string"
+          }
+        },
+        "title": "PublicEndpointPayload",
+        "type": "object"
+      },
+      "funnel.v1.PublicIngress": {
+        "additionalProperties": false,
+        "properties": {
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          },
+          "ip": {
+            "title": "ip",
+            "type": "string"
+          },
+          "ipMode": {
+            "title": "ip_mode",
+            "type": "string"
+          }
+        },
+        "title": "PublicIngress",
+        "type": "object"
+      },
+      "funnel.v1.RenameRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "name",
+            "type": "string"
+          }
+        },
+        "title": "RenameRequest",
+        "type": "object"
+      },
+      "funnel.v1.ReportedExposure": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "title": "application_id",
+            "type": "string"
+          },
+          "backendDeviceId": {
+            "title": "backend_device_id",
+            "type": "string"
+          },
+          "backendHostname": {
+            "title": "backend_hostname",
+            "type": "string"
+          },
+          "backendIp": {
+            "title": "backend_ip",
+            "type": "string"
+          },
+          "containerId": {
+            "title": "container_id",
+            "type": "string"
+          },
+          "networks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "networks",
+            "type": "array"
+          },
+          "port": {
+            "title": "port",
+            "type": "integer"
+          },
+          "protocol": {
+            "title": "protocol",
+            "type": "string"
+          },
+          "publicHostname": {
+            "title": "public_hostname",
+            "type": "string"
+          },
+          "reachable": {
+            "title": "reachable",
+            "type": "boolean"
+          },
+          "serviceName": {
+            "title": "service_name",
+            "type": "string"
+          }
+        },
+        "title": "ReportedExposure",
+        "type": "object"
+      },
+      "funnel.v1.Reports": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.NodeReport"
+            },
+            "title": "items",
+            "type": "array"
+          }
+        },
+        "title": "Reports",
+        "type": "object"
+      },
+      "funnel.v1.ResolveApplicationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "backendPort": {
+            "exclusiveMinimum": 0,
+            "maximum": 65535,
+            "title": "backend_port",
+            "type": "integer"
+          },
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          }
+        },
+        "title": "ResolveApplicationRequest",
+        "type": "object"
+      },
+      "funnel.v1.ResourceID": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "id",
+            "type": "string"
+          }
+        },
+        "title": "ResourceID",
+        "type": "object"
+      },
+      "funnel.v1.ResourceRevision": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "title": "revision",
+            "type": "string"
+          }
+        },
+        "title": "ResourceRevision",
+        "type": "object"
+      },
+      "funnel.v1.Rule": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "enabled",
+            "type": "boolean"
+          },
+          "gatewayIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "gateway_ids",
+            "type": "array"
+          },
+          "hostnameRegexes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "hostname_regexes",
+            "type": "array"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "name": {
+            "title": "name",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "roles",
+            "type": "array"
+          }
+        },
+        "title": "Rule",
+        "type": "object"
+      },
+      "funnel.v1.RuntimeApplication": {
+        "additionalProperties": false,
+        "properties": {
+          "allowedGatewayNodes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "allowed_gateway_nodes",
+            "type": "array"
+          },
+          "backendAddresses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "backend_addresses",
+            "type": "array"
+          },
+          "backendDeviceId": {
+            "title": "backend_device_id",
+            "type": "string"
+          },
+          "backendPort": {
+            "title": "backend_port",
+            "type": "integer"
+          },
+          "backendSource": {
+            "title": "backend_source",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "enabled",
+            "type": "boolean"
+          },
+          "httpBackends": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.HTTPBackend"
+            },
+            "title": "http_backends",
+            "type": "array"
+          },
+          "httpRules": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.HTTPRule"
+            },
+            "title": "http_rules",
+            "type": "array"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "name": {
+            "title": "name",
+            "type": "string"
+          },
+          "policyRevision": {
+            "format": "int64",
+            "title": "policy_revision",
+            "type": "string"
+          },
+          "publicHostnames": {
+            "items": {
+              "type": "string"
+            },
+            "title": "public_hostnames",
+            "type": "array"
+          },
+          "serviceFqdn": {
+            "title": "service_fqdn",
+            "type": "string"
+          },
+          "serviceName": {
+            "title": "service_name",
+            "type": "string"
+          },
+          "servicePort": {
+            "title": "service_port",
+            "type": "integer"
+          }
+        },
+        "title": "RuntimeApplication",
+        "type": "object"
+      },
+      "funnel.v1.SaveProviderRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "title": "account_id",
+            "type": "string"
+          },
+          "credentials": {
+            "additionalProperties": {
+              "title": "value",
+              "type": "string"
+            },
+            "title": "credentials",
+            "type": "object"
+          },
+          "enabled": {
+            "title": "enabled",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "name",
+            "type": "string"
+          },
+          "vendor": {
+            "title": "vendor",
+            "type": "string"
+          }
+        },
+        "title": "SaveProviderRequest",
+        "type": "object"
+      },
+      "funnel.v1.SaveRuleRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "revision": {
+            "format": "int64",
+            "title": "revision",
+            "type": "string"
+          },
+          "rule": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.Rule"
+              }
+            ],
+            "title": "rule"
+          }
+        },
+        "title": "SaveRuleRequest",
+        "type": "object"
+      },
+      "funnel.v1.Selectors": {
+        "additionalProperties": false,
+        "properties": {
+          "selectors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "selectors",
+            "type": "array"
+          }
+        },
+        "title": "Selectors",
+        "type": "object"
+      },
+      "funnel.v1.ServiceHost": {
+        "additionalProperties": false,
+        "properties": {
+          "approvalState": {
+            "title": "approval_state",
+            "type": "string"
+          },
+          "approved": {
+            "title": "approved",
+            "type": "boolean"
+          },
+          "deviceId": {
+            "title": "device_id",
+            "type": "string"
+          },
+          "serviceName": {
+            "title": "service_name",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "int64",
+            "title": "updated_at",
+            "type": "string"
+          }
+        },
+        "title": "ServiceHost",
+        "type": "object"
+      },
+      "funnel.v1.ServiceHosts": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.ServiceHost"
+            },
+            "title": "items",
+            "type": "array"
+          }
+        },
+        "title": "ServiceHosts",
+        "type": "object"
+      },
+      "funnel.v1.Settings": {
+        "additionalProperties": false,
+        "properties": {
+          "managementUrl": {
+            "title": "management_url",
+            "type": "string"
+          },
+          "oauthConfigured": {
+            "title": "oauth_configured",
+            "type": "boolean"
+          },
+          "releaseVersion": {
+            "title": "release_version",
+            "type": "string"
+          },
+          "tailnet": {
+            "title": "tailnet",
+            "type": "string"
+          }
+        },
+        "title": "Settings",
+        "type": "object"
+      },
+      "funnel.v1.ShutdownRequest": {
+        "additionalProperties": false,
+        "description": "Shutdown first withdraws owned state; confirm acknowledges receipt before device deletion.",
+        "properties": {
+          "confirm": {
+            "title": "confirm",
+            "type": "boolean"
+          }
+        },
+        "title": "ShutdownRequest",
+        "type": "object"
+      },
+      "funnel.v1.SignedEnvelope": {
+        "additionalProperties": false,
+        "description": "SignedEnvelope carries exact signed bytes. Decode only after verification.",
+        "properties": {
+          "nodeId": {
+            "title": "node_id",
+            "type": "string"
+          },
+          "nonce": {
+            "title": "nonce",
+            "type": "string"
+          },
+          "payload": {
+            "format": "byte",
+            "title": "payload",
+            "type": "string"
+          },
+          "publicKey": {
+            "format": "byte",
+            "title": "public_key",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "purpose",
+            "type": "string"
+          },
+          "signature": {
+            "format": "byte",
+            "title": "signature",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "int64",
+            "title": "timestamp",
+            "type": "string"
+          }
+        },
+        "title": "SignedEnvelope",
+        "type": "object"
+      },
+      "funnel.v1.StateUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "description": "string.prefix = \"tsnet.\"\n",
+            "title": "key",
+            "type": "string"
+          },
+          "value": {
+            "format": "byte",
+            "title": "value",
+            "type": "string"
+          }
+        },
+        "title": "StateUpdate",
+        "type": "object"
+      },
+      "funnel.v1.TailnetExposureRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "backendDeviceId": {
+            "title": "backend_device_id",
+            "type": "string"
+          },
+          "backendPort": {
+            "exclusiveMinimum": 0,
+            "maximum": 65535,
+            "title": "backend_port",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "name": {
+            "title": "name",
+            "type": "string"
+          },
+          "nodeId": {
+            "title": "node_id",
+            "type": "string"
+          },
+          "probeId": {
+            "title": "probe_id",
+            "type": "string"
+          },
+          "publicHostname": {
+            "title": "public_hostname",
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "title": "revision",
+            "type": "string"
+          }
+        },
+        "title": "TailnetExposureRequest",
+        "type": "object"
+      },
+      "funnel.v1.TestResult": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "title": "message",
+            "type": "string"
+          },
+          "ok": {
+            "title": "ok",
+            "type": "boolean"
+          }
+        },
+        "title": "TestResult",
+        "type": "object"
+      },
+      "funnel.v1.Vendor": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "available",
+            "type": "boolean"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "fields",
+            "type": "array"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          }
+        },
+        "title": "Vendor",
+        "type": "object"
+      },
+      "funnel.v1.Vendors": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.Vendor"
+            },
+            "title": "items",
+            "type": "array"
+          }
+        },
+        "title": "Vendors",
+        "type": "object"
+      },
+      "funnel.v1.Zone": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "title": "domain",
+            "type": "string"
+          },
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "providerId": {
+            "title": "provider_id",
+            "type": "string"
+          }
+        },
+        "title": "Zone",
+        "type": "object"
+      },
+      "funnel.v1.ZoneDNSState": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "title": "domain",
+            "type": "string"
+          },
+          "lastSuccess": {
+            "format": "int64",
+            "title": "last_success",
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.DNSRecord"
+            },
+            "title": "records",
+            "type": "array"
+          },
+          "status": {
+            "title": "status",
+            "type": "string"
+          }
+        },
+        "title": "ZoneDNSState",
+        "type": "object"
+      },
+      "funnel.v1.Zones": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.Zone"
+            },
+            "title": "items",
+            "type": "array"
+          }
+        },
+        "title": "Zones",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Generated Connect RPC contract. Management and node identity is verified from the Tailscale connection; caller-provided identity headers are never trusted.",
+    "title": "Tailscale Private Funnel",
+    "version": "v1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/funnel.v1.EnrollmentService/BindSigningKey": {
+      "post": {
+        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_ENROLLMENT authorization.",
+        "operationId": "funnel.v1.EnrollmentService.BindSigningKey",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.BindSigningKeyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.Empty"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "BindSigningKey",
+        "tags": [
+          "funnel.v1.EnrollmentService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "ENROLLMENT",
+        "x-funnel-sensitive": true
+      }
+    },
+    "/funnel.v1.NodeService/Acknowledge": {
+      "post": {
+        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "operationId": "funnel.v1.NodeService.Acknowledge",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.ConfigAck"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.Empty"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Acknowledge",
+        "tags": [
+          "funnel.v1.NodeService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "NODE"
+      }
+    },
+    "/funnel.v1.NodeService/BindForwarder": {
+      "post": {
+        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_ENROLLMENT authorization.",
+        "operationId": "funnel.v1.NodeService.BindForwarder",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.Empty"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "BindForwarder",
+        "tags": [
+          "funnel.v1.NodeService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "ENROLLMENT",
+        "x-funnel-signed-payload": "funnel.v1.ForwarderBindingPayload"
+      }
+    },
+    "/funnel.v1.NodeService/EnrollForwarder": {
+      "post": {
+        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "operationId": "funnel.v1.NodeService.EnrollForwarder",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.ForwarderEnrollment"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "EnrollForwarder",
+        "tags": [
+          "funnel.v1.NodeService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "NODE",
+        "x-funnel-sensitive": true,
+        "x-funnel-signed-payload": "funnel.v1.ForwarderEnrollmentPayload"
+      }
+    },
+    "/funnel.v1.NodeService/GetConfig": {
+      "post": {
+        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "operationId": "funnel.v1.NodeService.GetConfig",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.Empty"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "GetConfig",
+        "tags": [
+          "funnel.v1.NodeService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "NODE",
+        "x-funnel-signed-payload": "funnel.v1.ConfigurationPayload"
+      }
+    },
+    "/funnel.v1.NodeService/ListForwarders": {
+      "post": {
+        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "operationId": "funnel.v1.NodeService.ListForwarders",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.Empty"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.Nodes"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "ListForwarders",
+        "tags": [
+          "funnel.v1.NodeService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "NODE"
+      }
+    },
+    "/funnel.v1.NodeService/ReportHealth": {
+      "post": {
+        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "operationId": "funnel.v1.NodeService.ReportHealth",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.NodeHealth"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.Empty"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "ReportHealth",
+        "tags": [
+          "funnel.v1.NodeService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "NODE"
+      }
+    },
+    "/funnel.v1.NodeService/ResolveApplication": {
+      "post": {
+        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "operationId": "funnel.v1.NodeService.ResolveApplication",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.ResolveApplicationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "ResolveApplication",
+        "tags": [
+          "funnel.v1.NodeService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "NODE",
+        "x-funnel-signed-payload": "funnel.v1.ConfigurationPayload"
+      }
+    },
+    "/funnel.v1.NodeService/Shutdown": {
+      "post": {
+        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "operationId": "funnel.v1.NodeService.Shutdown",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.ShutdownRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.TestResult"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Shutdown",
+        "tags": [
+          "funnel.v1.NodeService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "NODE"
+      }
+    },
+    "/funnel.v1.NodeService/SubmitKubernetes": {
+      "post": {
+        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "operationId": "funnel.v1.NodeService.SubmitKubernetes",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.Empty"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "SubmitKubernetes",
+        "tags": [
+          "funnel.v1.NodeService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "NODE",
+        "x-funnel-signed-payload": "funnel.v1.KubernetesPayload"
+      }
+    },
+    "/funnel.v1.NodeService/SubmitPeers": {
+      "post": {
+        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "operationId": "funnel.v1.NodeService.SubmitPeers",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.Empty"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "SubmitPeers",
+        "tags": [
+          "funnel.v1.NodeService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "NODE",
+        "x-funnel-signed-payload": "funnel.v1.PeerSnapshot"
+      }
+    },
+    "/funnel.v1.NodeService/SubmitPublicEndpoint": {
+      "post": {
+        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "operationId": "funnel.v1.NodeService.SubmitPublicEndpoint",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.Empty"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "SubmitPublicEndpoint",
+        "tags": [
+          "funnel.v1.NodeService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "NODE",
+        "x-funnel-signed-payload": "funnel.v1.PublicEndpointPayload"
+      }
+    },
+    "/funnel.v1.NodeService/SubmitReport": {
+      "post": {
+        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "operationId": "funnel.v1.NodeService.SubmitReport",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.Empty"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "SubmitReport",
+        "tags": [
+          "funnel.v1.NodeService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "NODE",
+        "x-funnel-signed-payload": "funnel.v1.ExposureReport"
+      }
+    }
+  },
+  "security": [],
+  "tags": [
+    {
+      "name": "funnel.v1.NodeService"
+    },
+    {
+      "name": "funnel.v1.EnrollmentService"
+    }
+  ]
+}

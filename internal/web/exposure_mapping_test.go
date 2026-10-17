@@ -117,10 +117,3 @@ func TestAmbiguousEdgeRetainsOnlyItsOwnPriorIP(t *testing.T) {
 		t.Fatal(ips, degraded)
 	}
 }
-
-func TestReportExposureCountDeduplicatesEdgeAndGateway(t *testing.T) {
-	reports := map[string]string{"docker-gateway": `{"payload":{"exposures":[{"public_hostname":"app.example.com"}]}}`, "edge-one": `{"payload":{"exposures":[{"public_hostname":"app.example.com"}]}}`, "edge-two": `{"payload":{"exposures":[{"public_hostname":"app.example.com"},{"public_hostname":"alias.example.com"}]}}`}
-	if got := reportExposureCount(reports); got != 2 {
-		t.Fatal(got)
-	}
-}
