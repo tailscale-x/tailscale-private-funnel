@@ -106,7 +106,7 @@ node commands in the UI.
 The control-only quick start is one command:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/tailscale-x/tailscale-private-funnel/v3.1.0/scripts/control.sh | sh -s -- --version v3.1.0 --tailnet example.ts.net --oauth-client-id-file ./ts-client-id --oauth-client-secret-file ./ts-client-secret
+curl -fsSL https://raw.githubusercontent.com/tailscale-x/tailscale-private-funnel/v3.2.2/scripts/control.sh | sh -s -- --version v3.2.2 --tailnet example.ts.net --oauth-client-id-file ./ts-client-id --oauth-client-secret-file ./ts-client-secret
 ```
 
 The helper downloads the release binary and verifies its checksum. Use
@@ -227,7 +227,7 @@ load balancers—there are no gateway-side load-balancer IDs.
 
 See [operations and supported
 Kubernetes routing](PRIVATE_FUNNEL.md) for the feature matrix, annotations, persistence,
-and rollback instructions. See the [v3.1.0 release notes](docs/releases/v3.1.0.md) for breaking changes and verification limits.
+and rollback instructions. See the [v3.2.2 release notes](docs/releases/v3.2.2.md) for the nested DNS reconciliation fix and current artifacts, and the [v3.1.0 release notes](docs/releases/v3.1.0.md) for the original v3 breaking changes.
 
 ### Kubernetes deployment
 
