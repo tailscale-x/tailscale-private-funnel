@@ -266,6 +266,8 @@ message HealthResponse {
   uint32 nodes = 4;
   uint32 applications = 5;
   DeploymentMetadata deployment = 6;
+  string database_backend = 7;
+  bool database_ready = 8;
 }
 message Provider {
   string id = 1;

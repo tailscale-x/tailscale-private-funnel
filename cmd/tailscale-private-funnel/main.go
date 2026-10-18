@@ -49,7 +49,7 @@ func NewRoot(version string) *cobra.Command {
 	kube := deploymentcli.Kubernetes(version)
 	native.AddCommand(nativeRuntime())
 	kube.AddCommand(kubernetesRuntime())
-	root.AddCommand(native, kube, management, &cobra.Command{Use: "version", Args: cobra.NoArgs, Run: func(c *cobra.Command, _ []string) { fmt.Fprintln(c.OutOrStdout(), version) }})
+	root.AddCommand(native, kube, management, deploymentcli.TransferRemote(version), &cobra.Command{Use: "version", Args: cobra.NoArgs, Run: func(c *cobra.Command, _ []string) { fmt.Fprintln(c.OutOrStdout(), version) }})
 	// Groups must reject unknown commands rather than silently printing help.
 	var strict func(*cobra.Command)
 	strict = func(c *cobra.Command) {
@@ -68,7 +68,7 @@ func NewRoot(version string) *cobra.Command {
 }
 func nativeRuntime() *cobra.Command {
 	runtime := &cobra.Command{Use: "runtime", Hidden: true}
-	runtime.AddCommand(deploymentcli.Installer("native"))
+	runtime.AddCommand(deploymentcli.Installer("native"), deploymentcli.TransferInstaller("native"))
 	for _, mode := range []string{"control", "loadbalancer", "docker-gateway", "tailnet-gateway"} {
 		mode := mode
 		o := app.Options{}
@@ -129,6 +129,10 @@ func nativeRuntime() *cobra.Command {
 	return runtime
 }
 func runtimeFlags(c *cobra.Command, o *app.Options) {
+	c.Flags().StringVar(&o.Database.Type, "database", "sqlite", "")
+	c.Flags().StringVar(&o.Database.URLFile, "database-url-file", "", "")
+	c.Flags().StringVar(&o.Database.CAFile, "database-ca-file", "", "")
+	c.Flags().StringVar(&o.Database.TLSMode, "database-tls-mode", "", "")
 	c.Flags().StringVar(&o.Hostname, "hostname", "", "")
 	c.Flags().StringVar(&o.StateDir, "state-dir", "", "")
 	c.Flags().StringVar(&o.DataDir, "data-dir", "", "")
@@ -141,7 +145,7 @@ func runtimeFlags(c *cobra.Command, o *app.Options) {
 }
 func kubernetesRuntime() *cobra.Command {
 	runtime := &cobra.Command{Use: "runtime", Hidden: true}
-	runtime.AddCommand(deploymentcli.Installer("kubernetes"))
+	runtime.AddCommand(deploymentcli.Installer("kubernetes"), deploymentcli.TransferInstaller("kubernetes"))
 	var namespaces []string
 	var probe string
 	op := &cobra.Command{Use: "operator", Hidden: true}
@@ -153,11 +157,37 @@ func kubernetesRuntime() *cobra.Command {
 	for _, mode := range []string{"control", "loadbalancer", "gateway"} {
 		mode := mode
 		parent := &cobra.Command{Use: mode, Hidden: true}
-		for _, action := range []string{"bootstrap", "serve"} {
+		actions := []string{"bootstrap", "serve"}
+		if mode == "control" {
+			actions = append(actions, "transfer-hold", "transfer-export", "transfer-mark", "transfer-restore")
+		}
+		for _, action := range actions {
 			action := action
 			o := app.Options{}
 			var cleanup bool
+			var transferID string
 			command := &cobra.Command{Use: action, Hidden: true, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+				switch action {
+				case "transfer-hold":
+					<-c.Context().Done()
+					return nil
+				case "transfer-export":
+					b, err := app.ExportKubernetesControl(c.Context(), o)
+					if err != nil {
+						return err
+					}
+					return json.NewEncoder(c.OutOrStdout()).Encode(b)
+				case "transfer-mark":
+					return app.MarkKubernetesControlTransferred(c.Context(), o, transferID)
+				case "transfer-restore":
+					var b app.ControlTransfer
+					d := json.NewDecoder(io.LimitReader(c.InOrStdin(), 512<<20))
+					d.DisallowUnknownFields()
+					if err := d.Decode(&b); err != nil {
+						return errors.New("invalid control transfer input")
+					}
+					return app.RestoreKubernetesControl(c.Context(), o, &b)
+				}
 				if mode == "gateway" {
 					if cleanup {
 						return app.CleanupKubernetesAgent(c.Context(), o)
@@ -176,6 +206,7 @@ func kubernetesRuntime() *cobra.Command {
 				return app.ServeKubernetesNode(c.Context(), mode, o)
 			}}
 			runtimeFlags(command, &o)
+			command.Flags().StringVar(&transferID, "transfer-id", "", "")
 			command.Flags().StringVar(&o.KubeNamespace, "namespace", "", "")
 			command.Flags().StringVar(&o.Installation, "installation", "", "")
 			command.Flags().StringVar(&o.IdentitySecret, "identity-secret", "", "")

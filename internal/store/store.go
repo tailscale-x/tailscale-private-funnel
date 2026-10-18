@@ -21,7 +21,7 @@ import (
 )
 
 type Store struct {
-	db  *sql.DB
+	db  *database
 	key []byte
 }
 
@@ -99,7 +99,7 @@ func OpenDatabase(dataDir, databaseDir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	s := &Store{db: db}
+	s := &Store{db: &database{DB: db}}
 	s.key, err = secretbox.Open(filepath.Join(dataDir, "master.key"))
 	if err != nil {
 		db.Close()
@@ -247,6 +247,10 @@ func OpenDatabase(dataDir, databaseDir string) (*Store, error) {
 			return nil, err
 		}
 	}
+	if err := s.checkTransferFence(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if err := s.migrateResourceNames(); err != nil {
 		db.Close()
 		return nil, err
@@ -260,6 +264,10 @@ func OpenDatabase(dataDir, databaseDir string) (*Store, error) {
 		return nil, err
 	}
 	if err := s.migrateSharedApplicationServices(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := s.checkTransferFence(); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -450,7 +458,7 @@ func (s *Store) SaveProvider(id, provider string, config map[string]string, enab
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`INSERT INTO providers(id,name,provider,config,enabled,account_id) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider=excluded.provider,config=excluded.config,enabled=excluded.enabled,account_id=excluded.account_id,name=CASE WHEN ? THEN excluded.name ELSE providers.name END`, id, name, provider, sealed, enabled, config["account_id"], len(names) > 0)
+	_, err = s.db.Exec(`INSERT INTO providers(id,name,provider,config,enabled,account_id) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider=excluded.provider,config=excluded.config,enabled=excluded.enabled,account_id=excluded.account_id,name=CASE WHEN ?<>0 THEN excluded.name ELSE providers.name END`, id, name, provider, sealed, enabled, config["account_id"], len(names) > 0)
 	return err
 }
 

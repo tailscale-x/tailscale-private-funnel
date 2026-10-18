@@ -17,7 +17,10 @@ import (
 )
 
 func validatePersistentState(mode string, o Options) error {
-	files := []string{filepath.Join(o.StateDir, "joined"), filepath.Join(o.StateDir, "tailscaled.state"), filepath.Join(o.DataDir, "funnel.db"), filepath.Join(o.DataDir, "master.key")}
+	files := []string{filepath.Join(o.StateDir, "joined"), filepath.Join(o.StateDir, "tailscaled.state"), filepath.Join(o.DataDir, "master.key")}
+	if mode != "control" || o.Database.Type != "postgres" {
+		files = append(files, filepath.Join(o.DataDir, "funnel.db"))
+	}
 	if mode != "control" {
 		files = append(files, filepath.Join(o.DataDir, "node-id"), filepath.Join(o.DataDir, "report-identity.json"), configPath(mode, o))
 	}

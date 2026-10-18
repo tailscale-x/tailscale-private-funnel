@@ -67,6 +67,7 @@ message DeploymentRequest {
   // Resolved placement, carried to the executor without local file references.
   bytes placement_json = 33;
   bytes forwarder_placement_json = 34;
+  DatabaseConfiguration database = 35;
 }
 // Bootstrap credentials must not be persisted in plans, logs or receipts.
 message BootstrapCredentials {
@@ -98,4 +99,16 @@ message DeploymentStep {
   string id = 1;
   string title = 2;
   string description = 3;
+}
+
+// Control database settings contain file paths or Secret references, never credentials.
+message DatabaseConfiguration {
+ string type = 1;
+ string url_file = 2;
+ string ca_file = 3;
+ string tls_mode = 4;
+ string connection_secret = 5;
+ string connection_secret_key = 6;
+ string ca_secret = 7;
+ string ca_secret_key = 8;
 }

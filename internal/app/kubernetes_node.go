@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -19,17 +20,21 @@ import (
 )
 
 func openRuntimeStore(o Options) (*store.Store, error) {
-	if o.DatabaseDir != "" {
-		return store.OpenDatabase(o.DataDir, o.DatabaseDir)
+	database := o.Database
+	if o.RequireJoined {
+		database.RequireExisting = true
 	}
-	return store.Open(o.DataDir)
+	if _, err := os.Stat(filepath.Join(o.StateDir, "joined")); err == nil {
+		database.RequireExisting = true
+	}
+	return store.OpenConfigured(o.DataDir, o.DatabaseDir, database)
 }
 
 func kubernetesNodeOptions(mode string, o Options) (Options, error) {
 	if mode != "control" && mode != "loadbalancer" {
 		return o, fmt.Errorf("Kubernetes node storage requires control or loadbalancer")
 	}
-	if o.IdentitySecret == "" || o.KubeNamespace == "" || o.PersistentDir == "" {
+	if o.IdentitySecret == "" || o.KubeNamespace == "" || (o.PersistentDir == "" && o.Database.Type != "postgres") {
 		return o, fmt.Errorf("namespace, identity Secret and persistent directory required")
 	}
 	if o.StateDir == "" {
@@ -38,7 +43,10 @@ func kubernetesNodeOptions(mode string, o Options) (Options, error) {
 	if o.DataDir == "" {
 		o.DataDir = "/var/lib/tailscale-private-funnel/data"
 	}
-	if mode == "control" {
+	if mode == "control" && o.Database.Type == "postgres" {
+		o.PersistentDir = ""
+	}
+	if mode == "control" && o.Database.Type != "postgres" {
 		o.DatabaseDir = filepath.Join(o.PersistentDir, "sqlite")
 	}
 	return o, nil
@@ -46,11 +54,17 @@ func kubernetesNodeOptions(mode string, o Options) (Options, error) {
 
 func prepareNodeStorage(mode string, o Options) error {
 	for _, dir := range []string{o.StateDir, o.DataDir, o.PersistentDir} {
+		if dir == "" {
+			continue
+		}
 		if e := os.MkdirAll(dir, 0700); e != nil {
 			return e
 		}
 	}
 	if mode == "control" {
+		if o.Database.Type == "postgres" {
+			return nil
+		}
 		return os.MkdirAll(o.DatabaseDir, 0700)
 	}
 	dir := filepath.Join(o.PersistentDir, "caddy")
@@ -148,10 +162,27 @@ func exportNodeBundle(mode string, o Options) (map[string][]byte, error) {
 	if e != nil {
 		return nil, e
 	}
-	data["storage-marker"] = []byte(marker)
-	if e = os.WriteFile(nodeStorageMarker(mode, o), []byte(marker), 0600); e != nil {
+	if mode == "control" && o.Database.Type == "postgres" {
+		st, err := openRuntimeStore(o)
+		if err != nil {
+			return nil, err
+		}
+		defer st.Close()
+		current, err := st.StorageMarker("")
+		if err != nil {
+			return nil, err
+		}
+		if current == "" {
+			current, err = st.StorageMarker(marker)
+			if err != nil {
+				return nil, err
+			}
+		}
+		marker = current
+	} else if e = os.WriteFile(nodeStorageMarker(mode, o), []byte(marker), 0600); e != nil {
 		return nil, e
 	}
+	data["storage-marker"] = []byte(marker)
 	return data, nil
 }
 func nodeStorageMarker(mode string, o Options) string {
@@ -165,11 +196,31 @@ func restoreNodeBundle(mode string, o Options, s core.Secret) (Options, error) {
 	if e := validateNodeBundle(mode, s); e != nil {
 		return o, e
 	}
-	marker, e := os.ReadFile(nodeStorageMarker(mode, o))
+	var marker []byte
+	var e error
+	if mode == "control" && o.Database.Type == "postgres" {
+		o.Database.RequireExisting = true
+		if e = prepareNodeStorage(mode, o); e != nil {
+			return o, e
+		}
+		if e = os.WriteFile(filepath.Join(o.DataDir, "master.key"), s.Data["master.key"], 0600); e != nil {
+			return o, e
+		}
+		st, err := openRuntimeStore(o)
+		if err != nil {
+			return o, err
+		}
+		value, err := st.StorageMarker("")
+		st.Close()
+		marker = []byte(value)
+		e = err
+	} else {
+		marker, e = os.ReadFile(nodeStorageMarker(mode, o))
+	}
 	if e != nil || !bytes.Equal(marker, s.Data["storage-marker"]) {
 		return o, fmt.Errorf("persistent storage missing or does not match identity Secret; restore matching backup")
 	}
-	if mode == "control" {
+	if mode == "control" && o.Database.Type != "postgres" {
 		if info, e := os.Stat(filepath.Join(o.DatabaseDir, "funnel.db")); e != nil || info.Size() == 0 {
 			return o, fmt.Errorf("persistent SQLite database missing")
 		}
@@ -199,6 +250,9 @@ func restoreNodeBundle(mode string, o Options, s core.Secret) (Options, error) {
 			return o, e
 		}
 		defer st.Close()
+		if _, e := st.GetSecret("control_configuration_key"); e != nil {
+			return o, fmt.Errorf("database signing identity missing; restore matching backup")
+		}
 		_, key, e := st.ConfigurationKey()
 		if e != nil {
 			return o, e
@@ -232,13 +286,37 @@ func BootstrapKubernetesNode(ctx context.Context, mode string, o Options) error 
 	if e = c.Get(ctx, types.NamespacedName{Namespace: o.KubeNamespace, Name: o.IdentitySecret}, &s); e != nil {
 		return fmt.Errorf("precreated identity Secret required: %w", e)
 	}
-	if len(s.Data) > 0 {
+	if len(s.Data) > 0 && (o.Database.Type != "postgres" || string(s.Data["initialized"]) == "1") {
 		_, e = restoreNodeBundle(mode, o, s)
 		return e
 	}
 	if e = prepareNodeStorage(mode, o); e != nil {
 		return e
 	}
+	if mode == "control" && o.Database.Type == "postgres" {
+		// Persist the encryption root before initializing the remote database, so a
+		// failed first bootstrap can safely retry in a replacement Pod.
+		if s.Data == nil {
+			s.Data = map[string][]byte{}
+		}
+		if len(s.Data["master.key"]) == 0 {
+			key := make([]byte, 32)
+			if _, e = rand.Read(key); e != nil {
+				return e
+			}
+			s.Data["master.key"] = key
+			if e = c.Update(ctx, &s); e != nil {
+				return e
+			}
+		}
+		if len(s.Data["master.key"]) != 32 {
+			return fmt.Errorf("invalid database encryption key")
+		}
+		if e = os.WriteFile(filepath.Join(o.DataDir, "master.key"), s.Data["master.key"], 0600); e != nil {
+			return e
+		}
+	}
+
 	existing := filepath.Join(o.PersistentDir, "caddy", ".funnel-storage")
 	if mode == "control" {
 		existing = filepath.Join(o.DatabaseDir, "funnel.db")

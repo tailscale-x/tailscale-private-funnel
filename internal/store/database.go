@@ -1,0 +1,75 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+
+	"github.com/jmoiron/sqlx"
+)
+
+// database keeps dialect concerns out of policy, enrollment and ledger logic.
+// One connection preserves the serialized access used by the SQLite backend.
+type database struct {
+	*sql.DB
+	postgres bool
+}
+type transaction struct {
+	*sql.Tx
+	postgres bool
+}
+
+func bind(q string, postgres bool) string {
+	if postgres {
+		return sqlx.Rebind(sqlx.DOLLAR, q)
+	}
+	return q
+}
+func (d *database) Exec(q string, args ...any) (sql.Result, error) {
+	return d.DB.Exec(bind(q, d.postgres), arguments(args, d.postgres)...)
+}
+func (d *database) Query(q string, args ...any) (*sql.Rows, error) {
+	return d.DB.Query(bind(q, d.postgres), arguments(args, d.postgres)...)
+}
+func (d *database) QueryRow(q string, args ...any) *sql.Row {
+	return d.DB.QueryRow(bind(q, d.postgres), arguments(args, d.postgres)...)
+}
+func (d *database) Begin() (*transaction, error) {
+	t, e := d.DB.Begin()
+	if e != nil {
+		return nil, e
+	}
+	return &transaction{Tx: t, postgres: d.postgres}, nil
+}
+func (t *transaction) Exec(q string, args ...any) (sql.Result, error) {
+	return t.Tx.Exec(bind(q, t.postgres), arguments(args, t.postgres)...)
+}
+func (t *transaction) Query(q string, args ...any) (*sql.Rows, error) {
+	return t.Tx.Query(bind(q, t.postgres), arguments(args, t.postgres)...)
+}
+func (t *transaction) QueryRow(q string, args ...any) *sql.Row {
+	return t.Tx.QueryRow(bind(q, t.postgres), arguments(args, t.postgres)...)
+}
+func (s *Store) Backend() string {
+	if s.db.postgres {
+		return "postgres"
+	}
+	return "sqlite"
+}
+func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
+
+func arguments(in []any, postgres bool) []any {
+	if !postgres {
+		return in
+	}
+	out := append([]any(nil), in...)
+	for i, v := range out {
+		if b, ok := v.(bool); ok {
+			if b {
+				out[i] = int64(1)
+			} else {
+				out[i] = int64(0)
+			}
+		}
+	}
+	return out
+}

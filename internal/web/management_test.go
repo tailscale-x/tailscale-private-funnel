@@ -83,7 +83,7 @@ func installDNSFixture(t *testing.T, s *store.Store, zones ...string) *fixtureDN
 }
 func testControl(t *testing.T) (*Control, *store.Store) {
 	t.Helper()
-	s, err := store.Open(t.TempDir())
+	s, err := testWebStore(t)
 	if err != nil {
 		t.Fatal(err)
 	}

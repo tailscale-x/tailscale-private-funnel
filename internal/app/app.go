@@ -305,12 +305,14 @@ func controlOAuthAuthKey(ctx context.Context, o Options) (string, bool, error) {
 }
 
 type runtimeStatus struct {
-	Ready    bool     `json:"ready"`
-	Mode     string   `json:"mode"`
-	Hostname string   `json:"hostname"`
-	State    string   `json:"state"`
-	IPs      []string `json:"ips"`
-	Health   []string `json:"health,omitempty"`
+	Ready           bool     `json:"ready"`
+	Mode            string   `json:"mode"`
+	Hostname        string   `json:"hostname"`
+	State           string   `json:"state"`
+	IPs             []string `json:"ips"`
+	Health          []string `json:"health,omitempty"`
+	DatabaseBackend string   `json:"database_backend,omitempty"`
+	DatabaseReady   bool     `json:"database_ready"`
 }
 
 func writeRuntimeStatus(dataDir string, status runtimeStatus) error {
@@ -336,10 +338,18 @@ func serveOptions(mode string, o Options) (Options, error) {
 }
 
 func Serve(ctx context.Context, mode string, o Options) error {
+	if _, e := os.Stat(filepath.Join(o.StateDir, "restore-incomplete")); e == nil {
+		return errors.New("control restore incomplete; refusing startup")
+	}
 	var err error
 	o, err = serveOptions(mode, o)
 	if err != nil {
 		return err
+	}
+	for _, f := range []string{"transfer-fenced", "restore-incomplete"} {
+		if _, e := os.Stat(filepath.Join(o.StateDir, f)); e == nil {
+			return errors.New("control state is fenced; refusing startup")
+		}
 	}
 	if o.RequireJoined {
 		if err := validatePersistentState(mode, o); err != nil {
@@ -347,6 +357,7 @@ func Serve(ctx context.Context, mode string, o Options) error {
 		}
 	}
 	var runtimeReady atomic.Bool
+	var databaseProbe atomic.Pointer[store.Store]
 	if !o.BootstrapOnly && (mode == "control" || mode == "loadbalancer") && o.ProbeListen != "" {
 		ln, err := net.Listen("tcp", o.ProbeListen)
 		if err != nil {
@@ -360,6 +371,15 @@ func Serve(ctx context.Context, mode string, o Options) error {
 			if r.URL.Path == "/readyz" && !runtimeReady.Load() {
 				http.Error(w, "starting", 503)
 				return
+			}
+			if r.URL.Path == "/readyz" && mode == "control" {
+				st := databaseProbe.Load()
+				ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+				defer cancel()
+				if st == nil || st.Ping(ctx) != nil {
+					http.Error(w, "database unavailable", 503)
+					return
+				}
 			}
 			w.WriteHeader(204)
 		})}
@@ -382,6 +402,12 @@ func Serve(ctx context.Context, mode string, o Options) error {
 		return err
 	}
 	defer st.Close()
+	databaseProbe.Store(st)
+	if mode == "control" {
+		if _, _, err := st.ConfigurationKey(); err != nil {
+			return err
+		}
+	}
 	// A persistent node only needs its enrollment material during its first
 	// bind. Subsequent starts reuse the identity already stored in StateDir.
 	joinedMarker := filepath.Join(o.StateDir, "joined")
@@ -458,7 +484,11 @@ func Serve(ctx context.Context, mode string, o Options) error {
 			for _, ip := range current.TailscaleIPs {
 				ips = append(ips, ip.String())
 			}
-			_ = writeRuntimeStatus(o.DataDir, runtimeStatus{Mode: mode, Hostname: o.Hostname, State: current.BackendState, IPs: ips, Health: current.Health})
+			_ = writeRuntimeStatus(o.DataDir, runtimeStatus{Mode: mode, Hostname: o.Hostname, State: current.BackendState, IPs: ips, Health: current.Health, DatabaseBackend: st.Backend(), DatabaseReady: func() bool {
+				ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				defer cancel()
+				return st.Ping(ctx) == nil
+			}()})
 		}
 	}
 	defer os.Remove(filepath.Join(o.DataDir, "serve.pid"))
@@ -609,6 +639,7 @@ func Serve(ctx context.Context, mode string, o Options) error {
 	}
 	markRuntimeReady(o.DataDir)
 	runtimeReady.Store(true)
+	go monitorControlDatabase(ctx, st, o.DataDir)
 	err = server.Serve(ln)
 	if errors.Is(err, http.ErrServerClosed) && ctx.Err() != nil {
 		return nil
@@ -867,4 +898,31 @@ func initializeControlManagement(st *store.Store, address, listen, version strin
 		settings["release_version"] = version
 	}
 	return st.SetJSON("tailnet", settings)
+}
+
+func monitorControlDatabase(ctx context.Context, st *store.Store, dataDir string) {
+	tick := time.NewTicker(5 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			check, cancel := context.WithTimeout(ctx, 2*time.Second)
+			ready := st.Ping(check) == nil
+			cancel()
+			data, err := os.ReadFile(filepath.Join(dataDir, "runtime-status.json"))
+			if err != nil {
+				continue
+			}
+			var status runtimeStatus
+			if json.Unmarshal(data, &status) != nil {
+				continue
+			}
+			status.DatabaseBackend = st.Backend()
+			status.DatabaseReady = ready
+			status.Ready = ready
+			_ = writeRuntimeStatus(dataDir, status)
+		}
+	}
 }

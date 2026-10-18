@@ -1,9 +1,10 @@
 {{- if or (eq .Values.component "control") (eq .Values.component "loadbalancer") }}
 {{- include "funnel.namespaceIsolation" . }}
 {{- $control := eq .Values.component "control" }}
+{{- $postgres := and $control (eq .Values.control.database.type "postgres") }}
 {{- $identity := default (printf "%s-identity" .Release.Name) .Values.identity.existingSecret }}
 {{- $claim := default (printf "%s-data" .Release.Name) .Values.persistence.existingClaim }}
-{{- if not .Values.persistence.existingClaim }}
+{{- if and (not $postgres) (not .Values.persistence.existingClaim) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -58,6 +59,14 @@ spec:
             - --namespace={{ .Release.Namespace }}
             - --identity-secret={{ $identity }}
             - --persistent-dir=/persistent
+            {{- if $postgres }}
+            - --database=postgres
+            - --database-url-file=/database/url
+            - --database-tls-mode={{ default "verify-full" .Values.control.database.postgres.tlsMode }}
+            {{- if .Values.control.database.postgres.caSecretRef }}
+            - --database-ca-file=/database/ca.crt
+            {{- end }}
+            {{- end }}
             - --bootstrap-secret-dir=/bootstrap
             {{- if $control }}
             - --hostname={{ .Values.control.hostname }}
@@ -67,7 +76,11 @@ spec:
           resources: {{ toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - {name: runtime, mountPath: /var/lib/tailscale-private-funnel}
+            {{- if $postgres }}
+            - {name: database, mountPath: /database, readOnly: true}
+            {{- else }}
             - {name: data, mountPath: /persistent}
+            {{- end }}
             - {name: tmp, mountPath: /tmp}
             - {name: bootstrap, mountPath: /bootstrap, readOnly: true}
             - {name: api, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
@@ -83,6 +96,14 @@ spec:
             - --namespace={{ .Release.Namespace }}
             - --identity-secret={{ $identity }}
             - --persistent-dir=/persistent
+            {{- if $postgres }}
+            - --database=postgres
+            - --database-url-file=/database/url
+            - --database-tls-mode={{ default "verify-full" .Values.control.database.postgres.tlsMode }}
+            {{- if .Values.control.database.postgres.caSecretRef }}
+            - --database-ca-file=/database/ca.crt
+            {{- end }}
+            {{- end }}
             - --probe-listen=:9090
             {{- if not $control }}
             - --kubernetes-service={{ .Release.Name }}-public
@@ -107,13 +128,32 @@ spec:
           resources: {{ toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - {name: runtime, mountPath: /var/lib/tailscale-private-funnel}
+            {{- if $postgres }}
+            - {name: database, mountPath: /database, readOnly: true}
+            {{- else }}
             - {name: data, mountPath: /persistent}
+            {{- end }}
             - {name: tmp, mountPath: /tmp}
             - {name: api, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
       volumes:
         - {name: tmp, emptyDir: {}}
         - {name: runtime, emptyDir: {}}
+        {{- if $postgres }}
+        - name: database
+          projected:
+            defaultMode: 0440
+            sources:
+              - secret:
+                  name: {{ .Values.control.database.postgres.connectionSecretRef.name | quote }}
+                  items: [{key: {{ .Values.control.database.postgres.connectionSecretRef.key | quote }}, path: url}]
+              {{- if .Values.control.database.postgres.caSecretRef }}
+              - secret:
+                  name: {{ .Values.control.database.postgres.caSecretRef.name | quote }}
+                  items: [{key: {{ .Values.control.database.postgres.caSecretRef.key | quote }}, path: ca.crt}]
+              {{- end }}
+        {{- else }}
         - {name: data, persistentVolumeClaim: {claimName: {{ $claim }}}}
+        {{- end }}
         - name: bootstrap
           secret:
             secretName: {{ required "bootstrap.existingSecret is required" .Values.bootstrap.existingSecret }}
@@ -193,6 +233,15 @@ spec:
     - ports: [{protocol: TCP, port: 80}, {protocol: TCP, port: 443}]
     {{- end }}
   egress:
+    {{- if $postgres }}
+    - to:
+        {{- if .Values.control.database.postgres.egressPeers }}
+        {{- toYaml .Values.control.database.postgres.egressPeers | nindent 8 }}
+        {{- else }}
+        - podSelector: {}
+        {{- end }}
+      ports: [{protocol: TCP, port: {{ default 5432 .Values.control.database.postgres.port }}}]
+    {{- end }}
     - ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 6443}, {protocol: UDP, port: 53}, {protocol: TCP, port: 53}, {protocol: UDP, port: 1, endPort: 65535}]
 {{- end }}
 {{- end }}

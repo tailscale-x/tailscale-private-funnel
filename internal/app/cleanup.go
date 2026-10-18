@@ -231,7 +231,7 @@ func ControlDeletionReady(o Options) error {
 	if e != nil {
 		return e
 	}
-	if _, e = os.Stat(filepath.Join(o.DataDir, "funnel.db")); os.IsNotExist(e) {
+	if _, e = os.Stat(filepath.Join(o.DataDir, "funnel.db")); o.Database.Type != "postgres" && os.IsNotExist(e) {
 		return nil
 	}
 	st, e := openRuntimeStore(o)

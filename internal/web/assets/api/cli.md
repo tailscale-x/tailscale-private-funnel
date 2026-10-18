@@ -6,6 +6,8 @@ Use `native` for this Linux machine, `k8s` with an explicit `--context` for oper
 
 Use `--output json`, mutation `--dry-run`, target-side deployment `--wait` and `--timeout`, and `--yes` for destructive deletion. UI instruction generation is read-only; CLI create issues enrollment credentials, while hidden installers execute deployment. Stop preserves identity and data; delete revokes and removes owned state.
 
+Control transfer: `tailscale-private-funnel transfer-remote NAME native|k8s --source native|k8s --out FILE --yes` stops/fences the source, saves a private installer, then removes owned source state without revocation. Execute the saved installer on the destination. See docs/CONTROL_TRANSFER.md.
+
 Management uses `--control-url` or XDG client.json. Secret inputs are file/stdin only. Exit codes: 0 success, 1 failure, 2 invalid input, 3 authorization, 4 transport unavailable, 5 conflict, 6 timeout.
 
 ## manage whoami
@@ -514,6 +516,12 @@ Flags:
       --administrator stringArray         additional first-bootstrap administrator selector; default autogroup:owner remains
       --context string                    explicit Kubernetes context (required)
       --control-url string                Funnel control URL
+      --database string                   control database: sqlite or postgres (default "sqlite")
+      --database-ca-secret string         existing PostgreSQL CA Secret
+      --database-ca-secret-key string     CA Secret key (default "ca.crt")
+      --database-secret string            existing PostgreSQL connection Secret
+      --database-secret-key string        connection Secret key (default "uri")
+      --database-tls-mode string          PostgreSQL TLS mode (default verify-full)
       --display-name string               editable display label
       --dry-run                           validate and render without mutation
   -h, --help                              help for create
@@ -1825,6 +1833,10 @@ Flags:
       --administrator stringArray         additional first-bootstrap administrator selector; default autogroup:owner remains
       --control-url string                Funnel control URL
       --data-dir string                   persistent application path
+      --database string                   control database: sqlite or postgres (default "sqlite")
+      --database-ca-file string           target-side PostgreSQL CA file
+      --database-tls-mode string          PostgreSQL TLS mode (default verify-full)
+      --database-url-file string          protected target-side PostgreSQL connection file
       --display-name string               editable display label
       --dry-run                           validate and render without mutation
   -h, --help                              help for create
@@ -2317,4 +2329,47 @@ Flags:
       --timeout duration      operation timeout (default 10m0s)
       --version string        pinned component version (default "VERSION")
       --wait                  wait for reconciliation and readiness
+```
+
+## tailscale-private-funnel transfer-remote
+
+```text
+Usage:
+  tailscale-private-funnel transfer-remote NAME <native|k8s> [flags]
+
+Flags:
+      --context string                    destination Kubernetes context; used only by the installer
+      --data-dir string                   destination native data path
+      --database string                   control database: sqlite or postgres (default "sqlite")
+      --database-ca-file string           destination PostgreSQL CA file
+      --database-ca-secret string         existing PostgreSQL CA Secret
+      --database-ca-secret-key string     CA Secret key (default "ca.crt")
+      --database-secret string            existing PostgreSQL connection Secret
+      --database-secret-key string        connection Secret key (default "uri")
+      --database-tls-mode string          PostgreSQL TLS mode (default verify-full)
+      --database-url-file string          protected destination PostgreSQL connection file
+      --display-name string               editable display label
+      --dry-run                           validate and render without mutation
+  -h, --help                              help for transfer-remote
+      --hostname string                   Tailscale hostname; defaults to resource name
+      --installation string               installation trust boundary (default "main")
+      --namespace string                  destination Kubernetes namespace; required for k8s
+      --node-selector stringToString      component placement (gateway: forwarders); key=value pairs (default [])
+      --oauth-client-id-file string       protected OAuth client ID file
+      --oauth-client-secret-file string   protected OAuth client secret file
+      --out string                        new private installer file, outside source storage (required)
+      --output string                     output: table or json (default "table")
+      --placement-file string             component Pod placement JSON (nodeSelector, affinity, tolerations)
+      --source string                     source deployment: native or k8s (required)
+      --source-context string             explicit source Kubernetes context
+      --source-kubeconfig string          source kubeconfig file
+      --source-namespace string           explicit source Kubernetes namespace
+      --state-dir string                  destination native identity path
+      --storage-class string              PVC StorageClass; omit only when the cluster has a default
+      --storage-size string               persistent volume size (default "1Gi")
+      --tailnet string                    Tailscale tailnet name
+      --timeout duration                  operation timeout (default 10m0s)
+      --version string                    pinned component version (default "VERSION")
+      --wait                              wait for reconciliation and readiness
+      --yes                               confirm source shutdown and removal after verified export
 ```

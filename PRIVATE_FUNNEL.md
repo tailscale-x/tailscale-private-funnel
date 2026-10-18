@@ -26,9 +26,9 @@ Human Owner access defaults to `autogroup:owner`; role verification requires OAu
 `users:read`. Tagged nodes never inherit the human owner's management role.
 
 OAuth needs `auth_keys`, `devices:core`, and `services` for the shared tag, plus
-`users:read` for human role verification. Credentials stay encrypted in control SQLite.
+`users:read` for human role verification. Credentials stay encrypted in the control database (SQLite or PostgreSQL).
 For native control, back up both `funnel.db` and `master.key`. In Kubernetes, back up
-the SQLite PVC and matching identity Secret; the encryption key is in that Secret.
+the SQLite PVC or PostgreSQL database and matching identity Secret; the encryption key is in that Secret. See [PostgreSQL and GitOps](docs/POSTGRESQL.md).
 
 ## Bootstrap control, then use the UI
 
@@ -113,7 +113,7 @@ installers that create component CRs when executed. Every operation requires `--
 
 Components live in `tailscale-private-funnel-<installation>-system`. Control and
 load balancers use Recreate Deployments with separate identities. SQLite and
-Caddy certificates live on component PVCs. A FunnelGateway owns a gateway-agent
+Caddy certificates live on component PVCs; PostgreSQL controls instead use an external database without a control PVC. A FunnelGateway owns a gateway-agent
 Deployment, broker, and forwarder DaemonSet. The agent and per-node identities
 persist in namespace-scoped Secrets; enable Kubernetes Secrets encryption and
 include these Secrets in cluster backups. Never share an identity concurrently.
@@ -221,7 +221,7 @@ and Events. For Docker, check label syntax, selected user-defined networks,
 deny patterns and relay backend probes. For tailnet backends, verify effective
 tags, peer freshness and the selected HTTP port. Visibility does not prove access.
 
-For rollback use the previous pinned artifact and a matching SQLite/identity
+For rollback use the previous pinned artifact and a matching database/identity
 backup when schemas require it. Keep private backup credentials out of logs.
 
 ## Removing temporary administrator access
@@ -244,7 +244,7 @@ If an installation database is lost, a fresh control cannot prove ownership of o
 DNS records or enrollments. Re-enroll nodes and explicitly approve only the exact
 DNS previews you intend to reclaim. Do not reconstruct ownership from a hostname
 prefix or remove unrelated records. A removed cluster is not a recoverable control
-backup; keep SQLite and its encryption/signing keys together.
+backup; keep the database and its encryption/signing keys together.
 
 ## Installer generation
 
@@ -252,3 +252,7 @@ All public native and Kubernetes `create` commands now generate installers.
 Run non-control creation from an authorized machine, then transfer its secret
 15-minute installer to the execution host. Targets join embedded tsnet before
 contacting control. See [the installer workflow](docs/INSTALLER-WORKFLOW.md).
+
+## Control transfer
+
+[`transfer-remote`](docs/CONTROL_TRANSFER.md) moves a stopped control through a private, portable installer. It supports native/Kubernetes and SQLite/PostgreSQL destinations, preserves identity and DNS ownership, and requires `--out` before removing the fenced source. Ordinary deletion remains revocation and must not be used to move control.

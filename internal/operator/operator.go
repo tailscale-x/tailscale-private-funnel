@@ -73,6 +73,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.
 		}
 		return ctrl.Result{RequeueAfter: time.Millisecond}, nil
 	}
+	if control, ok := object.(*funnel.FunnelControl); ok && control.Spec.Transfer != nil {
+		return r.reconcileTransfer(ctx, control)
+	}
 	_, spec, _ := component(object)
 	if spec.Image == "" || strings.HasSuffix(spec.Image, ":latest") || strings.HasSuffix(spec.Image, ":dev") {
 		return r.condition(ctx, object, false, "InvalidConfiguration", "A pinned component image is required")
@@ -214,7 +217,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.
 			ready = ready && len(status.PublicAddresses) > 0
 		}
 	}
-	if mode == "control" || mode == "loadbalancer" {
+	if (mode == "control" && object.(*funnel.FunnelControl).Spec.Database.Type != "postgres") || mode == "loadbalancer" {
 		claimName := object.GetName() + "-data"
 		if spec.Storage.ExistingClaim != "" {
 			claimName = spec.Storage.ExistingClaim
@@ -291,6 +294,9 @@ func (r *Reconciler) ensure(ctx context.Context, owner, desired client.Object) e
 func (r *Reconciler) cleanup(ctx context.Context, o client.Object) (ctrl.Result, error) {
 	if !controllerutil.ContainsFinalizer(o, Finalizer) {
 		return ctrl.Result{}, nil
+	}
+	if control, ok := o.(*funnel.FunnelControl); ok && control.Spec.Transfer != nil {
+		return r.cleanupTransferred(ctx, control)
 	}
 	mode, _, status := component(o)
 	var durable core.Secret

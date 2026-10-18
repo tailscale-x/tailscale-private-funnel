@@ -88,8 +88,18 @@ func Render(o client.Object) ([]client.Object, error) {
 	}
 	switch v := o.(type) {
 	case *funnel.FunnelControl:
+		if v.Spec.Database.Type == "postgres" {
+			pg := v.Spec.Database.Postgres
+			if pg == nil || pg.ConnectionSecretRef.Name == "" || pg.ConnectionSecretRef.Key == "" {
+				return nil, fmt.Errorf("PostgreSQL connection Secret and key are required")
+			}
+			if pg.ConnectionSecretRef.Name == identityName(o) || (pg.CASecretRef != nil && pg.CASecretRef.Name == identityName(o)) {
+				return nil, fmt.Errorf("database credentials and identity must use different Secrets")
+			}
+		}
 		placement["hostname"] = s.Hostname
 		placement["tailnet"] = v.Spec.Tailnet
+		placement["database"] = v.Spec.Database
 		values["control"] = placement
 	case *funnel.FunnelLoadBalancer:
 		placement["service"] = map[string]any{"annotations": v.Spec.PublicService.Annotations, "loadBalancerClass": v.Spec.PublicService.LoadBalancerClass, "loadBalancerSourceRanges": v.Spec.PublicService.SourceRanges, "externalTrafficPolicy": v.Spec.PublicService.ExternalTrafficPolicy}

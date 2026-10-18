@@ -39,6 +39,8 @@ persistence:
   size: 1Gi
   storageClass: ""
 control:
+  database:
+    type: sqlite
   nodeSelector: {}
   affinity: {}
   tolerations: []

@@ -85,7 +85,7 @@ func newCR(kind, name string, f Flags) client.Object {
 	meta := metav1.ObjectMeta{Name: name, Namespace: f.Namespace, Annotations: map[string]string{"tailscale-private-funnel.io/display-name": f.DisplayName}}
 	switch mode {
 	case "control":
-		return &funnel.FunnelControl{TypeMeta: metav1.TypeMeta{APIVersion: funnel.GroupVersion.String(), Kind: "FunnelControl"}, ObjectMeta: meta, Spec: funnel.ControlSpec{ComponentSpec: spec, Tailnet: f.Tailnet}}
+		return &funnel.FunnelControl{TypeMeta: metav1.TypeMeta{APIVersion: funnel.GroupVersion.String(), Kind: "FunnelControl"}, ObjectMeta: meta, Spec: funnel.ControlSpec{ComponentSpec: spec, Tailnet: f.Tailnet, Database: controlDatabase(f)}}
 	case "loadbalancer":
 		return &funnel.FunnelLoadBalancer{TypeMeta: metav1.TypeMeta{APIVersion: funnel.GroupVersion.String(), Kind: "FunnelLoadBalancer"}, ObjectMeta: meta, Spec: funnel.LoadBalancerSpec{ComponentSpec: spec}}
 	default:
@@ -614,4 +614,26 @@ func readPlacement(path string) (*funnel.Placement, error) {
 		return nil, errors.New("Pod placement requires one JSON object")
 	}
 	return &p, nil
+}
+
+func controlDatabase(f Flags) funnel.ControlDatabase {
+	d := funnel.ControlDatabase{Type: f.Database}
+	if d.Type == "" {
+		d.Type = "sqlite"
+	}
+	if d.Type == "postgres" {
+		key := f.DatabaseSecretKey
+		if key == "" {
+			key = "uri"
+		}
+		d.Postgres = &funnel.PostgresDatabase{ConnectionSecretRef: core.SecretKeySelector{LocalObjectReference: core.LocalObjectReference{Name: f.DatabaseSecret}, Key: key}, TLSMode: f.DatabaseTLSMode}
+		if f.DatabaseCASecret != "" {
+			key := f.DatabaseCASecretKey
+			if key == "" {
+				key = "ca.crt"
+			}
+			d.Postgres.CASecretRef = &core.SecretKeySelector{LocalObjectReference: core.LocalObjectReference{Name: f.DatabaseCASecret}, Key: key}
+		}
+	}
+	return d
 }

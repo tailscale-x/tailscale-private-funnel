@@ -1,0 +1,26 @@
+# Merge these keys into your existing argocd-cm through its normal GitOps owner.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  resource.customizations.health.tailscale-private-funnel.io_FunnelControl: |
+    local hs = { status = "Progressing", message = "Waiting for control readiness" }
+    if obj.metadata.deletionTimestamp ~= nil then
+      hs.message = "Waiting for owned-resource cleanup"
+      return hs
+    end
+    if obj.status ~= nil and obj.status.conditions ~= nil then
+      for _, c in ipairs(obj.status.conditions) do
+        if c.type == "Ready" then
+          hs.message = c.message or hs.message
+          if c.status == "True" and c.observedGeneration == obj.metadata.generation then
+            hs.status = "Healthy"
+          elseif c.reason == "BootstrapFailed" or c.reason == "InvalidConfiguration" or c.reason == "OwnershipConflict" then
+            hs.status = "Degraded"
+          end
+        end
+      end
+    end
+    return hs

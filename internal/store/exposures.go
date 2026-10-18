@@ -85,7 +85,7 @@ func (s *Store) migrateExposures() error {
 	}
 	return tx.Commit()
 }
-func (s *Store) syncApplicationExposures(tx *sql.Tx, a ApplicationRecord) error {
+func (s *Store) syncApplicationExposures(tx *transaction, a ApplicationRecord) error {
 	var err error
 	if _, err = tx.Exec(`UPDATE exposures SET active=0 WHERE application_id=?`, a.ID); err != nil {
 		return err

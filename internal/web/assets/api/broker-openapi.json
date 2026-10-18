@@ -564,6 +564,46 @@
         "title": "DNSResult",
         "type": "object"
       },
+      "funnel.v1.DatabaseConfiguration": {
+        "additionalProperties": false,
+        "description": "Control database settings contain file paths or Secret references, never credentials.",
+        "properties": {
+          "caFile": {
+            "title": "ca_file",
+            "type": "string"
+          },
+          "caSecret": {
+            "title": "ca_secret",
+            "type": "string"
+          },
+          "caSecretKey": {
+            "title": "ca_secret_key",
+            "type": "string"
+          },
+          "connectionSecret": {
+            "title": "connection_secret",
+            "type": "string"
+          },
+          "connectionSecretKey": {
+            "title": "connection_secret_key",
+            "type": "string"
+          },
+          "tlsMode": {
+            "title": "tls_mode",
+            "type": "string"
+          },
+          "type": {
+            "title": "type",
+            "type": "string"
+          },
+          "urlFile": {
+            "title": "url_file",
+            "type": "string"
+          }
+        },
+        "title": "DatabaseConfiguration",
+        "type": "object"
+      },
       "funnel.v1.DeleteRuleRequest": {
         "additionalProperties": false,
         "properties": {
@@ -741,6 +781,14 @@
           "dataDir": {
             "title": "data_dir",
             "type": "string"
+          },
+          "database": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.DatabaseConfiguration"
+              }
+            ],
+            "title": "database"
           },
           "denyNetworks": {
             "items": {
@@ -1400,6 +1448,14 @@
           "applications": {
             "title": "applications",
             "type": "integer"
+          },
+          "databaseBackend": {
+            "title": "database_backend",
+            "type": "string"
+          },
+          "databaseReady": {
+            "title": "database_ready",
+            "type": "boolean"
           },
           "deployment": {
             "allOf": [

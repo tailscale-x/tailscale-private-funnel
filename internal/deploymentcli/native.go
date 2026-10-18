@@ -21,6 +21,7 @@ import (
 )
 
 type Flags struct {
+	Database, DatabaseURLFile, DatabaseCAFile, DatabaseTLSMode, DatabaseSecret, DatabaseSecretKey, DatabaseCASecret, DatabaseCASecretKey                                                                                                                                                      string
 	StorageClass, StorageSize, PlacementFile, ForwarderPlacementFile, Installation, ConfigFile, Type, Output, Version, DisplayName, Hostname, ControlURL, Namespace, Context, Kubeconfig, Tailnet, StateDir, DataDir, OAuthID, OAuthSecret, PublicHostname, Email, GatewayClass, IngressClass string
 	Wait, DryRun, Yes                                                                                                                                                                                                                                                                         bool
 	Timeout                                                                                                                                                                                                                                                                                   time.Duration
@@ -76,6 +77,17 @@ func creation(c *cobra.Command, f *Flags, kind string, kube bool) {
 		c.Flags().StringVar(&f.Type, "type", "", "gateway type: docker or tailnet")
 	}
 	if kind == "controls" {
+		c.Flags().StringVar(&f.Database, "database", "sqlite", "control database: sqlite or postgres")
+		c.Flags().StringVar(&f.DatabaseTLSMode, "database-tls-mode", "", "PostgreSQL TLS mode (default verify-full)")
+		if kube {
+			c.Flags().StringVar(&f.DatabaseSecret, "database-secret", "", "existing PostgreSQL connection Secret")
+			c.Flags().StringVar(&f.DatabaseSecretKey, "database-secret-key", "uri", "connection Secret key")
+			c.Flags().StringVar(&f.DatabaseCASecret, "database-ca-secret", "", "existing PostgreSQL CA Secret")
+			c.Flags().StringVar(&f.DatabaseCASecretKey, "database-ca-secret-key", "ca.crt", "CA Secret key")
+		} else {
+			c.Flags().StringVar(&f.DatabaseURLFile, "database-url-file", "", "protected target-side PostgreSQL connection file")
+			c.Flags().StringVar(&f.DatabaseCAFile, "database-ca-file", "", "target-side PostgreSQL CA file")
+		}
 		c.Flags().StringArrayVar(&f.Administrators, "administrator", nil, "additional first-bootstrap administrator selector; default autogroup:owner remains")
 		c.Flags().StringVar(&f.Tailnet, "tailnet", "", "Tailscale tailnet name")
 		c.Flags().StringVar(&f.OAuthID, "oauth-client-id-file", "", "protected OAuth client ID file")
@@ -118,7 +130,15 @@ func request(kind, name string, f Flags, target string) (*v1.DeploymentRequest, 
 	if f.Hostname == "" {
 		f.Hostname = name
 	}
-	return &v1.DeploymentRequest{Mode: mode, Target: target, StorageClass: f.StorageClass, StorageSize: f.StorageSize, Administrators: f.Administrators, NodeSelector: f.NodeSelector, Installation: f.Installation, Wait: f.Wait, TimeoutSeconds: uint32(f.Timeout.Seconds()), ResourceName: name, Name: name, DisplayName: f.DisplayName, Hostname: f.Hostname, Version: f.Version, StateDir: f.StateDir, DataDir: f.DataDir, Tailnet: f.Tailnet, OauthClientIdFile: f.OAuthID, OauthClientSecretFile: f.OAuthSecret, PublicHostname: f.PublicHostname, CertificateEmail: f.Email, Namespace: f.Namespace, Context: f.Context, GatewayClass: f.GatewayClass, IngressClass: f.IngressClass, WatchNamespaces: f.WatchNamespaces, LabelKeys: f.LabelKeys, DenyNetworks: f.DenyNetworks}, nil
+	var database *v1.DatabaseConfiguration
+	if kind == "controls" {
+		database = &v1.DatabaseConfiguration{Type: f.Database, UrlFile: f.DatabaseURLFile, CaFile: f.DatabaseCAFile, TlsMode: f.DatabaseTLSMode, ConnectionSecret: f.DatabaseSecret, CaSecret: f.DatabaseCASecret}
+		if f.Database == "postgres" {
+			database.ConnectionSecretKey = f.DatabaseSecretKey
+			database.CaSecretKey = f.DatabaseCASecretKey
+		}
+	}
+	return &v1.DeploymentRequest{Database: database, Mode: mode, Target: target, StorageClass: f.StorageClass, StorageSize: f.StorageSize, Administrators: f.Administrators, NodeSelector: f.NodeSelector, Installation: f.Installation, Wait: f.Wait, TimeoutSeconds: uint32(f.Timeout.Seconds()), ResourceName: name, Name: name, DisplayName: f.DisplayName, Hostname: f.Hostname, Version: f.Version, StateDir: f.StateDir, DataDir: f.DataDir, Tailnet: f.Tailnet, OauthClientIdFile: f.OAuthID, OauthClientSecretFile: f.OAuthSecret, PublicHostname: f.PublicHostname, CertificateEmail: f.Email, Namespace: f.Namespace, Context: f.Context, GatewayClass: f.GatewayClass, IngressClass: f.IngressClass, WatchNamespaces: f.WatchNamespaces, LabelKeys: f.LabelKeys, DenyNetworks: f.DenyNetworks}, nil
 }
 func apiClient(url string) (funnelv1connect.DeploymentServiceClient, error) {
 	base, e := manage.ResolveURL(url)

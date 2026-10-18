@@ -11,14 +11,13 @@ import (
 	"connectrpc.com/connect"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1/funnelv1connect"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 func rpcFixture(t *testing.T, p Principal) (*Control, funnelv1connect.ManagementServiceClient, funnelv1connect.DeploymentServiceClient) {
 	t.Helper()
-	s, e := store.Open(t.TempDir())
+	s, e := testWebStore(t)
 	if e != nil {
 		t.Fatal(e)
 	}

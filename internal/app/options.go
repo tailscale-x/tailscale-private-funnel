@@ -1,10 +1,14 @@
 package app
 
-import "tailscale.com/ipn"
+import (
+	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
+	"tailscale.com/ipn"
+)
 
 var BuildVersion = "dev"
 
 type Options struct {
+	Database          store.DatabaseOptions
 	Administrators    []string
 	DatabaseDir       string `json:"-"`
 	IdentitySecret    string

@@ -283,15 +283,17 @@ func (x *Identity) GetRoles() []string {
 }
 
 type HealthResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Version       string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
-	Providers     uint32                 `protobuf:"varint,2,opt,name=providers,proto3" json:"providers,omitempty"`
-	Zones         uint32                 `protobuf:"varint,3,opt,name=zones,proto3" json:"zones,omitempty"`
-	Nodes         uint32                 `protobuf:"varint,4,opt,name=nodes,proto3" json:"nodes,omitempty"`
-	Applications  uint32                 `protobuf:"varint,5,opt,name=applications,proto3" json:"applications,omitempty"`
-	Deployment    *DeploymentMetadata    `protobuf:"bytes,6,opt,name=deployment,proto3" json:"deployment,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Version         string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	Providers       uint32                 `protobuf:"varint,2,opt,name=providers,proto3" json:"providers,omitempty"`
+	Zones           uint32                 `protobuf:"varint,3,opt,name=zones,proto3" json:"zones,omitempty"`
+	Nodes           uint32                 `protobuf:"varint,4,opt,name=nodes,proto3" json:"nodes,omitempty"`
+	Applications    uint32                 `protobuf:"varint,5,opt,name=applications,proto3" json:"applications,omitempty"`
+	Deployment      *DeploymentMetadata    `protobuf:"bytes,6,opt,name=deployment,proto3" json:"deployment,omitempty"`
+	DatabaseBackend string                 `protobuf:"bytes,7,opt,name=database_backend,json=databaseBackend,proto3" json:"database_backend,omitempty"`
+	DatabaseReady   bool                   `protobuf:"varint,8,opt,name=database_ready,json=databaseReady,proto3" json:"database_ready,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *HealthResponse) Reset() {
@@ -364,6 +366,20 @@ func (x *HealthResponse) GetDeployment() *DeploymentMetadata {
 		return x.Deployment
 	}
 	return nil
+}
+
+func (x *HealthResponse) GetDatabaseBackend() string {
+	if x != nil {
+		return x.DatabaseBackend
+	}
+	return ""
+}
+
+func (x *HealthResponse) GetDatabaseReady() bool {
+	if x != nil {
+		return x.DatabaseReady
+	}
+	return false
 }
 
 type Provider struct {
@@ -4168,7 +4184,7 @@ const file_funnel_v1_management_proto_rawDesc = "" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x14\n" +
 	"\x05login\x18\x03 \x01(\tR\x05login\x12\x12\n" +
 	"\x04tags\x18\x04 \x03(\tR\x04tags\x12\x14\n" +
-	"\x05roles\x18\x05 \x03(\tR\x05roles\"\xd7\x01\n" +
+	"\x05roles\x18\x05 \x03(\tR\x05roles\"\xa9\x02\n" +
 	"\x0eHealthResponse\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x1c\n" +
 	"\tproviders\x18\x02 \x01(\rR\tproviders\x12\x14\n" +
@@ -4177,7 +4193,9 @@ const file_funnel_v1_management_proto_rawDesc = "" +
 	"\fapplications\x18\x05 \x01(\rR\fapplications\x12=\n" +
 	"\n" +
 	"deployment\x18\x06 \x01(\v2\x1d.funnel.v1.DeploymentMetadataR\n" +
-	"deployment\"\xc0\x01\n" +
+	"deployment\x12)\n" +
+	"\x10database_backend\x18\a \x01(\tR\x0fdatabaseBackend\x12%\n" +
+	"\x0edatabase_ready\x18\b \x01(\bR\rdatabaseReady\"\xc0\x01\n" +
 	"\bProvider\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +

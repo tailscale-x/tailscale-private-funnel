@@ -57,8 +57,9 @@ type DeploymentRequest struct {
 	StorageClass          string                 `protobuf:"bytes,31,opt,name=storage_class,json=storageClass,proto3" json:"storage_class,omitempty"`
 	StorageSize           string                 `protobuf:"bytes,32,opt,name=storage_size,json=storageSize,proto3" json:"storage_size,omitempty"`
 	// Resolved placement, carried to the executor without local file references.
-	PlacementJson          []byte `protobuf:"bytes,33,opt,name=placement_json,json=placementJson,proto3" json:"placement_json,omitempty"`
-	ForwarderPlacementJson []byte `protobuf:"bytes,34,opt,name=forwarder_placement_json,json=forwarderPlacementJson,proto3" json:"forwarder_placement_json,omitempty"`
+	PlacementJson          []byte                 `protobuf:"bytes,33,opt,name=placement_json,json=placementJson,proto3" json:"placement_json,omitempty"`
+	ForwarderPlacementJson []byte                 `protobuf:"bytes,34,opt,name=forwarder_placement_json,json=forwarderPlacementJson,proto3" json:"forwarder_placement_json,omitempty"`
+	Database               *DatabaseConfiguration `protobuf:"bytes,35,opt,name=database,proto3" json:"database,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -327,6 +328,13 @@ func (x *DeploymentRequest) GetPlacementJson() []byte {
 func (x *DeploymentRequest) GetForwarderPlacementJson() []byte {
 	if x != nil {
 		return x.ForwarderPlacementJson
+	}
+	return nil
+}
+
+func (x *DeploymentRequest) GetDatabase() *DatabaseConfiguration {
+	if x != nil {
+		return x.Database
 	}
 	return nil
 }
@@ -625,11 +633,112 @@ func (x *DeploymentStep) GetDescription() string {
 	return ""
 }
 
+// Control database settings contain file paths or Secret references, never credentials.
+type DatabaseConfiguration struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Type                string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	UrlFile             string                 `protobuf:"bytes,2,opt,name=url_file,json=urlFile,proto3" json:"url_file,omitempty"`
+	CaFile              string                 `protobuf:"bytes,3,opt,name=ca_file,json=caFile,proto3" json:"ca_file,omitempty"`
+	TlsMode             string                 `protobuf:"bytes,4,opt,name=tls_mode,json=tlsMode,proto3" json:"tls_mode,omitempty"`
+	ConnectionSecret    string                 `protobuf:"bytes,5,opt,name=connection_secret,json=connectionSecret,proto3" json:"connection_secret,omitempty"`
+	ConnectionSecretKey string                 `protobuf:"bytes,6,opt,name=connection_secret_key,json=connectionSecretKey,proto3" json:"connection_secret_key,omitempty"`
+	CaSecret            string                 `protobuf:"bytes,7,opt,name=ca_secret,json=caSecret,proto3" json:"ca_secret,omitempty"`
+	CaSecretKey         string                 `protobuf:"bytes,8,opt,name=ca_secret_key,json=caSecretKey,proto3" json:"ca_secret_key,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *DatabaseConfiguration) Reset() {
+	*x = DatabaseConfiguration{}
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DatabaseConfiguration) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DatabaseConfiguration) ProtoMessage() {}
+
+func (x *DatabaseConfiguration) ProtoReflect() protoreflect.Message {
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DatabaseConfiguration.ProtoReflect.Descriptor instead.
+func (*DatabaseConfiguration) Descriptor() ([]byte, []int) {
+	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *DatabaseConfiguration) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *DatabaseConfiguration) GetUrlFile() string {
+	if x != nil {
+		return x.UrlFile
+	}
+	return ""
+}
+
+func (x *DatabaseConfiguration) GetCaFile() string {
+	if x != nil {
+		return x.CaFile
+	}
+	return ""
+}
+
+func (x *DatabaseConfiguration) GetTlsMode() string {
+	if x != nil {
+		return x.TlsMode
+	}
+	return ""
+}
+
+func (x *DatabaseConfiguration) GetConnectionSecret() string {
+	if x != nil {
+		return x.ConnectionSecret
+	}
+	return ""
+}
+
+func (x *DatabaseConfiguration) GetConnectionSecretKey() string {
+	if x != nil {
+		return x.ConnectionSecretKey
+	}
+	return ""
+}
+
+func (x *DatabaseConfiguration) GetCaSecret() string {
+	if x != nil {
+		return x.CaSecret
+	}
+	return ""
+}
+
+func (x *DatabaseConfiguration) GetCaSecretKey() string {
+	if x != nil {
+		return x.CaSecretKey
+	}
+	return ""
+}
+
 var File_funnel_v1_provisioning_proto protoreflect.FileDescriptor
 
 const file_funnel_v1_provisioning_proto_rawDesc = "" +
 	"\n" +
-	"\x1cfunnel/v1/provisioning.proto\x12\tfunnel.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1afunnel/v1/management.proto\x1a\x17funnel/v1/options.proto\"\x9e\v\n" +
+	"\x1cfunnel/v1/provisioning.proto\x12\tfunnel.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1afunnel/v1/management.proto\x1a\x17funnel/v1/options.proto\"\xdc\v\n" +
 	"\x11DeploymentRequest\x12k\n" +
 	"\x04mode\x18\x01 \x01(\tBW\xbaHT\xd8\x01\x01rOR\boperatorR\acontrolR\floadbalancerR\x0edocker-gatewayR\x0ftailnet-gatewayR\vk8s-gatewayR\x04mode\x124\n" +
 	"\x06target\x18\x02 \x01(\tB\x1c\xbaH\x19\xd8\x01\x01r\x14R\x06nativeR\n" +
@@ -667,7 +776,8 @@ const file_funnel_v1_provisioning_proto_rawDesc = "" +
 	"\rstorage_class\x18\x1f \x01(\tR\fstorageClass\x12!\n" +
 	"\fstorage_size\x18  \x01(\tR\vstorageSize\x12%\n" +
 	"\x0eplacement_json\x18! \x01(\fR\rplacementJson\x128\n" +
-	"\x18forwarder_placement_json\x18\" \x01(\fR\x16forwarderPlacementJson\x1a?\n" +
+	"\x18forwarder_placement_json\x18\" \x01(\fR\x16forwarderPlacementJson\x12<\n" +
+	"\bdatabase\x18# \x01(\v2 .funnel.v1.DatabaseConfigurationR\bdatabase\x1a?\n" +
 	"\x11NodeSelectorEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbf\x01\n" +
@@ -706,7 +816,16 @@ const file_funnel_v1_provisioning_proto_rawDesc = "" +
 	"\x0eDeploymentStep\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +
-	"\vdescription\x18\x03 \x01(\tR\vdescription2\xc6\x01\n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\"\x9c\x02\n" +
+	"\x15DatabaseConfiguration\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x19\n" +
+	"\burl_file\x18\x02 \x01(\tR\aurlFile\x12\x17\n" +
+	"\aca_file\x18\x03 \x01(\tR\x06caFile\x12\x19\n" +
+	"\btls_mode\x18\x04 \x01(\tR\atlsMode\x12+\n" +
+	"\x11connection_secret\x18\x05 \x01(\tR\x10connectionSecret\x122\n" +
+	"\x15connection_secret_key\x18\x06 \x01(\tR\x13connectionSecretKey\x12\x1b\n" +
+	"\tca_secret\x18\a \x01(\tR\bcaSecret\x12\"\n" +
+	"\rca_secret_key\x18\b \x01(\tR\vcaSecretKey2\xc6\x01\n" +
 	"\x11DeploymentService\x12U\n" +
 	"\fInstructions\x12\x1c.funnel.v1.DeploymentRequest\x1a!.funnel.v1.DeploymentInstructions\"\x04\x88\xb5\x18\x03\x12Z\n" +
 	"\tAuthorize\x12\x1c.funnel.v1.DeploymentRequest\x1a!.funnel.v1.DeploymentInstructions\"\f\x88\xb5\x18\x03\x98\xb5\x18\x01\xa8\xb5\x18\x01BQZOgithub.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1;funnelv1b\x06proto3"
@@ -723,32 +842,34 @@ func file_funnel_v1_provisioning_proto_rawDescGZIP() []byte {
 	return file_funnel_v1_provisioning_proto_rawDescData
 }
 
-var file_funnel_v1_provisioning_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_funnel_v1_provisioning_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_funnel_v1_provisioning_proto_goTypes = []any{
 	(*DeploymentRequest)(nil),      // 0: funnel.v1.DeploymentRequest
 	(*BootstrapCredentials)(nil),   // 1: funnel.v1.BootstrapCredentials
 	(*DeploymentInstructions)(nil), // 2: funnel.v1.DeploymentInstructions
 	(*DeploymentStep)(nil),         // 3: funnel.v1.DeploymentStep
-	nil,                            // 4: funnel.v1.DeploymentRequest.NodeSelectorEntry
-	nil,                            // 5: funnel.v1.DeploymentInstructions.CommandsEntry
-	(*Enrollment)(nil),             // 6: funnel.v1.Enrollment
+	(*DatabaseConfiguration)(nil),  // 4: funnel.v1.DatabaseConfiguration
+	nil,                            // 5: funnel.v1.DeploymentRequest.NodeSelectorEntry
+	nil,                            // 6: funnel.v1.DeploymentInstructions.CommandsEntry
+	(*Enrollment)(nil),             // 7: funnel.v1.Enrollment
 }
 var file_funnel_v1_provisioning_proto_depIdxs = []int32{
-	4, // 0: funnel.v1.DeploymentRequest.node_selector:type_name -> funnel.v1.DeploymentRequest.NodeSelectorEntry
-	0, // 1: funnel.v1.DeploymentInstructions.deployment:type_name -> funnel.v1.DeploymentRequest
-	3, // 2: funnel.v1.DeploymentInstructions.steps:type_name -> funnel.v1.DeploymentStep
-	1, // 3: funnel.v1.DeploymentInstructions.credentials:type_name -> funnel.v1.BootstrapCredentials
-	6, // 4: funnel.v1.DeploymentInstructions.enrollment:type_name -> funnel.v1.Enrollment
-	5, // 5: funnel.v1.DeploymentInstructions.commands:type_name -> funnel.v1.DeploymentInstructions.CommandsEntry
-	0, // 6: funnel.v1.DeploymentService.Instructions:input_type -> funnel.v1.DeploymentRequest
-	0, // 7: funnel.v1.DeploymentService.Authorize:input_type -> funnel.v1.DeploymentRequest
-	2, // 8: funnel.v1.DeploymentService.Instructions:output_type -> funnel.v1.DeploymentInstructions
-	2, // 9: funnel.v1.DeploymentService.Authorize:output_type -> funnel.v1.DeploymentInstructions
-	8, // [8:10] is the sub-list for method output_type
-	6, // [6:8] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	5, // 0: funnel.v1.DeploymentRequest.node_selector:type_name -> funnel.v1.DeploymentRequest.NodeSelectorEntry
+	4, // 1: funnel.v1.DeploymentRequest.database:type_name -> funnel.v1.DatabaseConfiguration
+	0, // 2: funnel.v1.DeploymentInstructions.deployment:type_name -> funnel.v1.DeploymentRequest
+	3, // 3: funnel.v1.DeploymentInstructions.steps:type_name -> funnel.v1.DeploymentStep
+	1, // 4: funnel.v1.DeploymentInstructions.credentials:type_name -> funnel.v1.BootstrapCredentials
+	7, // 5: funnel.v1.DeploymentInstructions.enrollment:type_name -> funnel.v1.Enrollment
+	6, // 6: funnel.v1.DeploymentInstructions.commands:type_name -> funnel.v1.DeploymentInstructions.CommandsEntry
+	0, // 7: funnel.v1.DeploymentService.Instructions:input_type -> funnel.v1.DeploymentRequest
+	0, // 8: funnel.v1.DeploymentService.Authorize:input_type -> funnel.v1.DeploymentRequest
+	2, // 9: funnel.v1.DeploymentService.Instructions:output_type -> funnel.v1.DeploymentInstructions
+	2, // 10: funnel.v1.DeploymentService.Authorize:output_type -> funnel.v1.DeploymentInstructions
+	9, // [9:11] is the sub-list for method output_type
+	7, // [7:9] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_funnel_v1_provisioning_proto_init() }
@@ -764,7 +885,7 @@ func file_funnel_v1_provisioning_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_funnel_v1_provisioning_proto_rawDesc), len(file_funnel_v1_provisioning_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

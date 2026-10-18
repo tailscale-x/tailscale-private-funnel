@@ -258,3 +258,51 @@ func TestInspectionRejectsStoredRuntimeFromAnOlderProcess(t *testing.T) {
 		t.Fatal("accepted stale registry liveness", got)
 	}
 }
+
+func TestPostgresNativeCredentialsRemainInProtectedFiles(t *testing.T) {
+	m := manager(t)
+	os.MkdirAll(m.UnitDir, 0755)
+	r, e := m.Resolve("controls", "postgres", "control", "Postgres", "postgres", "dev-test", "", "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	path := filepath.Join(t.TempDir(), "database.url")
+	if e = os.WriteFile(path, []byte("postgres://user:private-password@db/app"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	p := &v1.DeploymentInstructions{Deployment: &v1.DeploymentRequest{Mode: "control", Database: &v1.DatabaseConfiguration{Type: "postgres", UrlFile: path, TlsMode: "verify-full"}}}
+	m.Run = func(_ context.Context, _ string, args []string, _ io.Reader, _ []string) ([]byte, error) {
+		if strings.Contains(strings.Join(args, " "), "private-password") {
+			t.Fatal("password in argv")
+		}
+		return nil, nil
+	}
+	m.Bootstrap = func(_ context.Context, r *Resource, _ *v1.DeploymentInstructions, _ []string) error {
+		if r.Database.URLFile == path {
+			t.Fatal("must copy connection into owned storage")
+		}
+		b, e := os.ReadFile(r.Database.URLFile)
+		if e != nil || !strings.Contains(string(b), "private-password") {
+			t.Fatal(e)
+		}
+		return nil
+	}
+	got, e := m.Create(t.Context(), r, p, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	data, e := os.ReadFile(m.path(got.Kind, got.Name))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if strings.Contains(string(data), "private-password") {
+		t.Fatal("password in receipt")
+	}
+	unit, e := os.ReadFile(filepath.Join(m.UnitDir, got.Unit))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !strings.Contains(string(unit), "--database-url-file") || strings.Contains(string(unit), "private-password") {
+		t.Fatal("incorrect unit")
+	}
+}

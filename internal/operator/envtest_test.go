@@ -118,3 +118,40 @@ func TestEnvtestCRValidationOwnershipAndFinalizer(t *testing.T) {
 		t.Fatal("foreign replacement changed", e)
 	}
 }
+
+func TestEnvtestTransferControlReferenceHandoff(t *testing.T) {
+	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
+		t.Skip("envtest assets required")
+	}
+	env := &envtest.Environment{CRDDirectoryPaths: []string{filepath.Join("..", "..", "config", "crd", "bases")}, ErrorIfCRDPathMissing: true}
+	cfg, err := env.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := env.Stop(); err != nil {
+			t.Error(err)
+		}
+	})
+	c, err := client.New(cfg, client.Options{Scheme: testScheme()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ns := &core.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "transfer"}}
+	if err = c.Create(t.Context(), ns); err != nil {
+		t.Fatal(err)
+	}
+	lb := &funnel.FunnelLoadBalancer{ObjectMeta: metav1.ObjectMeta{Name: "lb", Namespace: ns.Name}, Spec: funnel.LoadBalancerSpec{ComponentSpec: funnel.ComponentSpec{Image: "ghcr.io/tailscale-x/tailscale-private-funnel:dev-test", ControlRef: &core.LocalObjectReference{Name: "source"}}}}
+	if err = c.Create(t.Context(), lb); err != nil {
+		t.Fatal(err)
+	}
+	lb.Spec.ControlRef = nil
+	lb.Spec.ManagementURL = "http://100.64.0.1:8080"
+	if err = c.Update(t.Context(), lb); err != nil {
+		t.Fatal("same-control URL handoff refused", err)
+	}
+	lb.Spec.ManagementURL = "http://100.64.0.2:8080"
+	if err = c.Update(t.Context(), lb); !apierrors.IsInvalid(err) {
+		t.Fatal("established management URL is not immutable", err)
+	}
+}

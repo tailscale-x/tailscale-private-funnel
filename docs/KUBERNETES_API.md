@@ -8,6 +8,7 @@ Generated from the pinned v1alpha1 CRD schemas. Application policy and DNS stay 
 |---|---|---|
 | `bootstrapSecretRef` | object | LocalObjectReference contains enough information to let you locate the referenced object inside the same namespace. |
 | `controlRef` | object | LocalObjectReference contains enough information to let you locate the referenced object inside the same namespace. |
+| `database` | object |  |
 | `hostname` | string |  |
 | `identitySecretRef` | object | LocalObjectReference contains enough information to let you locate the referenced object inside the same namespace. |
 | `image` | string |  |
@@ -17,6 +18,7 @@ Generated from the pinned v1alpha1 CRD schemas. Application policy and DNS stay 
 | `resources` | object | ResourceRequirements describes the compute resource requirements. |
 | `storage` | object |  |
 | `tailnet` | string |  |
+| `transfer` | object | Transfer fences the source during an offline control transfer. |
 
 ## FunnelGateway
 

@@ -11,7 +11,10 @@ import (
 
 func Open(path string) ([]byte, error) {
 	b, err := osReadFile(path)
-	if err == nil && len(b) == 32 {
+	if err == nil {
+		if len(b) != 32 {
+			return nil, errors.New("invalid encryption key; restore the original key")
+		}
 		return b, nil
 	}
 	if err != nil && !errors.Is(err, errNotExist) {

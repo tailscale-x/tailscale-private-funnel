@@ -57,8 +57,37 @@ jobs:
       - run: go vet ./...
       - run: go test -tags caddy ./...
 
+  postgres:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        postgres: ['16', '18']
+    services:
+      database:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_PASSWORD: contract-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: PostgreSQL storage and identity contracts
+        env:
+          FUNNEL_TEST_POSTGRES_URL: postgres://postgres:contract-password@localhost:5432/postgres
+          FUNNEL_TEST_CONTROL_POSTGRES_URL: postgres://postgres:contract-password@localhost:5432/postgres
+          FUNNEL_TEST_CONTROL_TLS_MODE: disable
+          FUNNEL_TEST_RPC_POSTGRES_URL: postgres://postgres:contract-password@localhost:5432/postgres
+        run: |
+          go test ./internal/store ./internal/app -run 'TestDatabaseContract|TestPostgres|Test.*Transfer' -count=1
+          go test ./internal/web -run 'TestPostgres|TestRPCMetadataRole|TestRPCProviderRename|TestRPCPolicyLifecycle|TestRPCNodeReport|TestRPCEnrollment|TestRPCDNSApproval' -count=1
+
   binaries:
-    needs: test
+    needs: [test, postgres]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -203,6 +232,9 @@ jobs:
           metadata["image_digest"] = os.environ["IMAGE_DIGEST"]
           metadata["image_pinned"] = "ghcr.io/tailscale-x/tailscale-private-funnel@" + os.environ["IMAGE_DIGEST"]
           metadata["helm_chart"] = {"reference": "oci://ghcr.io/tailscale-x/charts/tailscale-private-funnel", "version": version, "artifact": f"tailscale-private-funnel-{version}.tgz"}
+          crds = Path("dist/tailscale-private-funnel-crds.yaml")
+          crds.write_text("\n---\n".join(p.read_text().removeprefix("---\n").rstrip() for p in sorted(Path("config/crd/bases").glob("*.yaml"))) + "\n")
+          metadata["kubernetes_crds"] = {"artifact": crds.name, "api_version": "tailscale-private-funnel.io/v1alpha1"}
           path.write_text(json.dumps(metadata, indent=2) + "\n")
           files = sorted(p for p in Path("dist").iterdir() if p.is_file() and p.name != "SHA256SUMS")
           Path("dist/SHA256SUMS").write_text("".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n" for p in files))

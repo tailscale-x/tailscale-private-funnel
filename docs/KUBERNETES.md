@@ -6,7 +6,7 @@ RBAC, and the [resource reference](KUBERNETES_API.md).
 
 The public OCI Helm chart installs **only the operator and CRDs**. Components are
 namespaced `tailscale-private-funnel.io/v1alpha1` resources created by the CLI.
-SQLite remains authoritative for application authorization, providers, policy,
+The control database (SQLite by default, or PostgreSQL) remains authoritative for application authorization, providers, policy,
 enrollment, reports, DNS ownership, and audit.
 
 ## Install and create control
@@ -31,7 +31,9 @@ sh install-operator.sh
 sh install-control.sh
 ```
 
-Control and load balancers require a working dynamic StorageClass. If the cluster
+SQLite controls and load balancers require a working dynamic StorageClass.
+PostgreSQL controls reference existing database Secrets and allocate no PVC; see
+[CloudNativePG and Argo CD](POSTGRESQL.md). If the cluster
 has no default, pass `--storage-class NAME --storage-size 1Gi` at creation.
 Provisioning reports `StoragePending` until the PVC binds; it does not silently
 choose an arbitrary storage provider.
@@ -46,7 +48,7 @@ Management remains tailnet-only; no public Kubernetes Service exposes control.
 
 | CRD | Owned resources | Persistent state |
 |---|---|---|
-| FunnelControl | Recreate Deployment, exact-Secret role, identity Secret, PVC | SQLite on PVC; tsnet and encryption key in Secret |
+| FunnelControl | Recreate Deployment, exact-Secret role, identity Secret; PVC for SQLite only | SQLite on PVC or external PostgreSQL; tsnet and encryption key in Secret |
 | FunnelLoadBalancer | Recreate Deployment, identity Secret, certificate PVC, TCP LoadBalancer Service | tsnet/signing key in Secret; Caddy certificates on PVC |
 | FunnelGateway | Gateway-agent Deployment, broker, leases, identities, forwarder DaemonSet, classes | Agent and per-node tsnet identities in broker-managed Secrets |
 
@@ -111,7 +113,7 @@ not a claim of physical data erasure. A control cannot be deleted while active e
 operator deletion refuses while any component CR remains. Never remove a
 finalizer to bypass a cleanup failure.
 
-Back up SQLite and its matching identity Secret before planned upgrades. Rollback
+Back up the control database and its matching identity Secret before planned upgrades. Rollback
 uses the prior pinned image and matching compatible state. Replacing an existing
 installation requires explicit cleanup and fresh provisioning; never run two
 processes with one tsnet identity.
@@ -179,3 +181,7 @@ authorized control access; control/operator generation does not. Execute the
 output on a machine with the selected kubeconfig. It needs no Tailscale route to
 control: deployed components establish their own embedded tsnet connection.
 See [installer workflow](INSTALLER-WORKFLOW.md) for expiry and Secret handling.
+
+## Offline control transfer
+
+Use [`transfer-remote`](CONTROL_TRANSFER.md) to move control between native and Kubernetes or change SQLite/PostgreSQL. The command requires explicit source Kubernetes access, fences the old control through the operator, and saves its destination installer with `--out` before removing owned source resources. Suspend GitOps reconciliation of the source declaration first. Transfer preserves the existing Tailscale identity and DNS ledger; it does not invoke ordinary deletion or adopt external databases.

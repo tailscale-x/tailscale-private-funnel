@@ -35,6 +35,9 @@ func Resolve(in *v1.DeploymentRequest, managementURL, version string) (*v1.Deplo
 	}
 	d := proto.Clone(in).(*v1.DeploymentRequest)
 	d.Version = version
+	if err := resolveDatabase(d); err != nil {
+		return nil, err
+	}
 	switch d.Mode {
 	case "operator", "control", "loadbalancer", "docker-gateway", "tailnet-gateway", "k8s-gateway":
 	default:
@@ -263,3 +266,72 @@ func Resolve(in *v1.DeploymentRequest, managementURL, version string) (*v1.Deplo
 func Quote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 
 func ValidVersion(version string) bool { return versionPattern.MatchString(version) }
+
+func resolveDatabase(d *v1.DeploymentRequest) error {
+	b := d.Database
+	if b == nil {
+		return nil
+	}
+	if d.Mode != "control" {
+		return fmt.Errorf("database settings are control-only")
+	}
+	if b.Type == "" {
+		b.Type = "sqlite"
+	}
+	if b.Type == "sqlite" {
+		if b.UrlFile != "" || b.CaFile != "" || b.TlsMode != "" || b.ConnectionSecret != "" || b.CaSecret != "" {
+			return fmt.Errorf("PostgreSQL settings require database postgres")
+		}
+		b.ConnectionSecretKey = ""
+		b.CaSecretKey = ""
+		return nil
+	}
+	if b.Type != "postgres" {
+		return fmt.Errorf("database must be sqlite or postgres")
+	}
+	if b.TlsMode == "" {
+		b.TlsMode = "verify-full"
+	}
+	switch b.TlsMode {
+	case "verify-full", "verify-ca", "require", "disable":
+	default:
+		return fmt.Errorf("invalid PostgreSQL TLS mode")
+	}
+	if d.Target == "native" {
+		if b.ConnectionSecret != "" || b.CaSecret != "" {
+			return fmt.Errorf("native PostgreSQL requires file references")
+		}
+		if !filepath.IsAbs(b.UrlFile) || (b.CaFile != "" && !filepath.IsAbs(b.CaFile)) {
+			return fmt.Errorf("PostgreSQL files require absolute target paths")
+		}
+		b.ConnectionSecretKey = ""
+		b.CaSecretKey = ""
+	} else {
+		if b.UrlFile != "" || b.CaFile != "" {
+			return fmt.Errorf("Kubernetes PostgreSQL requires Secret references")
+		}
+		if len(kvalidation.IsDNS1123Subdomain(b.ConnectionSecret)) > 0 || b.ConnectionSecret == "" {
+			return fmt.Errorf("PostgreSQL connection Secret required")
+		}
+		if b.ConnectionSecretKey == "" {
+			b.ConnectionSecretKey = "uri"
+		}
+		if len(kvalidation.IsConfigMapKey(b.ConnectionSecretKey)) > 0 {
+			return fmt.Errorf("invalid connection Secret key")
+		}
+		if b.CaSecret != "" {
+			if len(kvalidation.IsDNS1123Subdomain(b.CaSecret)) > 0 {
+				return fmt.Errorf("invalid CA Secret")
+			}
+			if b.CaSecretKey == "" {
+				b.CaSecretKey = "ca.crt"
+			}
+			if len(kvalidation.IsConfigMapKey(b.CaSecretKey)) > 0 {
+				return fmt.Errorf("invalid CA Secret key")
+			}
+		} else {
+			b.CaSecretKey = ""
+		}
+	}
+	return nil
+}

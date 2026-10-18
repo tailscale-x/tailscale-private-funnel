@@ -1,0 +1,54 @@
+# Apply after the Funnel and CloudNativePG operators and the OAuth Secret exist.
+# v3.2.0 includes PostgreSQL support; pin its image digest for production GitOps.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tailscale-private-funnel-main-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: funnel-db
+  namespace: tailscale-private-funnel-main-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  instances: 2
+  bootstrap:
+    initdb:
+      database: funnel
+      owner: funnel
+  storage:
+    size: 5Gi
+---
+apiVersion: tailscale-private-funnel.io/v1alpha1
+kind: FunnelControl
+metadata:
+  name: control
+  namespace: tailscale-private-funnel-main-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  image: ghcr.io/tailscale-x/tailscale-private-funnel:v3.2.0
+  installation: main
+  hostname: funnel-control
+  tailnet: REPLACE_WITH_TAILNET
+  bootstrapSecretRef:
+    name: funnel-control-oauth
+  database:
+    type: postgres
+    postgres:
+      connectionSecretRef:
+        name: funnel-db-app
+        key: uri
+      caSecretRef:
+        name: funnel-db-ca
+        key: ca.crt
+      tlsMode: verify-full
+      port: 5432
+      egressPeers:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: funnel-db

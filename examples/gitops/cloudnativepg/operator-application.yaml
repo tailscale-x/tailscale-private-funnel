@@ -1,0 +1,33 @@
+# Register ghcr.io/tailscale-x/charts as an OCI Helm repository in Argo CD.
+# Use a chart/image version that contains PostgreSQL support.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: funnel-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-30"
+spec:
+  project: default
+  source:
+    repoURL: ghcr.io/tailscale-x/charts
+    chart: tailscale-private-funnel
+    targetRevision: 3.2.0
+    helm:
+      releaseName: funnel-operator
+      valuesObject:
+        image:
+          reference: ghcr.io/tailscale-x/tailscale-private-funnel:v3.2.0
+        managedNamespaces:
+          - tailscale-private-funnel-main-system
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tailscale-private-funnel-k8s-operator-system
+  syncPolicy:
+    automated:
+      selfHeal: true
+      # Remove component CRs through their finalizers before uninstalling operator.
+      prune: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

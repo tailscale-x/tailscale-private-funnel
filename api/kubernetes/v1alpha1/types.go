@@ -5,6 +5,7 @@ package v1alpha1
 
 import (
 	core "k8s.io/api/core/v1"
+	networking "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -52,10 +53,44 @@ type ComponentSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Storage binding is immutable"
 	Storage Storage `json:"storage,omitempty"`
 }
+type PostgresDatabase struct {
+	ConnectionSecretRef core.SecretKeySelector  `json:"connectionSecretRef"`
+	CASecretRef         *core.SecretKeySelector `json:"caSecretRef,omitempty"`
+	// +kubebuilder:default="verify-full"
+	// +kubebuilder:validation:Enum=verify-full;verify-ca;require;disable
+	TLSMode string `json:"tlsMode,omitempty"`
+	// Empty peers allow PostgreSQL only within this namespace.
+	EgressPeers []networking.NetworkPolicyPeer `json:"egressPeers,omitempty"`
+	// +kubebuilder:default=5432
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	Port int32 `json:"port,omitempty"`
+}
+
+// +kubebuilder:validation:XValidation:rule="self.type == 'postgres' ? has(self.postgres) : !has(self.postgres)",message="PostgreSQL requires connection settings; SQLite must not have them"
+type ControlDatabase struct {
+	// +kubebuilder:default=sqlite
+	// +kubebuilder:validation:Enum=sqlite;postgres
+	Type     string            `json:"type,omitempty"`
+	Postgres *PostgresDatabase `json:"postgres,omitempty"`
+}
 type ControlSpec struct {
+	// Transfer fences the source during an offline control transfer.
+	Transfer      *ControlTransferState `json:"transfer,omitempty"`
 	ComponentSpec `json:",inline"`
 	// +kubebuilder:validation:MinLength=1
 	Tailnet string `json:"tailnet"`
+	// +kubebuilder:default={type:sqlite}
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Database binding is immutable; recreate to change it"
+	Database ControlDatabase `json:"database,omitempty"`
+}
+type ControlTransferState struct {
+	// +kubebuilder:validation:MinLength=1
+	ID string `json:"id"`
+	// +kubebuilder:validation:Enum=Stopped;Transferred
+	Phase string `json:"phase"`
+	// Digest of the durably saved installer, required before transfer deletion.
+	InstallerSHA256 string `json:"installerSHA256,omitempty"`
 }
 type LoadBalancerSpec struct {
 	ComponentSpec `json:",inline"`

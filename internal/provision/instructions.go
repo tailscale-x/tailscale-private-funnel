@@ -48,7 +48,17 @@ func Arguments(p *v1.DeploymentInstructions, action string) []string {
 		if action == "update" {
 			args = append(args, "--version", p.Version)
 		}
+
 		return args
+	}
+	if action == "create" && d.Database != nil {
+		b := d.Database
+		args = append(args, "--database", b.Type)
+		for _, pair := range [][2]string{{"--database-url-file", b.UrlFile}, {"--database-ca-file", b.CaFile}, {"--database-tls-mode", b.TlsMode}, {"--database-secret", b.ConnectionSecret}, {"--database-secret-key", b.ConnectionSecretKey}, {"--database-ca-secret", b.CaSecret}, {"--database-ca-secret-key", b.CaSecretKey}} {
+			if pair[1] != "" {
+				args = append(args, pair[0], pair[1])
+			}
+		}
 	}
 	if d.Wait {
 		args = append(args, "--wait")

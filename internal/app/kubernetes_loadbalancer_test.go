@@ -27,3 +27,19 @@ func TestPersistentBootstrapFailsClosed(t *testing.T) {
 		t.Fatal("accepted missing enrollment binding")
 	}
 }
+
+func TestPostgresPersistentStateHasNoSQLiteFile(t *testing.T) {
+	o := Options{StateDir: t.TempDir(), DataDir: t.TempDir()}
+	o.Database.Type = "postgres"
+	for _, f := range []string{filepath.Join(o.StateDir, "joined"), filepath.Join(o.DataDir, "master.key")} {
+		os.WriteFile(f, []byte("persistent"), 0600)
+	}
+	os.WriteFile(filepath.Join(o.StateDir, "tailscaled.state"), []byte(`{"profile":"c3RhdGU="}`), 0600)
+	if e := validatePersistentState("control", o); e != nil {
+		t.Fatal(e)
+	}
+	o.Database.Type = "sqlite"
+	if validatePersistentState("control", o) == nil {
+		t.Fatal("SQLite accepted missing database")
+	}
+}

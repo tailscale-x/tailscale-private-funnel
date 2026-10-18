@@ -131,6 +131,7 @@ Resolve deployment choices without creating enrollment or bootstrap keys.
 | `storageSize` | string |  |
 | `placementJson` | bytes | Resolved placement, carried to the executor without local file references. |
 | `forwarderPlacementJson` | bytes |  |
+| `database` | funnel.v1.DatabaseConfiguration |  |
 
 ### Authorize
 
@@ -177,6 +178,7 @@ Create one-use enrollment and return credentials once, without server-side execu
 | `storageSize` | string |  |
 | `placementJson` | bytes | Resolved placement, carried to the executor without local file references. |
 | `forwarderPlacementJson` | bytes |  |
+| `database` | funnel.v1.DatabaseConfiguration |  |
 
 ## funnel.v1.EnrollmentService
 
