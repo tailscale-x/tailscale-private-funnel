@@ -70,7 +70,36 @@ Verification completed locally:
 - `go vet ./...`
 - `git diff --check`
 
-Source changes remain in the product checkout. The deployed artifact is a
-controlled v3.1.0 patch, not a newly published stable release.
+The initial recovery used a controlled v3.1.0 patch. Stable release deployment
+is recorded below.
 
 Final observation: 60 HTTPS checks passed across ten rounds from 2026-10-18T06:39:04.215713+00:00 to 2026-10-18T06:41:42.812504+00:00. At least 24 further successful reconciliation cycles per admissions/Metube exposure left the ledger unchanged. No `81058` errors occurred in the patched process. The second edge-container restart occurred within this observation window.
+
+## Released binary: v3.2.2
+
+- Fix and regression commit: `9998ca914d276bbad5bf4954324786ba5bdce535`.
+- Release: https://github.com/tailscale-x/tailscale-private-funnel/releases/tag/v3.2.2
+- Release CI: https://github.com/tailscale-x/tailscale-private-funnel/actions/runs/39105015313
+- All release jobs passed. The first Caddy test attempt encountered a temporary-directory cleanup race; the unchanged tagged commit passed on retry.
+- Downloaded the published Linux amd64 binary and verified its release checksum before transfer and again after installation:
+  `4fe1d2ec7a726cfd7f0d276b259452877d67e8b4d28d5287de389418618e34d9`.
+- Updated native control `main` through `native controls update`, preserving existing paths. No transfer, reset, or Cloudflare Access changes.
+- Root-only stopped-state recovery archive: `/var/backups/tailscale-private-funnel/pre-v3.2.2.tar.gz`.
+- Runtime reports `v3.2.2`, ready, SQLite ready, and the same IPv4/IPv6 addresses.
+- Before/after checks match Tailscale machine-key hash, encryption-key hash, encrypted-credential hash, enrolled-node identities, and the complete DNS ledger.
+- More than 50 further successful reconciliation cycles per admissions/Metube exposure completed. No duplicate-record or reconciliation errors appeared in the released control process.
+
+The first observation passed 59/60 HTTPS checks. One SSO interruption was traced
+to the Docker gateway host: its backend check failed with `OCI runtime exec
+failed ... no space left on device`. SSO was temporarily withdrawn as unavailable;
+it recovered automatically after disk pressure subsided. Removed our obsolete
+178 MiB temporary patch binary. No application data or identity was deleted.
+The gateway host still has only approximately 2.4 GiB free and needs disk-capacity
+attention independently of this DNS fix.
+
+Final recovery verification passed all 30 HTTPS checks across five rounds from
+2026-10-18 14:11:50 to 14:13:01 Asia/Saigon. Login pages and API readiness returned
+200, excluded API paths remained 404, and Metube returned 200. Authoritative
+Cloudflare DNS resolves all three admissions names to `160.191.243.219`; the
+complete ownership ledger matches the pre-update baseline after recovery.
+Detailed local receipts are under `/tmp/funnel-release-v3.2.2/`.
