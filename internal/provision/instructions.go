@@ -41,7 +41,7 @@ func Arguments(p *v1.DeploymentInstructions, action string) []string {
 			args = append(args, "--namespace", p.Namespace)
 		}
 	}
-	if action != "create" && action != "create-remote" {
+	if action != "create" {
 		if action == "delete" {
 			args = append(args, "--yes")
 		}
@@ -138,31 +138,32 @@ func Commands(p *v1.DeploymentInstructions) map[string]string {
 	for _, action := range []string{"create", "get", "update", "delete"} {
 		out[action] = QuoteArguments(Arguments(p, action))
 	}
+	out["installer"] = out["create"] + " --output script"
 	if p.Deployment.Target == "native" {
-		for _, action := range []string{"start", "stop", "restart", "logs", "create-remote"} {
+		for _, action := range []string{"start", "stop", "restart", "logs"} {
 			out[action] = QuoteArguments(Arguments(p, action))
 		}
-		out["ssh"] = out["create-remote"] + " --output script | ssh ubuntu@TARGET_HOST 'sh -s'"
+		out["ssh"] = out["create"] + " --output script | ssh ubuntu@TARGET_HOST 'sh -s'"
 	}
 	return out
 }
 
-// NativeScript carries one-use bootstrap through stdin. It never executes on the generator host.
-func NativeScript(p *v1.DeploymentInstructions) string {
-	args := Arguments(p, "create")
-	if p.Deployment.Mode != "control" {
-		args = append(args, "--bootstrap-stdin")
+// InstallerScript transports the canonical bundle only through stdin.
+func InstallerScript(p *v1.DeploymentInstructions) string {
+	scope := "native"
+	if p.Deployment.Target == "kubernetes" {
+		scope = "k8s"
 	}
-	command := "\"${XDG_BIN_HOME:-$HOME/.local/bin}/tailscale-private-funnel\" " + QuoteArguments(args[1:])
-	bootstrap := ""
-	if p.Deployment.Mode != "control" {
-		b, _ := json.Marshal(p)
-		bootstrap = " <<'FUNNEL_BOOTSTRAP'\n" + string(b) + "\nFUNNEL_BOOTSTRAP"
-	}
-	return "#!/bin/sh\nset -eu\numask 077\n" + installerScript(p.Version, p.Image) + "\n" + command + bootstrap + "\n"
+	copy := proto.Clone(p).(*v1.DeploymentInstructions)
+	copy.Script = ""
+	copy.Commands = nil
+	b, _ := json.Marshal(copy)
+	command := "\"${XDG_BIN_HOME:-$HOME/.local/bin}/tailscale-private-funnel\" " + scope + " runtime install"
+	return "#!/bin/sh\nset -eu\numask 077\n" + installerScript(p.Version, p.Image) + "\n" + command + " <<'FUNNEL_BOOTSTRAP'\n" + string(b) + "\nFUNNEL_BOOTSTRAP\n"
 }
 func RemoteOutput(p *v1.DeploymentInstructions, format string, dry bool) (string, error) {
 	if dry {
+		p.DryRun = true
 		if format == "script" {
 			return "#!/bin/sh\n# Dry-run preview: no enrollment or credentials were created.\nprintf '%s\\n' 'Dry-run output is not an executable installer' >&2\nexit 1\n", nil
 		}
@@ -174,16 +175,16 @@ func RemoteOutput(p *v1.DeploymentInstructions, format string, dry bool) (string
 	}
 	switch format {
 	case "script":
-		return NativeScript(p), nil
+		return InstallerScript(p), nil
 	case "json":
 		copy := proto.Clone(p).(*v1.DeploymentInstructions)
 		if !dry {
-			copy.Script = NativeScript(p)
+			copy.Script = InstallerScript(p)
 		}
 		b, e := json.Marshal(copy)
 		return string(b) + "\n", e
 	case "instructions":
-		return fmt.Sprintf("Run on the target host. Version: %s\nStop preserves identity and data; delete revokes and removes owned state.\n\n%s", p.Version, NativeScript(p)), nil
+		return fmt.Sprintf("Run this installer on the target host, or a machine with the selected Kubernetes context. Version: %s\nBootstrap expires after 15 minutes for enrolled components. No host Tailscale is required. Stop preserves identity and data; delete revokes and removes owned state.\n\n%s", p.Version, InstallerScript(p)), nil
 	default:
 		return "", fmt.Errorf("--output must be instructions, script, or json")
 	}

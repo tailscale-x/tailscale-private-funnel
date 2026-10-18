@@ -615,6 +615,11 @@
             ],
             "title": "deployment"
           },
+          "dryRun": {
+            "description": "Preview-only bundles are rejected by hidden installers.",
+            "title": "dry_run",
+            "type": "boolean"
+          },
           "enrollment": {
             "allOf": [
               {
@@ -748,6 +753,11 @@
             "title": "display_name",
             "type": "string"
           },
+          "forwarderPlacementJson": {
+            "format": "byte",
+            "title": "forwarder_placement_json",
+            "type": "string"
+          },
           "gatewayClass": {
             "title": "gateway_class",
             "type": "string"
@@ -816,6 +826,12 @@
           },
           "oauthClientSecretFile": {
             "title": "oauth_client_secret_file",
+            "type": "string"
+          },
+          "placementJson": {
+            "description": "Resolved placement, carried to the executor without local file references.",
+            "format": "byte",
+            "title": "placement_json",
             "type": "string"
           },
           "publicHostname": {

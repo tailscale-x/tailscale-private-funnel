@@ -2,6 +2,7 @@ package provision
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"io"
@@ -73,7 +74,7 @@ func TestRemoteScriptIsCompletePOSIXAndSecretsOnlyOnStdin(t *testing.T) {
 		t.Fatal(e, string(b))
 	}
 	i := strings.Index(s, "<<'FUNNEL_BOOTSTRAP'")
-	if i < 0 || strings.Contains(s[:i], "auth-secret") || !strings.Contains(s, "--bootstrap-stdin") {
+	if i < 0 || strings.Contains(s[:i], "auth-secret") || !strings.Contains(s, "native runtime install") {
 		t.Fatal("credentials leaked outside protected bootstrap")
 	}
 	for _, old := range []string{"--print-command", " gateway join ", " provision ", "TS_AUTHKEY="} {
@@ -95,7 +96,7 @@ func TestDryRunScriptCannotExecute(t *testing.T) {
 }
 func TestCommandsUseUnifiedSurface(t *testing.T) {
 	p := fixture(t)
-	for _, a := range []string{"create", "get", "update", "delete", "create-remote", "start", "stop", "restart", "logs"} {
+	for _, a := range []string{"create", "get", "update", "delete", "start", "stop", "restart", "logs"} {
 		if !strings.Contains(p.Commands[a], "'native' 'gateways' '"+a+"' 'site'") {
 			t.Fatal(a, p.Commands[a])
 		}
@@ -124,5 +125,49 @@ func TestKubernetesStorageInstructions(t *testing.T) {
 	_, e = Resolve(&v1.DeploymentRequest{Mode: "control", Target: "kubernetes", ResourceName: "main", Context: "cluster", Tailnet: "example.ts.net", StorageSize: "-1Gi"}, "", "dev-test")
 	if e == nil {
 		t.Fatal("negative volume accepted")
+	}
+}
+
+// Execute the exact generated shell through sh -s, with only artifact download
+// stubbed. The receiver records stdin, proving secrets are not command arguments.
+func TestInstallerShellDeliversBootstrapToHiddenReceiver(t *testing.T) {
+	for _, target := range []string{"native", "kubernetes"} {
+		t.Run(target, func(t *testing.T) {
+			mode := "tailnet-gateway"
+			scope := "native"
+			if target == "kubernetes" {
+				mode = "k8s-gateway"
+				scope = "k8s"
+			}
+			p, err := Resolve(&v1.DeploymentRequest{Mode: mode, Target: target, ResourceName: "site", Context: "remote-context"}, "http://control:8080", "v3.0.0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			p.Credentials = &v1.BootstrapCredentials{AuthKey: "auth-secret", EnrollmentCode: "code-secret", ExpiresAt: time.Now().Add(time.Minute).Unix()}
+			dir := t.TempDir()
+			bin := filepath.Join(dir, "bin with spaces")
+			os.MkdirAll(bin, 0700)
+			os.WriteFile(filepath.Join(bin, "curl"), []byte("#!/bin/sh\nprintf '%s\\n' '#!/bin/sh' 'exit 0'\n"), 0700)
+			os.WriteFile(filepath.Join(bin, "tailscale-private-funnel"), []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$RECEIVED_ARGS\"\ncat > \"$RECEIVED_BUNDLE\"\n"), 0700)
+			argsPath, bundlePath := filepath.Join(dir, "args"), filepath.Join(dir, "bundle")
+			cmd := exec.Command("sh", "-s")
+			cmd.Stdin = strings.NewReader(InstallerScript(p))
+			cmd.Env = append(os.Environ(), "PATH="+bin+":/usr/bin:/bin", "XDG_BIN_HOME="+bin, "RECEIVED_ARGS="+argsPath, "RECEIVED_BUNDLE="+bundlePath)
+			if b, err := cmd.CombinedOutput(); err != nil {
+				t.Fatal(err, string(b))
+			}
+			b, _ := os.ReadFile(argsPath)
+			if string(b) != scope+"\nruntime\ninstall\n" {
+				t.Fatalf("unexpected arguments %q", b)
+			}
+			b, _ = os.ReadFile(bundlePath)
+			var got v1.DeploymentInstructions
+			if err := json.Unmarshal(b, &got); err != nil {
+				t.Fatal(err)
+			}
+			if got.Credentials.AuthKey != "auth-secret" || got.Deployment.Target != target {
+				t.Fatal("bundle lost")
+			}
+		})
 	}
 }

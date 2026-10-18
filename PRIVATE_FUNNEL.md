@@ -33,8 +33,9 @@ the SQLite PVC and matching identity Secret; the encryption key is in that Secre
 ## Bootstrap control, then use the UI
 
 Download the built release binary using the README installer. Bootstrap with protected
-OAuth files through `native controls create NAME`; missing inputs can open
-interactive credential, tag, and grant guidance. Other nodes are noninteractive.
+OAuth-file references through `native controls create NAME --output script`.
+Execute its generated installer on the target with the protected files present.
+Creation only generates output; it never installs on the invoking machine.
 
 In the control UI:
 
@@ -107,8 +108,8 @@ through that gateway's tsnet state. There is no ordinary-network fallback.
 See [Kubernetes installations](docs/KUBERNETES.md) and the generated
 [CRD reference](docs/KUBERNETES_API.md). Install one singleton Recreate operator
 per cluster, explicitly granting it installation namespaces. The public OCI chart
-installs only that operator; `k8s controls/gateways/loadbalancers create` manages
-component CRs. Every operation requires `--context`.
+installs only that operator; `k8s controls/gateways/loadbalancers create` generates
+installers that create component CRs when executed. Every operation requires `--context`.
 
 Components live in `tailscale-private-funnel-<installation>-system`. Control and
 load balancers use Recreate Deployments with separate identities. SQLite and
@@ -136,8 +137,9 @@ reads are cluster-scoped; watch namespace filters do not replace allowedRoutes,
 ReferenceGrant, exposure policy, or backend validation. Brokers cannot modify
 workloads, execute in Pods, or patch control Pods.
 
-Use the web UI to generate instructions, or run `k8s … create` directly from an
-authorized workstation. Control never receives kubeconfigs. Credentials enter
+Use the web UI to generate commands, then run `k8s … create --output script` from an
+authorized workstation and transfer its output to a machine with cluster access.
+Control never receives kubeconfigs. Credentials enter
 owned bootstrap Secrets rather than CRs or Helm values; successful bootstrap
 removes those Secrets. See [operator verification](docs/qa-kubernetes-operator.md).
 
@@ -243,3 +245,10 @@ DNS records or enrollments. Re-enroll nodes and explicitly approve only the exac
 DNS previews you intend to reclaim. Do not reconstruct ownership from a hostname
 prefix or remove unrelated records. A removed cluster is not a recoverable control
 backup; keep SQLite and its encryption/signing keys together.
+
+## Installer generation
+
+All public native and Kubernetes `create` commands now generate installers.
+Run non-control creation from an authorized machine, then transfer its secret
+15-minute installer to the execution host. Targets join embedded tsnet before
+contacting control. See [the installer workflow](docs/INSTALLER-WORKFLOW.md).

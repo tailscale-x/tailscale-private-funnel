@@ -2,9 +2,9 @@
 
 Generated from protobuf/Cobra metadata. Do not edit.
 
-Use `native` for this Linux machine, `k8s` with an explicit `--context` for operator-backed deployment, and `manage` for the Tailscale-authorized installation API. `native ... create-remote --output script` emits a complete installer for execution on another host. No SSH connection is made by Funnel.
+Use `native` for this Linux machine, `k8s` with an explicit `--context` for operator-backed deployment, and `manage` for the Tailscale-authorized installation API. Public `native ... create` and `k8s ... create` generate installers; they never install locally, connect by SSH or contact Kubernetes. Non-control component generation needs authorized control connectivity. Use `--output script` and transfer its secret output to the execution machine; bootstrap expires after 15 minutes. The target uses embedded tsnet and needs no host Tailscale.
 
-Use `--output json`, mutation `--dry-run`, deployment `--wait` and `--timeout`, and `--yes` for destructive deletion. Instructions are read-only; enrollment starts when create runs. Stop preserves identity and data; delete revokes and removes owned state.
+Use `--output json`, mutation `--dry-run`, target-side deployment `--wait` and `--timeout`, and `--yes` for destructive deletion. UI instruction generation is read-only; CLI create issues enrollment credentials, while hidden installers execute deployment. Stop preserves identity and data; delete revokes and removes owned state.
 
 Management uses `--control-url` or XDG client.json. Secret inputs are file/stdin only. Exit codes: 0 success, 1 failure, 2 invalid input, 3 authorization, 4 transport unavailable, 5 conflict, 6 timeout.
 
@@ -519,20 +519,18 @@ Flags:
   -h, --help                              help for create
       --hostname string                   Tailscale hostname; defaults to resource name
       --installation string               installation trust boundary (default "main")
-      --kubeconfig string                 Kubernetes configuration file
       --namespace string                  installation namespace (default "tailscale-private-funnel-main-system")
       --node-selector stringToString      component placement (gateway: forwarders); key=value pairs (default [])
-      --non-interactive                   require scripted bootstrap inputs
       --oauth-client-id-file string       protected OAuth client ID file
       --oauth-client-secret-file string   protected OAuth client secret file
-      --output string                     output: table or json (default "table")
+      --output string                     output: instructions, script, or json (installer generation) (default "instructions")
       --placement-file string             component Pod placement JSON (nodeSelector, affinity, tolerations)
       --storage-class string              PVC StorageClass; omit only when the cluster has a default
       --storage-size string               persistent volume size (default "1Gi")
       --tailnet string                    Tailscale tailnet name
-      --timeout duration                  operation timeout (default 10m0s)
+      --timeout duration                  target execution timeout; generation does not wait for deployment (default 10m0s)
       --version string                    pinned component version (default "VERSION")
-      --wait                              wait for reconciliation and readiness
+      --wait                              wait for readiness during target-side execution
 ```
 
 ## tailscale-private-funnel k8s controls delete
@@ -638,14 +636,13 @@ Flags:
       --hostname string                   Tailscale hostname; defaults to resource name
       --ingress-class string              IngressClass name
       --installation string               installation trust boundary (default "main")
-      --kubeconfig string                 Kubernetes configuration file
       --namespace string                  installation namespace (default "tailscale-private-funnel-main-system")
       --node-selector stringToString      component placement (gateway: forwarders); key=value pairs (default [])
-      --output string                     output: table or json (default "table")
+      --output string                     output: instructions, script, or json (installer generation) (default "instructions")
       --placement-file string             component Pod placement JSON (nodeSelector, affinity, tolerations)
-      --timeout duration                  operation timeout (default 10m0s)
+      --timeout duration                  target execution timeout; generation does not wait for deployment (default 10m0s)
       --version string                    pinned component version (default "VERSION")
-      --wait                              wait for reconciliation and readiness
+      --wait                              wait for readiness during target-side execution
       --watch-namespace stringArray       routing namespace; repeatable
 ```
 
@@ -750,17 +747,16 @@ Flags:
   -h, --help                           help for create
       --hostname string                Tailscale hostname; defaults to resource name
       --installation string            installation trust boundary (default "main")
-      --kubeconfig string              Kubernetes configuration file
       --namespace string               installation namespace (default "tailscale-private-funnel-main-system")
       --node-selector stringToString   component placement (gateway: forwarders); key=value pairs (default [])
-      --output string                  output: table or json (default "table")
+      --output string                  output: instructions, script, or json (installer generation) (default "instructions")
       --placement-file string          component Pod placement JSON (nodeSelector, affinity, tolerations)
       --public-hostname string         public DNS hostname
       --storage-class string           PVC StorageClass; omit only when the cluster has a default
       --storage-size string            persistent volume size (default "1Gi")
-      --timeout duration               operation timeout (default 10m0s)
+      --timeout duration               target execution timeout; generation does not wait for deployment (default 10m0s)
       --version string                 pinned component version (default "VERSION")
-      --wait                           wait for reconciliation and readiness
+      --wait                           wait for readiness during target-side execution
 ```
 
 ## tailscale-private-funnel k8s loadbalancers delete
@@ -862,13 +858,12 @@ Flags:
       --dry-run                         validate and render without mutation
   -h, --help                            help for create
       --hostname string                 Tailscale hostname; defaults to resource name
-      --kubeconfig string               Kubernetes configuration file
       --managed-namespace stringArray   namespace receiving operator permissions; repeatable
-      --output string                   output: table or json (default "table")
+      --output string                   output: instructions, script, or json (installer generation) (default "instructions")
       --placement-file string           operator Pod placement JSON (nodeSelector, affinity, tolerations)
-      --timeout duration                operation timeout (default 10m0s)
+      --timeout duration                target execution timeout; generation does not wait for deployment (default 10m0s)
       --version string                  pinned component version (default "VERSION")
-      --wait                            wait for reconciliation and readiness
+      --wait                            wait for readiness during target-side execution
 ```
 
 ## tailscale-private-funnel k8s operator delete
@@ -1834,40 +1829,14 @@ Flags:
       --dry-run                           validate and render without mutation
   -h, --help                              help for create
       --hostname string                   Tailscale hostname; defaults to resource name
-      --non-interactive                   require scripted bootstrap inputs
       --oauth-client-id-file string       protected OAuth client ID file
       --oauth-client-secret-file string   protected OAuth client secret file
-      --output string                     output: table or json (default "table")
+      --output string                     output: instructions, script, or json (installer generation) (default "instructions")
       --state-dir string                  persistent identity path
       --tailnet string                    Tailscale tailnet name
-      --timeout duration                  operation timeout (default 10m0s)
+      --timeout duration                  target execution timeout; generation does not wait for deployment (default 10m0s)
       --version string                    pinned component version (default "VERSION")
-      --wait                              wait for reconciliation and readiness
-```
-
-## tailscale-private-funnel native controls create-remote
-
-```text
-Usage:
-  tailscale-private-funnel native controls create-remote NAME [flags]
-
-Flags:
-      --administrator stringArray         additional first-bootstrap administrator selector; default autogroup:owner remains
-      --control-url string                Funnel control URL
-      --data-dir string                   persistent application path
-      --display-name string               editable display label
-      --dry-run                           validate and render without mutation
-  -h, --help                              help for create-remote
-      --hostname string                   Tailscale hostname; defaults to resource name
-      --non-interactive                   require scripted bootstrap inputs
-      --oauth-client-id-file string       protected OAuth client ID file
-      --oauth-client-secret-file string   protected OAuth client secret file
-      --output string                     output: table or json (default "instructions")
-      --state-dir string                  persistent identity path
-      --tailnet string                    Tailscale tailnet name
-      --timeout duration                  operation timeout (default 10m0s)
-      --version string                    pinned component version (default "VERSION")
-      --wait                              wait for reconciliation and readiness
+      --wait                              wait for readiness during target-side execution
 ```
 
 ## tailscale-private-funnel native controls delete
@@ -2022,7 +1991,6 @@ Usage:
   tailscale-private-funnel native gateways create NAME [flags]
 
 Flags:
-      --bootstrap-stdin            read one-use enrollment bundle from stdin
       --control-url string         Funnel control URL
       --data-dir string            persistent application path
       --deny-network stringArray   local Docker network deny pattern
@@ -2031,36 +1999,12 @@ Flags:
   -h, --help                       help for create
       --hostname string            Tailscale hostname; defaults to resource name
       --label-key stringArray      additional Docker label alias
-      --output string              output: table or json (default "table")
+      --output string              output: instructions, script, or json (installer generation) (default "instructions")
       --state-dir string           persistent identity path
-      --timeout duration           operation timeout (default 10m0s)
+      --timeout duration           target execution timeout; generation does not wait for deployment (default 10m0s)
       --type string                gateway type: docker or tailnet
       --version string             pinned component version (default "VERSION")
-      --wait                       wait for reconciliation and readiness
-```
-
-## tailscale-private-funnel native gateways create-remote
-
-```text
-Usage:
-  tailscale-private-funnel native gateways create-remote NAME [flags]
-
-Flags:
-      --bootstrap-stdin            read one-use enrollment bundle from stdin
-      --control-url string         Funnel control URL
-      --data-dir string            persistent application path
-      --deny-network stringArray   local Docker network deny pattern
-      --display-name string        editable display label
-      --dry-run                    validate and render without mutation
-  -h, --help                       help for create-remote
-      --hostname string            Tailscale hostname; defaults to resource name
-      --label-key stringArray      additional Docker label alias
-      --output string              output: table or json (default "instructions")
-      --state-dir string           persistent identity path
-      --timeout duration           operation timeout (default 10m0s)
-      --type string                gateway type: docker or tailnet
-      --version string             pinned component version (default "VERSION")
-      --wait                       wait for reconciliation and readiness
+      --wait                       wait for readiness during target-side execution
 ```
 
 ## tailscale-private-funnel native gateways delete
@@ -2215,7 +2159,6 @@ Usage:
   tailscale-private-funnel native loadbalancers create NAME [flags]
 
 Flags:
-      --bootstrap-stdin            read one-use enrollment bundle from stdin
       --certificate-email string   ACME contact email
       --control-url string         Funnel control URL
       --data-dir string            persistent application path
@@ -2223,35 +2166,12 @@ Flags:
       --dry-run                    validate and render without mutation
   -h, --help                       help for create
       --hostname string            Tailscale hostname; defaults to resource name
-      --output string              output: table or json (default "table")
+      --output string              output: instructions, script, or json (installer generation) (default "instructions")
       --public-hostname string     public DNS hostname
       --state-dir string           persistent identity path
-      --timeout duration           operation timeout (default 10m0s)
+      --timeout duration           target execution timeout; generation does not wait for deployment (default 10m0s)
       --version string             pinned component version (default "VERSION")
-      --wait                       wait for reconciliation and readiness
-```
-
-## tailscale-private-funnel native loadbalancers create-remote
-
-```text
-Usage:
-  tailscale-private-funnel native loadbalancers create-remote NAME [flags]
-
-Flags:
-      --bootstrap-stdin            read one-use enrollment bundle from stdin
-      --certificate-email string   ACME contact email
-      --control-url string         Funnel control URL
-      --data-dir string            persistent application path
-      --display-name string        editable display label
-      --dry-run                    validate and render without mutation
-  -h, --help                       help for create-remote
-      --hostname string            Tailscale hostname; defaults to resource name
-      --output string              output: table or json (default "instructions")
-      --public-hostname string     public DNS hostname
-      --state-dir string           persistent identity path
-      --timeout duration           operation timeout (default 10m0s)
-      --version string             pinned component version (default "VERSION")
-      --wait                       wait for reconciliation and readiness
+      --wait                       wait for readiness during target-side execution
 ```
 
 ## tailscale-private-funnel native loadbalancers delete

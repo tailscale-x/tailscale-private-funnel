@@ -56,8 +56,11 @@ type DeploymentRequest struct {
 	Administrators        []string               `protobuf:"bytes,30,rep,name=administrators,proto3" json:"administrators,omitempty"`
 	StorageClass          string                 `protobuf:"bytes,31,opt,name=storage_class,json=storageClass,proto3" json:"storage_class,omitempty"`
 	StorageSize           string                 `protobuf:"bytes,32,opt,name=storage_size,json=storageSize,proto3" json:"storage_size,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	// Resolved placement, carried to the executor without local file references.
+	PlacementJson          []byte `protobuf:"bytes,33,opt,name=placement_json,json=placementJson,proto3" json:"placement_json,omitempty"`
+	ForwarderPlacementJson []byte `protobuf:"bytes,34,opt,name=forwarder_placement_json,json=forwarderPlacementJson,proto3" json:"forwarder_placement_json,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *DeploymentRequest) Reset() {
@@ -314,6 +317,20 @@ func (x *DeploymentRequest) GetStorageSize() string {
 	return ""
 }
 
+func (x *DeploymentRequest) GetPlacementJson() []byte {
+	if x != nil {
+		return x.PlacementJson
+	}
+	return nil
+}
+
+func (x *DeploymentRequest) GetForwarderPlacementJson() []byte {
+	if x != nil {
+		return x.ForwarderPlacementJson
+	}
+	return nil
+}
+
 // Bootstrap credentials must not be persisted in plans, logs or receipts.
 type BootstrapCredentials struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
@@ -407,6 +424,8 @@ type DeploymentInstructions struct {
 	Example       string                 `protobuf:"bytes,12,opt,name=example,proto3" json:"example,omitempty"`
 	Enrollment    *Enrollment            `protobuf:"bytes,13,opt,name=enrollment,proto3" json:"enrollment,omitempty"`
 	Commands      map[string]string      `protobuf:"bytes,14,rep,name=commands,proto3" json:"commands,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Preview-only bundles are rejected by hidden installers.
+	DryRun        bool `protobuf:"varint,15,opt,name=dry_run,json=dryRun,proto3" json:"dry_run,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -539,6 +558,13 @@ func (x *DeploymentInstructions) GetCommands() map[string]string {
 	return nil
 }
 
+func (x *DeploymentInstructions) GetDryRun() bool {
+	if x != nil {
+		return x.DryRun
+	}
+	return false
+}
+
 type DeploymentStep struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -603,8 +629,7 @@ var File_funnel_v1_provisioning_proto protoreflect.FileDescriptor
 
 const file_funnel_v1_provisioning_proto_rawDesc = "" +
 	"\n" +
-	"\x1cfunnel/v1/provisioning.proto\x12\tfunnel.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1afunnel/v1/management.proto\x1a\x17funnel/v1/options.proto\"\xbd\n" +
-	"\n" +
+	"\x1cfunnel/v1/provisioning.proto\x12\tfunnel.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1afunnel/v1/management.proto\x1a\x17funnel/v1/options.proto\"\x9e\v\n" +
 	"\x11DeploymentRequest\x12k\n" +
 	"\x04mode\x18\x01 \x01(\tBW\xbaHT\xd8\x01\x01rOR\boperatorR\acontrolR\floadbalancerR\x0edocker-gatewayR\x0ftailnet-gatewayR\vk8s-gatewayR\x04mode\x124\n" +
 	"\x06target\x18\x02 \x01(\tB\x1c\xbaH\x19\xd8\x01\x01r\x14R\x06nativeR\n" +
@@ -640,7 +665,9 @@ const file_funnel_v1_provisioning_proto_rawDesc = "" +
 	"\x0fcurrent_control\x18\x1d \x01(\bR\x0ecurrentControl\x12&\n" +
 	"\x0eadministrators\x18\x1e \x03(\tR\x0eadministrators\x12#\n" +
 	"\rstorage_class\x18\x1f \x01(\tR\fstorageClass\x12!\n" +
-	"\fstorage_size\x18  \x01(\tR\vstorageSize\x1a?\n" +
+	"\fstorage_size\x18  \x01(\tR\vstorageSize\x12%\n" +
+	"\x0eplacement_json\x18! \x01(\fR\rplacementJson\x128\n" +
+	"\x18forwarder_placement_json\x18\" \x01(\fR\x16forwarderPlacementJson\x1a?\n" +
 	"\x11NodeSelectorEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbf\x01\n" +
@@ -651,7 +678,7 @@ const file_funnel_v1_provisioning_proto_rawDesc = "" +
 	"\vcontrol_key\x18\x04 \x01(\tR\n" +
 	"controlKey\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\x05 \x01(\x03R\texpiresAt\"\x93\x05\n" +
+	"expires_at\x18\x05 \x01(\x03R\texpiresAt\"\xac\x05\n" +
 	"\x16DeploymentInstructions\x12<\n" +
 	"\n" +
 	"deployment\x18\x01 \x01(\v2\x1c.funnel.v1.DeploymentRequestR\n" +
@@ -671,7 +698,8 @@ const file_funnel_v1_provisioning_proto_rawDesc = "" +
 	"\n" +
 	"enrollment\x18\r \x01(\v2\x15.funnel.v1.EnrollmentR\n" +
 	"enrollment\x12K\n" +
-	"\bcommands\x18\x0e \x03(\v2/.funnel.v1.DeploymentInstructions.CommandsEntryR\bcommands\x1a;\n" +
+	"\bcommands\x18\x0e \x03(\v2/.funnel.v1.DeploymentInstructions.CommandsEntryR\bcommands\x12\x17\n" +
+	"\adry_run\x18\x0f \x01(\bR\x06dryRun\x1a;\n" +
 	"\rCommandsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"X\n" +

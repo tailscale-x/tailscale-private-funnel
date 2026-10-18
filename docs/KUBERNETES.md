@@ -11,19 +11,24 @@ enrollment, reports, DNS ownership, and audit.
 
 ## Install and create control
 
-Run from an authorized workstation. Every Kubernetes operation requires an
-explicit context; the current context is never used implicitly.
+Generate installers without cluster connectivity, then execute them on a machine
+with the selected kubeconfig. Control/operator generation requires no existing
+Funnel control. Every Kubernetes operation requires an explicit context.
 
 ```sh
 tailscale-private-funnel k8s operator create \
   --context CLUSTER --version VERSION \
-  --managed-namespace tailscale-private-funnel-main-system --wait
+  --managed-namespace tailscale-private-funnel-main-system --wait --output script > install-operator.sh
 
 tailscale-private-funnel k8s controls create main \
   --context CLUSTER --namespace tailscale-private-funnel-main-system \
   --version VERSION --hostname funnel-control --tailnet TAILNET \
   --oauth-client-id-file ./ts-client-id \
-  --oauth-client-secret-file ./ts-client-secret --wait
+  --oauth-client-secret-file ./ts-client-secret --wait --output script > install-control.sh
+
+# Transfer these scripts to the execution machine, with OAuth files provisioned there.
+sh install-operator.sh
+sh install-control.sh
 ```
 
 Control and load balancers require a working dynamic StorageClass. If the cluster
@@ -165,3 +170,12 @@ The canonical token endpoint is `https://api.tailscale.com/api/v2/oauth/token`,
 as specified in [Tailscale OAuth documentation](https://tailscale.com/docs/features/oauth-clients#tailscale-oauth-token-endpoint).
 Expiry-aware token sources are shared by matching credentials; rotation starts a
 new source. Token caching is in memory and does not change node identity persistence.
+
+## Separate authorization from cluster execution
+
+`k8s ... create --context TARGET --output script` generates an installer without
+reading kubeconfig or contacting the cluster. Component generation requires
+authorized control access; control/operator generation does not. Execute the
+output on a machine with the selected kubeconfig. It needs no Tailscale route to
+control: deployed components establish their own embedded tsnet connection.
+See [installer workflow](INSTALLER-WORKFLOW.md) for expiry and Secret handling.

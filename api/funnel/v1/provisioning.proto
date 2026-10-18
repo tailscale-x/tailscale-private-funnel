@@ -6,7 +6,7 @@ import "funnel/v1/management.proto";
 import "funnel/v1/options.proto";
 
 option go_package = "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1;funnelv1";
-// DeploymentService authorizes deployments. Execution is performed by the invoking CLI.
+// DeploymentService authorizes deployments. Execution is performed by a generated installer on the target.
 service DeploymentService {
   // Resolve deployment choices without creating enrollment or bootstrap keys.
   rpc Instructions(DeploymentRequest) returns (DeploymentInstructions) {
@@ -64,6 +64,9 @@ message DeploymentRequest {
   repeated string administrators = 30;
   string storage_class = 31;
   string storage_size = 32;
+  // Resolved placement, carried to the executor without local file references.
+  bytes placement_json = 33;
+  bytes forwarder_placement_json = 34;
 }
 // Bootstrap credentials must not be persisted in plans, logs or receipts.
 message BootstrapCredentials {
@@ -88,6 +91,8 @@ message DeploymentInstructions {
   string example = 12;
   Enrollment enrollment = 13;
   map<string, string> commands = 14;
+  // Preview-only bundles are rejected by hidden installers.
+  bool dry_run = 15;
 }
 message DeploymentStep {
   string id = 1;

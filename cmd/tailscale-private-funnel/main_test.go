@@ -19,7 +19,7 @@ func TestPublicInventory(t *testing.T) {
 		for _, resource := range []string{"controls", "gateways", "loadbalancers"} {
 			actions := []string{"create", "list", "get", "update", "delete"}
 			if scope == "native" {
-				actions = append(actions, "create-remote", "start", "stop", "restart", "logs")
+				actions = append(actions, "start", "stop", "restart", "logs")
 			}
 			for _, action := range actions {
 				cmd, rest, e := NewRoot("dev-test").Find([]string{scope, resource, action})
@@ -37,7 +37,7 @@ func TestPublicInventory(t *testing.T) {
 	}
 }
 func TestRemovedCommandsRejected(t *testing.T) {
-	for _, args := range [][]string{{"control", "join"}, {"control", "providers"}, {"gateway", "serve"}, {"ingress", "join"}, {"k8s-gateway", "serve"}, {"k8s-operator", "serve"}, {"native", "gateways", "join"}, {"manage", "provision"}} {
+	for _, args := range [][]string{{"native", "gateways", "create-remote", "site"}, {"k8s", "gateways", "create-remote", "site"}, {"native", "gateways", "create", "site", "--bootstrap-stdin"}, {"control", "join"}, {"control", "providers"}, {"gateway", "serve"}, {"ingress", "join"}, {"k8s-gateway", "serve"}, {"k8s-operator", "serve"}, {"native", "gateways", "join"}, {"manage", "provision"}} {
 		r := NewRoot("dev-test")
 		r.SetArgs(args)
 		r.SetOut(&bytes.Buffer{})
@@ -56,7 +56,7 @@ func TestKubernetesContextRequired(t *testing.T) {
 }
 func TestRemoteDryRunDoesNotAuthorize(t *testing.T) {
 	r := NewRoot("dev-test")
-	r.SetArgs([]string{"native", "gateways", "create-remote", "sample", "--type", "tailnet", "--control-url", "http://unreachable.invalid:8080", "--dry-run", "--output", "script"})
+	r.SetArgs([]string{"native", "gateways", "create", "sample", "--type", "tailnet", "--control-url", "http://unreachable.invalid:8080", "--dry-run", "--output", "script"})
 	var b bytes.Buffer
 	r.SetOut(&b)
 	if e := r.Execute(); e != nil {

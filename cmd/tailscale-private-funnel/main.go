@@ -68,6 +68,7 @@ func NewRoot(version string) *cobra.Command {
 }
 func nativeRuntime() *cobra.Command {
 	runtime := &cobra.Command{Use: "runtime", Hidden: true}
+	runtime.AddCommand(deploymentcli.Installer("native"))
 	for _, mode := range []string{"control", "loadbalancer", "docker-gateway", "tailnet-gateway"} {
 		mode := mode
 		o := app.Options{}
@@ -140,6 +141,7 @@ func runtimeFlags(c *cobra.Command, o *app.Options) {
 }
 func kubernetesRuntime() *cobra.Command {
 	runtime := &cobra.Command{Use: "runtime", Hidden: true}
+	runtime.AddCommand(deploymentcli.Installer("kubernetes"))
 	var namespaces []string
 	var probe string
 	op := &cobra.Command{Use: "operator", Hidden: true}

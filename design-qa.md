@@ -104,3 +104,16 @@ See [v3 release acceptance](docs/qa-v3.0.0-release.md) for live authorization an
 recovery results.
 
 final result: passed
+
+## Installer-generation workflow — 2026-10-18
+
+Native and Kubernetes provisioning now distinguish authorization, generation,
+execution, and readiness. Verified synthetic native load-balancer, Kubernetes
+gateway and operator flows in Chrome DevTools at desktop and 390px widths;
+copy/download controls work and viewers cannot generate deployment instructions.
+Fixed the resource-name pattern for Chrome HTML regex validation. Final native
+flow has no console errors or horizontal overflow. See
+[installer verification](docs/qa-installer-workflow.md) for the scoped runtime and
+cleanup evidence.
+
+final result: passed

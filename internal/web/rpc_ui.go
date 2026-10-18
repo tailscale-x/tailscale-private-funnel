@@ -45,6 +45,13 @@ func (c *Control) documentation(file string) http.HandlerFunc {
 			http.Error(w, "Generated documentation unavailable", 503)
 			return
 		}
+		if file == "llms.txt" {
+			b, e = c.agentDocumentation(b)
+			if e != nil {
+				http.Error(w, "Control documentation settings unavailable", http.StatusServiceUnavailable)
+				return
+			}
+		}
 		contentType := "text/plain; charset=utf-8"
 		if len(file) > 5 && file[len(file)-5:] == ".json" {
 			contentType = "application/json"

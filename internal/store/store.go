@@ -598,7 +598,7 @@ func (s *Store) CreateEnrollment(mode, hostname string) (Enrollment, string, err
 	code := base64.RawURLEncoding.EncodeToString(codeBytes)
 	hash := sha256.Sum256([]byte(code))
 	now := time.Now().Unix()
-	_, err := s.db.Exec(`INSERT INTO enrollments(id,name,mode,hostname,code_hash,created_at,revoked) VALUES(?,?,?,?,?,?,0)`, id, hostname, mode, hostname, fmt.Sprintf("%x", hash[:]), now)
+	_, err := s.db.Exec(`INSERT INTO enrollments(id,name,mode,hostname,code_hash,created_at,expires_at,revoked) VALUES(?,?,?,?,?,?,?,0)`, id, hostname, mode, hostname, fmt.Sprintf("%x", hash[:]), now, now+900)
 	return Enrollment{ID: id, Name: hostname, Mode: mode, Hostname: hostname, CreatedAt: now}, code, err
 }
 
@@ -606,10 +606,14 @@ func (s *Store) RedeemEnrollment(id, code string) (Enrollment, error) {
 	var e Enrollment
 	var revoked int
 	var hash string
-	if err := s.db.QueryRow(`SELECT id,name,mode,hostname,code_hash,created_at,revoked FROM enrollments WHERE id=?`, id).Scan(&e.ID, &e.Name, &e.Mode, &e.Hostname, &hash, &e.CreatedAt, &revoked); err != nil {
+	var expiresAt int64
+	if err := s.db.QueryRow(`SELECT id,name,mode,hostname,code_hash,created_at,revoked,expires_at FROM enrollments WHERE id=?`, id).Scan(&e.ID, &e.Name, &e.Mode, &e.Hostname, &hash, &e.CreatedAt, &revoked, &expiresAt); err != nil {
 		return e, err
 	}
 	e.Revoked = revoked != 0
+	if expiresAt <= time.Now().Unix() {
+		return e, fmt.Errorf("enrollment expired; generate a new installer")
+	}
 	if e.Revoked {
 		return e, fmt.Errorf("enrollment is revoked")
 	}
@@ -639,7 +643,7 @@ func (s *Store) BindEnrollment(id, code, publicKey, tailnetID, hostname string, 
 		return fmt.Errorf("tailnet identity is already enrolled")
 	}
 	sum := sha256.Sum256([]byte(code))
-	result, err := tx.Exec(`UPDATE enrollments SET code_hash='' WHERE id=? AND code_hash=? AND revoked=0`, id, fmt.Sprintf("%x", sum[:]))
+	result, err := tx.Exec(`UPDATE enrollments SET code_hash='' WHERE id=? AND code_hash=? AND revoked=0 AND expires_at>?`, id, fmt.Sprintf("%x", sum[:]), time.Now().Unix())
 	if err != nil {
 		return err
 	}

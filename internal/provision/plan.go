@@ -2,7 +2,11 @@
 package provision
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	funnel "github.com/tailscale-x/tailscale-private-funnel/api/kubernetes/v1alpha1"
+	"io"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"net/mail"
@@ -30,6 +34,7 @@ func Resolve(in *v1.DeploymentRequest, managementURL, version string) (*v1.Deplo
 		return nil, fmt.Errorf("deployment is required")
 	}
 	d := proto.Clone(in).(*v1.DeploymentRequest)
+	d.Version = version
 	switch d.Mode {
 	case "operator", "control", "loadbalancer", "docker-gateway", "tailnet-gateway", "k8s-gateway":
 	default:
@@ -43,6 +48,28 @@ func Resolve(in *v1.DeploymentRequest, managementURL, version string) (*v1.Deplo
 	}
 	if d.Target == "kubernetes" && d.Mode != "operator" && d.Mode != "control" && d.Mode != "k8s-gateway" && d.Mode != "loadbalancer" {
 		return nil, fmt.Errorf("this gateway mode is native-only")
+	}
+	if len(d.PlacementJson) > 0 || len(d.ForwarderPlacementJson) > 0 {
+		if d.Target != "kubernetes" {
+			return nil, fmt.Errorf("Pod placement requires Kubernetes")
+		}
+		if len(d.ForwarderPlacementJson) > 0 && d.Mode != "k8s-gateway" {
+			return nil, fmt.Errorf("forwarder placement requires Kubernetes gateway")
+		}
+		for _, raw := range [][]byte{d.PlacementJson, d.ForwarderPlacementJson} {
+			if len(raw) == 0 {
+				continue
+			}
+			var placement funnel.Placement
+			dec := json.NewDecoder(bytes.NewReader(raw))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&placement); err != nil {
+				return nil, fmt.Errorf("invalid Pod placement")
+			}
+			if err := dec.Decode(new(any)); err != io.EOF {
+				return nil, fmt.Errorf("invalid Pod placement trailing data")
+			}
+		}
 	}
 	if d.Runtime == "" {
 		d.Runtime = "systemd"
@@ -185,7 +212,7 @@ func Resolve(in *v1.DeploymentRequest, managementURL, version string) (*v1.Deplo
 	if strings.HasPrefix(version, "dev-") {
 		plan.ChartVersion = "0.0.0-" + version
 	}
-	plan.Prerequisites = []string{"Administrator access to the selected Funnel control", "Existing shared tag grant; provisioning does not modify ACLs", "Persistent identity and application storage"}
+	plan.Prerequisites = []string{"Generator: administrator access to the selected Funnel control; execute the installer within 15 minutes", "Target: no host Tailscale required; embedded tsnet joins before contacting control", "Existing shared tag grant; provisioning does not modify ACLs", "Persistent identity and application storage"}
 	if d.Target == "native" {
 		plan.Prerequisites = append(plan.Prerequisites, "Linux and systemd; root or noninteractive sudo")
 		if d.Mode == "docker-gateway" {

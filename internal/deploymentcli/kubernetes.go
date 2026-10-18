@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 	funnel "github.com/tailscale-x/tailscale-private-funnel/api/kubernetes/v1alpha1"
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/native"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/provision"
 	apps "k8s.io/api/apps/v1"
@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -51,7 +52,9 @@ func kubeClient(f Flags) (client.Client, error) {
 }
 func kubeContextFlags(c *cobra.Command, f *Flags) {
 	c.Flags().StringVar(&f.Context, "context", "", "explicit Kubernetes context (required)")
-	c.Flags().StringVar(&f.Kubeconfig, "kubeconfig", "", "Kubernetes configuration file")
+	if c.Name() != "create" {
+		c.Flags().StringVar(&f.Kubeconfig, "kubeconfig", "", "Kubernetes configuration file")
+	}
 }
 func kubeFlags(c *cobra.Command, f *Flags) {
 	kubeContextFlags(c, f)
@@ -159,9 +162,11 @@ func privateFile(path string) ([]byte, error) {
 	}
 	return os.ReadFile(path)
 }
-func Kubernetes(version string) *cobra.Command {
+func Kubernetes(version string) *cobra.Command { return kubernetesCommands(version, nil) }
+
+func kubernetesCommands(version string, bootstrap *v1.DeploymentInstructions) *cobra.Command {
 	root := &cobra.Command{Use: "k8s", Short: "Manage operator-backed deployments in an explicit Kubernetes context"}
-	root.AddCommand(operatorCommands(version))
+	root.AddCommand(operatorCommands(version, bootstrap))
 	for _, kind := range []string{"controls", "gateways", "loadbalancers"} {
 		parent := &cobra.Command{Use: kind}
 		root.AddCommand(parent)
@@ -176,6 +181,12 @@ func Kubernetes(version string) *cobra.Command {
 			}
 			cmd := &cobra.Command{Use: use, Short: action + " a Kubernetes " + kind + " resource", Args: arg}
 			common(cmd, &f, version)
+			if bootstrap != nil {
+				cmd.PreRunE = nil
+			}
+			if action == "create" && bootstrap == nil {
+				creationOutput(cmd, &f)
+			}
 			kubeFlags(cmd, &f)
 			if action == "create" {
 				creation(cmd, &f, kind, true)
@@ -200,7 +211,24 @@ func Kubernetes(version string) *cobra.Command {
 						return e
 					}
 				}
+				if action == "create" && bootstrap == nil {
+					in, e := request(kind, name, f, "kubernetes")
+					if e != nil {
+						return e
+					}
+					if f.PlacementFile != "" || f.ForwarderPlacementFile != "" {
+						if e = bundlePlacement(in, f); e != nil {
+							return e
+						}
+					}
+					return generateInstaller(cmd, in, f)
+				}
 				object := newCR(kind, name, f)
+				if action == "create" && bootstrap != nil {
+					if e := applyBundlePlacement(object, bootstrap.Deployment); e != nil {
+						return e
+					}
+				}
 				if action == "create" {
 					if f.PlacementFile != "" {
 						p, e := readPlacement(f.PlacementFile)
@@ -241,11 +269,22 @@ func Kubernetes(version string) *cobra.Command {
 				switch action {
 				case "create":
 					var op apps.Deployment
-					if e = k.Get(ctx, types.NamespacedName{Namespace: OperatorNamespace, Name: "tailscale-private-funnel-k8s-operator"}, &op); e != nil || op.Status.ReadyReplicas != 1 {
-						return errors.New("Kubernetes operator is not ready; run k8s operator create/get first")
+					if e = k.Get(ctx, types.NamespacedName{Namespace: OperatorNamespace, Name: "tailscale-private-funnel-k8s-operator"}, &op); e != nil {
+						if !apierrors.IsNotFound(e) {
+							return fmt.Errorf("cannot inspect Kubernetes operator; check context and permissions: %w", e)
+						}
+						return errors.New("Kubernetes operator is not installed; generate and execute its installer first")
+					}
+					if op.Status.ReadyReplicas != 1 {
+						return errors.New("Kubernetes operator is not ready; run k8s operator get to inspect it")
 					}
 					if !operatorManages(op, f.Namespace) {
 						return errors.New("namespace is not enabled in this operator installation")
+					}
+					if kind == "gateways" {
+						if _, err := k.RESTMapper().RESTMapping(schema.GroupKind{Group: "gateway.networking.k8s.io", Kind: "GatewayClass"}, "v1"); err != nil {
+							return errors.New("Gateway API CRDs are not available; install the pinned standard CRDs from the installer prerequisites, then retry before bootstrap expires")
+						}
 					}
 					existing := object.DeepCopyObject().(client.Object)
 					if e = k.Get(ctx, client.ObjectKeyFromObject(existing), existing); e == nil {
@@ -270,19 +309,7 @@ func Kubernetes(version string) *cobra.Command {
 						secret.Data["client-secret"] = key
 						secret.Data["administrators"], _ = json.Marshal(f.Administrators)
 					} else {
-						in, e := request(kind, name, f, "kubernetes")
-						if e != nil {
-							return e
-						}
-						rpc, e := apiClient(f.ControlURL)
-						if e != nil {
-							return e
-						}
-						authorized, e := rpc.Authorize(ctx, connect.NewRequest(in))
-						if e != nil {
-							return e
-						}
-						p := authorized.Msg
+						p := bootstrap
 						c := p.Credentials
 						secret.Data = map[string][]byte{"enrollment-id": []byte(c.EnrollmentId), "code": []byte(c.EnrollmentCode), "auth-key": []byte(c.AuthKey), "control-key": []byte(c.ControlKey), "management-url": []byte(p.ManagementUrl), "hostname": []byte(p.Deployment.Hostname), "cert-email": []byte(p.Deployment.CertificateEmail), "loadbalancer-hostname": []byte(p.Deployment.PublicHostname)}
 					}
@@ -372,13 +399,19 @@ func operatorManages(d apps.Deployment, ns string) bool {
 	}
 	return false
 }
-func operatorCommands(version string) *cobra.Command {
+func operatorCommands(version string, bootstrap *v1.DeploymentInstructions) *cobra.Command {
 	root := &cobra.Command{Use: "operator", Short: "Manage the single cluster Kubernetes operator"}
 	for _, action := range []string{"create", "get", "update", "delete"} {
 		action := action
 		f := Flags{}
 		cmd := &cobra.Command{Use: action, Args: cobra.NoArgs}
 		common(cmd, &f, version)
+		if bootstrap != nil {
+			cmd.PreRunE = nil
+		}
+		if action == "create" && bootstrap == nil {
+			creationOutput(cmd, &f)
+		}
 		kubeContextFlags(cmd, &f)
 		if action == "create" || action == "update" {
 			cmd.Flags().StringVar(&f.PlacementFile, "placement-file", "", "operator Pod placement JSON (nodeSelector, affinity, tolerations)")
@@ -397,7 +430,20 @@ func operatorCommands(version string) *cobra.Command {
 			if action == "create" && len(f.ManagedNamespaces) == 0 {
 				return errors.New("at least one --managed-namespace is required")
 			}
+			if action == "create" && bootstrap == nil {
+				in := &v1.DeploymentRequest{Mode: "operator", Target: "kubernetes", Context: f.Context, Version: f.Version, ManagedNamespaces: f.ManagedNamespaces, Wait: f.Wait, TimeoutSeconds: uint32(f.Timeout.Seconds())}
+				if e := bundlePlacement(in, f); e != nil {
+					return e
+				}
+				return generateInstaller(cmd, in, f)
+			}
 			var placement *funnel.Placement
+			if bootstrap != nil && len(bootstrap.Deployment.PlacementJson) > 0 {
+				placement = new(funnel.Placement)
+				if err := json.Unmarshal(bootstrap.Deployment.PlacementJson, placement); err != nil {
+					return err
+				}
+			}
 			if f.PlacementFile != "" {
 				var e error
 				placement, e = readPlacement(f.PlacementFile)

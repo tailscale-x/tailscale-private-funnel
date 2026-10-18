@@ -8,7 +8,6 @@ import (
 	"errors"
 	"os"
 	"strings"
-	"time"
 
 	"connectrpc.com/connect"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
@@ -112,7 +111,7 @@ func (s *deploymentRPC) Authorize(ctx context.Context, r *connect.Request[v1.Dep
 	if e != nil {
 		return nil, rpcFailure(connect.CodeUnavailable, e)
 	}
-	p.Credentials = &v1.BootstrapCredentials{EnrollmentId: enrollment.ID, EnrollmentCode: code, AuthKey: key, ControlKey: base64.RawStdEncoding.EncodeToString(pub), ExpiresAt: time.Now().Add(15 * time.Minute).Unix()}
+	p.Credentials = &v1.BootstrapCredentials{EnrollmentId: enrollment.ID, EnrollmentCode: code, AuthKey: key, ControlKey: base64.RawStdEncoding.EncodeToString(pub), ExpiresAt: enrollment.CreatedAt + 900}
 	p.Enrollment = &v1.Enrollment{Id: enrollment.ID, Name: d.Name, Mode: d.Mode, Hostname: d.Hostname, CreatedAt: enrollment.CreatedAt}
 	p.Example = selectedGatewayExample(d.Mode, deployment)
 

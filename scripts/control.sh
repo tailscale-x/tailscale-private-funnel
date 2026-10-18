@@ -56,9 +56,13 @@ else
 fi
 
 binary="$INSTALL_DIR/tailscale-private-funnel"
-set -- native controls create "$RESOURCE_NAME" --non-interactive --tailnet "$TAILNET" --oauth-client-id-file "$OAUTH_ID_FILE" --oauth-client-secret-file "$OAUTH_SECRET_FILE"
+set -- native controls create "$RESOURCE_NAME" --tailnet "$TAILNET" --oauth-client-id-file "$OAUTH_ID_FILE" --oauth-client-secret-file "$OAUTH_SECRET_FILE"
 [ -n "$CONTROL_HOSTNAME" ] && set -- "$@" --hostname "$CONTROL_HOSTNAME"
 [ -n "$STATE_DIR" ] && set -- "$@" --state-dir "$STATE_DIR"
 [ -n "$DATA_DIR" ] && set -- "$@" --data-dir "$DATA_DIR"
 [ -n "$VERSION" ] && set -- "$@" --version "$VERSION"
-exec "$binary" "$@" --wait
+# Control installers contain target-side file references, not credentials.
+installer_tmp=$(mktemp)
+trap 'rm -f "$installer_tmp"' EXIT HUP INT TERM
+"$binary" "$@" --wait --output script > "$installer_tmp"
+sh "$installer_tmp"

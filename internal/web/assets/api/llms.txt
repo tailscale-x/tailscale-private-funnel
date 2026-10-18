@@ -15,7 +15,7 @@
 2. Discover resource IDs. Names are display labels, not references.
 3. Configure DNS providers and select vendor-discovered zones. Never create DNS records directly through vendor APIs.
 4. Preview policy changes and DNS reconciliation. Unmanaged overwrites require explicit approval bound to that exact preview.
-5. Use native or k8s component create to execute deployment. Kubernetes always requires an explicit --context. For remote hosts, generate native create-remote --output script and pipe it to your SSH client.
+5. Use native or k8s create --output script to generate an installer. Non-control generation requires authorized control access; it does not contact Kubernetes. Transfer the secret installer to the execution host within 15 minutes. Kubernetes requires an explicit target --context. Embedded tsnet joins before workloads contact private control.
 6. Verify identity, fresh reports, backend reachability and public readiness separately. An accepted mutation or generated instruction is not proof of deployment success.
 
 ## Security

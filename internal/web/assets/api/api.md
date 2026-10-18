@@ -84,7 +84,7 @@ No input fields.
 
 ## funnel.v1.DeploymentService
 
-DeploymentService authorizes deployments. Execution is performed by the invoking CLI.
+DeploymentService authorizes deployments. Execution is performed by a generated installer on the target.
 
 ### Instructions
 
@@ -129,6 +129,8 @@ Resolve deployment choices without creating enrollment or bootstrap keys.
 | `administrators` | list of string |  |
 | `storageClass` | string |  |
 | `storageSize` | string |  |
+| `placementJson` | bytes | Resolved placement, carried to the executor without local file references. |
+| `forwarderPlacementJson` | bytes |  |
 
 ### Authorize
 
@@ -173,6 +175,8 @@ Create one-use enrollment and return credentials once, without server-side execu
 | `administrators` | list of string |  |
 | `storageClass` | string |  |
 | `storageSize` | string |  |
+| `placementJson` | bytes | Resolved placement, carried to the executor without local file references. |
+| `forwarderPlacementJson` | bytes |  |
 
 ## funnel.v1.EnrollmentService
 

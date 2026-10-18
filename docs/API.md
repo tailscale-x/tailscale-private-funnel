@@ -2,8 +2,12 @@
 
 The protobuf contracts under `api/funnel/v1` generate Go/TypeScript Connect
 clients, handlers, OpenAPI, RPC reference, CLI flags, and agent documentation.
-Run `scripts/generate-rpc.sh`; the embedded `/llms.txt` points agents to the
-current generated documentation. Node communication, brokers and management use
+Run `scripts/generate-rpc.sh` to refresh the generated contract references.
+The authorized `/llms.txt` handler adds live control settings, matching release
+binary downloads, checksum/install guidance, and CLI examples on every request.
+Stable builds link their exact release; development builds explicitly identify
+the latest-stable download fallback. Documentation requests never mint credentials
+or trust request Host headers. Node communication, brokers and management use
 Connect over verified Tailscale identity or broker-scoped tokens.
 
 ## Command boundaries
@@ -19,6 +23,10 @@ Use standard help/completion offline. Kubernetes operations require explicit
 delete revokes and removes owned state. Runtime commands are hidden infrastructure
 entrypoints and are not a public deployment API.
 
+Public `create` generates an installer; it never installs, invokes SSH, or contacts
+Kubernetes. Other lifecycle operations execute their action. See
+[installer workflow](INSTALLER-WORKFLOW.md) for the connectivity matrix.
+
 ## Instructions versus execution
 
 `DeploymentService.Instructions` is pure: it resolves settings and returns typed
@@ -33,12 +41,12 @@ protected OAuth files on the target. UI instruction generation does not start
 bootstrap expiry.
 
 ```sh
-tailscale-private-funnel native gateways create-remote site \
+tailscale-private-funnel native gateways create site \
   --type tailnet --control-url http://CONTROL:8080 --version VERSION \
   --output script | ssh ubuntu@TARGET 'sh -s'
 ```
 
-`create-remote` performs no SSH connection. `--output instructions` is readable;
+`create` performs no SSH connection. `--output instructions` is readable;
 `script` emits only complete POSIX shell on stdout; `json` returns structured
 instructions and script. Diagnostics use stderr. `--wait` applies to target
 execution. Dry runs mint no credentials and emit a non-executable preview.

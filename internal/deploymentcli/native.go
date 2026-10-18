@@ -5,13 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/app"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
@@ -19,13 +17,12 @@ import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/manage"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/native"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/provision"
-	"google.golang.org/protobuf/encoding/protojson"
 	"net/http"
 )
 
 type Flags struct {
 	StorageClass, StorageSize, PlacementFile, ForwarderPlacementFile, Installation, ConfigFile, Type, Output, Version, DisplayName, Hostname, ControlURL, Namespace, Context, Kubeconfig, Tailnet, StateDir, DataDir, OAuthID, OAuthSecret, PublicHostname, Email, GatewayClass, IngressClass string
-	Wait, DryRun, Yes, BootstrapStdin, NonInteractive                                                                                                                                                                                                                                         bool
+	Wait, DryRun, Yes                                                                                                                                                                                                                                                                         bool
 	Timeout                                                                                                                                                                                                                                                                                   time.Duration
 	NodeSelector                                                                                                                                                                                                                                                                              map[string]string
 	Administrators, WatchNamespaces, ManagedNamespaces, LabelKeys, DenyNetworks                                                                                                                                                                                                               []string
@@ -40,10 +37,10 @@ func common(c *cobra.Command, f *Flags, version string) {
 		if f.Timeout <= 0 {
 			return errors.New("--timeout must be positive")
 		}
-		if (c.Name() == "create" || c.Name() == "create-remote" || c.Name() == "update") && !provision.ValidVersion(f.Version) {
+		if (c.Name() == "create" || c.Name() == "update") && !provision.ValidVersion(f.Version) {
 			return errors.New("--version requires a pinned release or dev version")
 		}
-		if c.Name() == "create-remote" {
+		if c.Name() == "create" {
 			if f.Output != "instructions" && f.Output != "script" && f.Output != "json" {
 				return errors.New("--output must be instructions, script, or json")
 			}
@@ -83,7 +80,6 @@ func creation(c *cobra.Command, f *Flags, kind string, kube bool) {
 		c.Flags().StringVar(&f.Tailnet, "tailnet", "", "Tailscale tailnet name")
 		c.Flags().StringVar(&f.OAuthID, "oauth-client-id-file", "", "protected OAuth client ID file")
 		c.Flags().StringVar(&f.OAuthSecret, "oauth-client-secret-file", "", "protected OAuth client secret file")
-		c.Flags().BoolVar(&f.NonInteractive, "non-interactive", false, "require scripted bootstrap inputs")
 	}
 	if kind == "loadbalancers" {
 		c.Flags().StringVar(&f.PublicHostname, "public-hostname", "", "public DNS hostname")
@@ -97,9 +93,7 @@ func creation(c *cobra.Command, f *Flags, kind string, kube bool) {
 	if !kube {
 		c.Flags().StringVar(&f.StateDir, "state-dir", "", "persistent identity path")
 		c.Flags().StringVar(&f.DataDir, "data-dir", "", "persistent application path")
-		if kind != "controls" {
-			c.Flags().BoolVar(&f.BootstrapStdin, "bootstrap-stdin", false, "read one-use enrollment bundle from stdin")
-		}
+
 	}
 	if kind == "gateways" && !kube {
 		c.Flags().StringArrayVar(&f.LabelKeys, "label-key", nil, "additional Docker label alias")
@@ -173,12 +167,14 @@ func elevate(c *cobra.Command, f Flags) (bool, error) {
 	}
 	return true, nil
 }
-func Native(version string) *cobra.Command {
-	root := &cobra.Command{Use: "native", Short: "Manage named services on this Linux machine"}
+func Native(version string) *cobra.Command { return nativeCommands(version, nil) }
+
+func nativeCommands(version string, bootstrap *v1.DeploymentInstructions) *cobra.Command {
+	root := &cobra.Command{Use: "native", Short: "Generate installers and manage native services on this Linux machine"}
 	for _, kind := range []string{"controls", "gateways", "loadbalancers"} {
 		parent := &cobra.Command{Use: kind}
 		root.AddCommand(parent)
-		for _, action := range []string{"create", "create-remote", "list", "get", "update", "delete", "start", "stop", "restart", "logs"} {
+		for _, action := range []string{"create", "list", "get", "update", "delete", "start", "stop", "restart", "logs"} {
 			kind, action := kind, action
 			f := Flags{}
 			use := action + " NAME"
@@ -189,12 +185,14 @@ func Native(version string) *cobra.Command {
 			}
 			c := &cobra.Command{Use: use, Short: action + " a native " + kind + " resource", Args: args}
 			common(c, &f, version)
-			if action == "create" || action == "create-remote" {
+			if bootstrap != nil {
+				c.PreRunE = nil
+			}
+			if action == "create" {
 				creation(c, &f, kind, false)
 			}
-			if action == "create-remote" {
-				f.Output = "instructions"
-				c.Flags().Lookup("output").DefValue = "instructions"
+			if action == "create" && bootstrap == nil {
+				creationOutput(c, &f)
 			}
 			if action == "delete" {
 				c.Flags().BoolVar(&f.Yes, "yes", false, "confirm revocation and removal of all owned state")
@@ -212,7 +210,7 @@ func Native(version string) *cobra.Command {
 				if action == "delete" && !f.Yes && !f.DryRun {
 					return errors.New("delete requires --yes")
 				}
-				mutates := action != "create-remote"
+				mutates := action != "create" || bootstrap != nil
 				if mutates {
 					if handled, e := elevate(c, f); handled {
 						return e
@@ -220,34 +218,16 @@ func Native(version string) *cobra.Command {
 				}
 				manager := native.Default()
 				switch action {
-				case "create", "create-remote":
+				case "create":
 					in, e := request(kind, name, f, "native")
 					if e != nil {
 						return e
 					}
-					plan, e := provision.Resolve(in, f.ControlURL, f.Version)
-					if e != nil {
-						return e
+					if bootstrap == nil {
+						return generateInstaller(c, in, f)
 					}
-					if action == "create-remote" {
-						if kind != "controls" && !f.DryRun {
-							rpc, e := apiClient(f.ControlURL)
-							if e != nil {
-								return e
-							}
-							res, e := rpc.Authorize(ctx, connect.NewRequest(in))
-							if e != nil {
-								return e
-							}
-							plan = res.Msg
-						}
-						rendered, e := provision.RemoteOutput(plan, f.Output, f.DryRun)
-						if e != nil {
-							return e
-						}
-						_, e = io.WriteString(c.OutOrStdout(), rendered)
-						return e
-					}
+					plan := bootstrap
+
 					resource, e := manager.Resolve(kind, name, in.Mode, f.DisplayName, in.Hostname, f.Version, f.StateDir, f.DataDir)
 					if e != nil {
 						return e
@@ -271,32 +251,7 @@ func Native(version string) *cobra.Command {
 					}
 					in.StateDir = resource.StateDir
 					in.DataDir = resource.DataDir
-					if kind != "controls" {
-						if f.BootstrapStdin {
-							b, e := io.ReadAll(io.LimitReader(c.InOrStdin(), 2<<20))
-							if e != nil {
-								return e
-							}
-							var bundle v1.DeploymentInstructions
-							if e = protojson.Unmarshal(b, &bundle); e != nil {
-								return e
-							}
-							if bundle.Deployment == nil || bundle.Deployment.Mode != in.Mode || bundle.Deployment.ResourceName != name {
-								return errors.New("bootstrap resource binding mismatch")
-							}
-							plan = &bundle
-						} else {
-							rpc, e := apiClient(f.ControlURL)
-							if e != nil {
-								return e
-							}
-							res, e := rpc.Authorize(ctx, connect.NewRequest(in))
-							if e != nil {
-								return e
-							}
-							plan = res.Msg
-						}
-					}
+
 					executable, e := verifiedBinary(ctx, f.Version)
 					if e != nil {
 						return e
