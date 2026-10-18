@@ -58,18 +58,20 @@ type recordProvider interface {
 
 type zoneLister interface{ libdns.ZoneLister }
 
+// NormalizeRecords qualifies provider-relative owner names, including nested labels.
+// A trailing dot explicitly marks an absolute name; record data is never rewritten.
 func NormalizeRecords(records []libdns.Record, zone string) []libdns.Record {
 	zone = strings.TrimSuffix(strings.TrimSpace(zone), ".")
 	out := make([]libdns.Record, 0, len(records))
 	for _, record := range records {
 		rr := record.RR()
-		name := strings.TrimSuffix(strings.TrimSpace(rr.Name), ".")
+		rawName := strings.TrimSpace(rr.Name)
+		absolute := strings.HasSuffix(rawName, ".")
+		name := strings.TrimSuffix(rawName, ".")
 		if name == "" || name == "@" {
 			name = zone
-		} else if zone != "" && name != zone && !strings.HasSuffix(name, "."+zone) {
-			if !strings.Contains(name, ".") {
-				name += "." + zone
-			}
+		} else if zone != "" && !absolute && name != zone && !strings.HasSuffix(name, "."+zone) {
+			name += "." + zone
 		}
 		out = append(out, libdns.RR{Name: name, Type: rr.Type, Data: rr.Data, TTL: rr.TTL})
 	}
