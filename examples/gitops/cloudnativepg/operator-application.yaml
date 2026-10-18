@@ -12,12 +12,12 @@ spec:
   source:
     repoURL: ghcr.io/tailscale-x/charts
     chart: tailscale-private-funnel
-    targetRevision: 3.2.0
+    targetRevision: 3.2.1
     helm:
       releaseName: funnel-operator
       valuesObject:
         image:
-          reference: ghcr.io/tailscale-x/tailscale-private-funnel:v3.2.0
+          reference: ghcr.io/tailscale-x/tailscale-private-funnel:v3.2.1
         managedNamespaces:
           - tailscale-private-funnel-main-system
   destination:

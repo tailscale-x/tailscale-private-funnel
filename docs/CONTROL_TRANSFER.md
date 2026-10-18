@@ -4,7 +4,7 @@
 
 **Expect control downtime from source shutdown until the destination is ready.** Existing nodes retain their identities and reconnect to the restored control. Routing recovery depends on current reports, Service readiness and existing leases; transfer does not promise uninterrupted traffic.
 
-Use the same pinned transfer-capable version for the generator, source Kubernetes operator and destination operator. Upgrade operators and CRDs first. Version v3.1.0 predates this feature; v3.2.0 includes it. Upgrade and start the native source at v3.2.0 before running transfer. See the [release instructions](releases/v3.2.0.md).
+Use the same pinned transfer-capable version for the generator, source Kubernetes operator and destination operator. Upgrade operators and CRDs first. Version v3.1.0 predates this feature; v3.2.1 includes it. Upgrade and start the native source at v3.2.1 before running transfer. See the [release instructions](releases/v3.2.1.md).
 
 ## Native source → Kubernetes and PostgreSQL
 
