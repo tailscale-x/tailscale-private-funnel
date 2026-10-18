@@ -247,19 +247,21 @@ func (c *Control) acceptDirectReport(ctx context.Context, env report.Envelope, n
 		return rpcFailure(connectCodeHTTP(status), errors.New(err.Error()))
 	}
 	_ = c.Store.SetJSON("node_policy_roles:"+node.ID, rpcPrincipal(ctx).RoleSelectors())
-	if err = c.reconcileExposures(ctx); err != nil {
-		return rpcFailure(connectCodeHTTP(502), errors.New("Report accepted; DNS cleanup pending: "+err.Error()))
-	}
 	return nil
 }
 
 func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Envelope) error {
-	// Forwarder heartbeats contain no external mutations. Provider reconciliation
-	// must not hold up their report/lease freshness during a control update.
-	reportNode, _ := c.Store.Node(strings.TrimSpace(envelope.NodeID))
-	if reportNode.Mode != "k8s-forwarder" {
-		c.cleanupMu.Lock()
-		defer c.cleanupMu.Unlock()
+	// Accepted reports are durable desired state. A bounded background worker
+	// reconciles DNS and Service approvals; external outages must not consume the
+	// heartbeat lease or queue callers behind cleanup/provider operations.
+	c.reportMu.Lock()
+	defer c.reportMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		code := connect.CodeCanceled
+		if errors.Is(err, context.DeadlineExceeded) {
+			code = connect.CodeDeadlineExceeded
+		}
+		return rpcFailure(code, err)
 	}
 	if err := c.policyStorageError(); err != nil {
 		return rpcFailure(connectCodeHTTP(503), errors.New("Exposure policy unavailable; retry later"))
@@ -304,7 +306,6 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Enve
 	if err := json.Unmarshal(envelope.Payload, &reportPayload); err != nil {
 		return rpcFailure(connectCodeHTTP(http.StatusBadRequest), errors.New("invalid report payload"))
 	}
-	var zoneFailures []string
 	gatewayIDs := []string{node.ID, node.ParentID}
 	roles := p.RoleSelectors()
 	applications, applicationsErr := c.Store.Applications()
@@ -369,17 +370,6 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Enve
 	}
 	if err := c.Store.ReconcileBackends(envelope.NodeID, activeBackends); err != nil {
 		return rpcFailure(connectCodeHTTP(http.StatusInternalServerError), errors.New(err.Error()))
-	}
-	// Child heartbeats must not serialize external DNS calls per cluster node.
-	// The control reconciliation loop applies the aggregate on its next tick.
-	if node.Mode == "k8s-forwarder" {
-		return nil
-	}
-	if err := c.reconcileExposures(ctx); err != nil {
-		zoneFailures = append(zoneFailures, err.Error())
-	}
-	if len(zoneFailures) > 0 {
-		return rpcFailure(connectCodeHTTP(502), errors.New("Report accepted; independent valid zones reconciled. DNS cleanup pending: "+strings.Join(zoneFailures, "; ")))
 	}
 	return nil
 }
@@ -502,8 +492,25 @@ func (c *Control) resolveApplication(ctx context.Context, request *v1.ResolveApp
 	if _, err := c.managedZone(hostname); err != nil {
 		return report.Envelope{}, rpcFailure(connectCodeHTTP(403), errors.New(err.Error()))
 	}
+	// Discovery re-resolves existing labels on every tick. Reading an unchanged,
+	// authorized binding must never wait behind creation of another Service.
+	current, err := c.Store.Applications()
+	if err != nil {
+		return report.Envelope{}, rpcFailure(connect.CodeUnavailable, err)
+	}
+	for _, app := range current {
+		if app.BackendSource != "docker" && app.BackendSource != "" {
+			continue
+		}
+		if contains(app.PublicHostnames, hostname) && applicationAllows(app, node) && app.BackendPort == backendPort && app.ServiceFQDN != "" && dockerReportRouteMatches(app, dns.GatewayExposure{PathPrefix: path, Rewrite: rewrite}) {
+			return c.nodeConfiguration(ctx)
+		}
+	}
 	c.provisionMu.Lock()
 	defer c.provisionMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return report.Envelope{}, rpcFailure(connect.CodeDeadlineExceeded, err)
+	}
 	apps, err := c.Store.Applications()
 	if err != nil {
 		return report.Envelope{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
@@ -644,12 +651,28 @@ func (c *Control) acceptKubernetesSnapshot(ctx context.Context, env report.Envel
 				assigned, ok := backends[b.Key]
 				if !ok {
 					assigned = b
+					assigned.Service = "" // Only control-owned bindings may supply a tailnet target.
 					assigned.ServiceName = fmt.Sprintf("svc:tpf-k8s-%x", sha256.Sum256([]byte(node.ID+":"+snapshot.ClusterID+":"+b.Key)))[:40]
-					service, e := ts.CreateService(ctx, tailscale.Service{Name: assigned.ServiceName, DisplayName: h.Hostname, Ports: []string{fmt.Sprintf("tcp:%d", b.Port)}, Tags: []string{"tag:tailscale-private-funnel"}})
-					if e != nil {
-						return report.Envelope{}, rpcFailure(connectCodeHTTP(502), errors.New(e.Error()))
+					// Service identity and port are immutable for this backend key.
+					// Routine snapshots reuse the binding, avoiding a REST mutation
+					// for every healthy backend on every watch refresh.
+					for _, existing := range apps {
+						if existing.BackendSource != "kubernetes" || !contains(existing.AllowedGatewayNodes, node.ID) {
+							continue
+						}
+						for _, cached := range existing.HTTPBackends {
+							if cached.ServiceName == assigned.ServiceName && cached.Key == b.Key && cached.Port == b.Port && cached.Service != "" {
+								assigned.Service = cached.Service
+							}
+						}
 					}
-					assigned.Service = selectServiceTarget(service.Addresses, assigned.ServiceName, ts.Tailnet)
+					if assigned.Service == "" {
+						service, e := ts.CreateService(ctx, tailscale.Service{Name: assigned.ServiceName, DisplayName: h.Hostname, Ports: []string{fmt.Sprintf("tcp:%d", b.Port)}, Tags: []string{"tag:tailscale-private-funnel"}})
+						if e != nil {
+							return report.Envelope{}, rpcFailure(connectCodeHTTP(502), errors.New(e.Error()))
+						}
+						assigned.Service = selectServiceTarget(service.Addresses, assigned.ServiceName, ts.Tailnet)
+					}
 					backends[b.Key] = assigned
 				}
 				assigned.Weight = b.Weight

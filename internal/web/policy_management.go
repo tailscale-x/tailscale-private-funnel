@@ -202,6 +202,9 @@ func (c *Control) reconcilePartitions(ctx context.Context, owner string, desired
 func (c *Control) ReconcilePolicy(ctx context.Context) error {
 	c.cleanupMu.Lock()
 	defer c.cleanupMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := c.policyStorageError(); err != nil {
 		return err
 	}

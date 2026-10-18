@@ -28,9 +28,12 @@ service NodeService {
   rpc Acknowledge(ConfigAck) returns (Empty) {
     option (permission) = PERMISSION_NODE;
   }
+  // Persist liveness without waiting for endpoint discovery or external APIs.
   rpc ReportHealth(NodeHealth) returns (Empty) {
     option (permission) = PERMISSION_NODE;
   }
+  // Accept authenticated desired state durably. Success acknowledges storage,
+  // not completed DNS or Service publication; bounded control workers reconcile it.
   rpc SubmitReport(SignedEnvelope) returns (Empty) {
     option (permission) = PERMISSION_NODE;
     option (payload_type) = "funnel.v1.ExposureReport";

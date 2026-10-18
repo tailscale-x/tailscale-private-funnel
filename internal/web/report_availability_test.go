@@ -1,7 +1,12 @@
 package web
 
 import (
+	"connectrpc.com/connect"
+	"context"
 	"encoding/base64"
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -45,5 +50,75 @@ func TestForwarderHeartbeatDoesNotWaitForProviderReconciliation(t *testing.T) {
 	env, _ = report.NewEnvelope(child.ID, map[string]any{"exposures": []any{}, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, key, time.Now())
 	if e = c.acceptExposureReport(ctx, env); e == nil {
 		t.Fatal("revoked parent bypassed fast path")
+	}
+}
+
+func TestAllNodeReportsRemainAvailableDuringExternalReconciliation(t *testing.T) {
+	for _, mode := range []string{"docker-gateway", "tailnet-gateway", "k8s-gateway", "loadbalancer"} {
+		t.Run(mode, func(t *testing.T) {
+			c, s := testControl(t)
+			pub, key, _ := report.GenerateKey()
+			if err := s.UpsertNode("reporter", mode, "reporter"); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.BindNodeIdentity("reporter", encodePublicKey(pub), "tail-reporter", nil); err != nil {
+				t.Fatal(err)
+			}
+			client := nodeClient(t, c, Principal{NodeID: "tail-reporter", Tagged: true})
+			// External workers may retain this lock for an entire provider timeout.
+			c.cleanupMu.Lock()
+			defer c.cleanupMu.Unlock()
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			for i := 0; i < 3; i++ {
+				wire := signedMessage(t, "report", "reporter", &v1.ExposureReport{ExpiresAt: time.Now().Add(time.Minute).Unix()}, key)
+				if _, err := client.SubmitReport(ctx, connect.NewRequest(wire)); err != nil {
+					t.Fatalf("heartbeat blocked by provider/cleanup: %v", err)
+				}
+			}
+			if _, err := client.ReportHealth(ctx, connect.NewRequest(&v1.NodeHealth{Online: true})); err != nil {
+				t.Fatalf("health performed external work: %v", err)
+			}
+			if err := s.RevokeNode("reporter"); err != nil {
+				t.Fatal(err)
+			}
+			wire := signedMessage(t, "report", "reporter", &v1.ExposureReport{ExpiresAt: time.Now().Add(time.Minute).Unix()}, key)
+			if _, err := client.SubmitReport(ctx, connect.NewRequest(wire)); connect.CodeOf(err) != connect.CodePermissionDenied {
+				t.Fatalf("revocation bypass: %v", err)
+			}
+		})
+	}
+}
+
+type reportStallTransport struct{ called chan struct{} }
+
+func (s reportStallTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	select {
+	case s.called <- struct{}{}:
+	default:
+	}
+	<-r.Context().Done()
+	return nil, r.Context().Err()
+}
+
+func TestLoadBalancerHealthDoesNotCallStalledTailscaleAPI(t *testing.T) {
+	c, s := testControl(t)
+	installDNSFixture(t, s, "example.com")
+	_ = s.SetJSON("tailnet", map[string]string{"name": "example.ts.net"})
+	_ = s.SetSecret("tailscale_oauth_client_id", "fixture-client")
+	_ = s.SetSecret("tailscale_oauth_client_secret", "fixture-secret")
+	called := make(chan struct{}, 1)
+	c.TailscaleClient = &tailscale.Client{ClientID: "fixture-client", ClientSecret: "fixture-secret", HTTP: &http.Client{Transport: reportStallTransport{called}}}
+	_ = s.SetJSON("node_deployment:edge-id", nodeDeployment{LoadBalancerHostname: "edge.example.com"})
+	client := nodeClient(t, c, Principal{NodeID: "edge-tailnet", Tagged: true})
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if _, err := client.ReportHealth(ctx, connect.NewRequest(&v1.NodeHealth{Online: true})); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-called:
+		t.Fatal("health request reached external API")
+	default:
 	}
 }

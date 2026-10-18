@@ -962,6 +962,8 @@ export const NodeService: GenService<{
     output: typeof EmptySchema;
   },
   /**
+   * Persist liveness without waiting for endpoint discovery or external APIs.
+   *
    * @generated from rpc funnel.v1.NodeService.ReportHealth
    */
   reportHealth: {
@@ -970,6 +972,9 @@ export const NodeService: GenService<{
     output: typeof EmptySchema;
   },
   /**
+   * Accept authenticated desired state durably. Success acknowledges storage,
+   * not completed DNS or Service publication; bounded control workers reconcile it.
+   *
    * @generated from rpc funnel.v1.NodeService.SubmitReport
    */
   submitReport: {

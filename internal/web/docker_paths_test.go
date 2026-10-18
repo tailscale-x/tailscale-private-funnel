@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"testing"
@@ -53,6 +54,29 @@ func TestDockerPathApplicationsAndSignedReports(t *testing.T) {
 	}
 	api := resolve("/api", 8080, &v1.PrefixRewrite{ReplacePrefix: "/"})
 	admin := resolve("/admin", 9090, nil)
+	// An unrelated Service creation may hold provisionMu through an API stall.
+	// Re-resolving an existing binding must remain a local read.
+	c.provisionMu.Lock()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	done := make(chan error, 1)
+	go func() {
+		_, err := client.ResolveApplication(ctx, connect.NewRequest(&v1.ResolveApplicationRequest{Hostname: "app.example.com", BackendPort: 8080, PathPrefix: "/api", Rewrite: &v1.PrefixRewrite{ReplacePrefix: "/"}}))
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		c.provisionMu.Unlock()
+		cancel()
+		if err != nil {
+			t.Fatal("existing label blocked by provisioning", err)
+		}
+	case <-ctx.Done():
+		c.provisionMu.Unlock()
+		cancel()
+		<-done
+		t.Fatal("existing label waited for external provisioning")
+	}
+
 	if api == admin {
 		t.Fatal("assignments overwritten")
 	}
@@ -106,6 +130,10 @@ func TestDockerPathApplicationsAndSignedReports(t *testing.T) {
 	if _, err := edge.SubmitReport(t.Context(), connect.NewRequest(signedMessage(t, "report", "edge-id", &v1.ExposureReport{Exposures: edgeItems, ExpiresAt: time.Now().Add(time.Minute).Unix()}, edgeKey))); err != nil {
 		t.Fatal(err)
 	}
+	// Report acceptance is local; the periodic worker owns DNS application.
+	if err := c.ReconcilePolicy(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	ledger, err := s.Ledger("fixture", "example.com", "exposure:"+ownerID)
 	if err != nil || len(ledger) == 0 {
 		t.Fatal("expected owned DNS", ledger, err)
@@ -149,6 +177,9 @@ func TestDockerPathApplicationsAndSignedReports(t *testing.T) {
 	}
 	if got := c.authorizedReports(c.loadExposurePolicy())["docker"]; len(got) != 0 {
 		t.Fatal("empty snapshot retained routes")
+	}
+	if err := c.ReconcilePolicy(t.Context()); err != nil {
+		t.Fatal(err)
 	}
 	ledger, err = s.Ledger("fixture", "example.com", "exposure:"+ownerID)
 	if err != nil || len(ledger) != 0 {

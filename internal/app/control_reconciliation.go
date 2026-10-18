@@ -20,17 +20,15 @@ type periodicControl interface {
 func startControlReconciliation(ctx context.Context, control periodicControl, interval, budget time.Duration) {
 	go reconcileEvery(ctx, interval, budget, func(pass context.Context) {
 		_ = control.ReconcilePolicy(pass)
-		if pass.Err() != nil {
-			return
-		}
+	})
+	go reconcileEvery(ctx, interval, budget, func(pass context.Context) {
 		_, _ = control.ExpireReports(pass, 5*time.Minute)
 		if pass.Err() != nil {
 			return
 		}
 		_, _ = control.CleanupStaleNodes(pass, 5*time.Minute)
-		if pass.Err() != nil {
-			return
-		}
+	})
+	go reconcileEvery(ctx, interval, budget, func(pass context.Context) {
 		_ = control.ReconcileLoadBalancerDNS(pass)
 	})
 	go reconcileEvery(ctx, interval, budget, control.RetryNodeCleanup)

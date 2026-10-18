@@ -591,6 +591,25 @@ func TestRPCKubernetesDesiredStateBindingReplayAndRecovery(t *testing.T) {
 	if _, err = client.SubmitKubernetes(t.Context(), connect.NewRequest(message)); connect.CodeOf(err) != connect.CodeAborted {
 		t.Fatal("replay", err)
 	}
+	// Routine snapshots reuse control-owned Service bindings without REST calls.
+	// A supplied target must never replace that trusted binding.
+	backend.Service = "attacker.invalid"
+	called := make(chan struct{}, 1)
+	c.TailscaleClient.HTTP = &http.Client{Transport: reportStallTransport{called}}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if _, err := client.SubmitKubernetes(ctx, connect.NewRequest(signedMessage(t, "kubernetes", "kube", snapshot, key))); err != nil {
+		t.Fatal("unchanged snapshot depended on external API", err)
+	}
+	select {
+	case <-called:
+		t.Fatal("unchanged snapshot called external API")
+	default:
+	}
+	cached, _ := s.Applications()
+	if cached[0].HTTPBackends[0].Service != apps[0].HTTPBackends[0].Service {
+		t.Fatal("untrusted target replaced binding")
+	}
 	apps[0].Enabled = false
 	_ = s.UpsertApplication(apps[0])
 	if _, err = client.SubmitKubernetes(t.Context(), connect.NewRequest(signedMessage(t, "kubernetes", "kube", snapshot, key))); err != nil {

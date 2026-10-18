@@ -3287,7 +3287,7 @@
     },
     "/funnel.v1.NodeService/ReportHealth": {
       "post": {
-        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "description": "Persist liveness without waiting for endpoint discovery or external APIs.\nRequires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
         "operationId": "funnel.v1.NodeService.ReportHealth",
         "parameters": [
           {
@@ -3675,7 +3675,7 @@
     },
     "/funnel.v1.NodeService/SubmitReport": {
       "post": {
-        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "description": "Accept authenticated desired state durably. Success acknowledges storage,\n not completed DNS or Service publication; bounded control workers reconcile it.\nRequires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
         "operationId": "funnel.v1.NodeService.SubmitReport",
         "parameters": [
           {

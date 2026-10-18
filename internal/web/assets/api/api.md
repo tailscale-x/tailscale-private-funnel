@@ -914,7 +914,7 @@ Signed payload model: `funnel.v1.ConfigurationPayload`. Verify exact bytes befor
 
 ### ReportHealth
 
-
+Persist liveness without waiting for endpoint discovery or external APIs.
 
 - RPC: `/funnel.v1.NodeService/ReportHealth`
 - Permission: `PERMISSION_NODE`
@@ -939,7 +939,8 @@ Signed payload model: `funnel.v1.ConfigurationPayload`. Verify exact bytes befor
 
 ### SubmitReport
 
-
+Accept authenticated desired state durably. Success acknowledges storage,
+ not completed DNS or Service publication; bounded control workers reconcile it.
 
 - RPC: `/funnel.v1.NodeService/SubmitReport`
 - Permission: `PERMISSION_NODE`

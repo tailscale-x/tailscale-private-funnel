@@ -32,6 +32,7 @@ type Control struct {
 	settingsMu        sync.Mutex
 	policyMu          sync.Mutex
 	cleanupMu         sync.Mutex
+	reportMu          sync.Mutex // Local report/state writes only; never external I/O.
 	shutdownMu        sync.Mutex
 	serviceApprovalMu sync.Mutex
 	syncMu            sync.Mutex
@@ -412,6 +413,9 @@ func (c *Control) reconcileLoadBalancerNode(ctx context.Context, node store.Node
 func (c *Control) ReconcileLoadBalancerDNS(ctx context.Context) error {
 	c.cleanupMu.Lock()
 	defer c.cleanupMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	nodes, err := c.Store.Nodes("loadbalancer")
 	if err != nil {
 		return err
@@ -676,22 +680,25 @@ func contains(values []string, wanted string) bool {
 }
 
 func (c *Control) ExpireReports(ctx context.Context, maxAge time.Duration) (int, error) {
-	ids, err := c.Store.StaleReportIDs(time.Now().Add(-maxAge).Unix())
+	before := time.Now().Add(-maxAge).Unix()
+	ids, err := c.Store.StaleReportIDs(before)
 	if err != nil {
 		return 0, err
 	}
 	removed := 0
 	var failures []string
 	for _, id := range ids {
-		_ = c.Store.RevokeBackends(id)
 		if err := c.reconcilePartitions(ctx, "gateway:"+id, nil); err != nil {
 			failures = append(failures, err.Error())
 			continue
 		}
-		if err := c.Store.DeleteReport(id); err != nil {
+		expired, err := c.Store.ExpireReportBefore(id, before)
+		if err != nil {
 			return removed, err
 		}
-		removed++
+		if expired {
+			removed++
+		}
 	}
 	if len(failures) > 0 {
 		return removed, fmt.Errorf("%s", strings.Join(failures, "; "))
@@ -702,15 +709,21 @@ func (c *Control) ExpireReports(ctx context.Context, maxAge time.Duration) (int,
 // CleanupStaleNodes removes runtime enrollments that stopped heartbeating.
 // The control node is never selected by Store.StaleNodes.
 func (c *Control) CleanupStaleNodes(ctx context.Context, maxAge time.Duration) (int, error) {
-	nodes, err := c.Store.StaleNodes(time.Now().Add(-maxAge).Unix())
+	before := time.Now().Add(-maxAge).Unix()
+	nodes, err := c.Store.StaleNodes(before)
 	if err != nil {
 		return 0, err
 	}
 	removed := 0
 	for _, node := range nodes {
+		expired, err := c.Store.ExpireNodeBefore(node.ID, before)
+		if err != nil {
+			return removed, err
+		}
+		if !expired {
+			continue
+		}
 		_ = c.Store.SetJSON("node_offline:"+node.ID, map[string]any{"offline": true, "last_report": node.LastReport})
-		_ = c.Store.RevokeBackends(node.ID)
-		_ = c.Store.DeleteReport(node.ID)
 		removed++
 	}
 	// Persistent devices survive outages. Only explicit reset or revocation

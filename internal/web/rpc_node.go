@@ -63,14 +63,8 @@ func (s *nodeRPC) ReportHealth(ctx context.Context, r *connect.Request[v1.NodeHe
 	if e = s.c.Store.SetJSON("node_health:"+node.ID, health); e != nil {
 		return nil, rpcFailure(connect.CodeInternal, e)
 	}
-	if node.Mode == "loadbalancer" {
-		if e = s.c.reconcileLoadBalancerNode(ctx, node); e != nil {
-			health["dns_sync_error"] = e.Error()
-		}
-	}
-	if e = s.c.Store.SetJSON("node_health:"+node.ID, health); e != nil {
-		return nil, rpcFailure(connect.CodeInternal, e)
-	}
+	// Endpoint discovery and DNS writes run on the control workers, never on a
+	// liveness request's deadline.
 	return connect.NewResponse(&v1.Empty{}), nil
 }
 func (s *nodeRPC) SubmitReport(ctx context.Context, r *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {

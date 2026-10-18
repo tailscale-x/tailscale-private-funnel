@@ -93,7 +93,10 @@ type NodeServiceClient interface {
 	GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.SignedEnvelope], error)
 	ResolveApplication(context.Context, *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.SignedEnvelope], error)
 	Acknowledge(context.Context, *connect.Request[v1.ConfigAck]) (*connect.Response[v1.Empty], error)
+	// Persist liveness without waiting for endpoint discovery or external APIs.
 	ReportHealth(context.Context, *connect.Request[v1.NodeHealth]) (*connect.Response[v1.Empty], error)
+	// Accept authenticated desired state durably. Success acknowledges storage,
+	// not completed DNS or Service publication; bounded control workers reconcile it.
 	SubmitReport(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
 	SubmitPeers(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
 	SubmitKubernetes(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
@@ -271,7 +274,10 @@ type NodeServiceHandler interface {
 	GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.SignedEnvelope], error)
 	ResolveApplication(context.Context, *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.SignedEnvelope], error)
 	Acknowledge(context.Context, *connect.Request[v1.ConfigAck]) (*connect.Response[v1.Empty], error)
+	// Persist liveness without waiting for endpoint discovery or external APIs.
 	ReportHealth(context.Context, *connect.Request[v1.NodeHealth]) (*connect.Response[v1.Empty], error)
+	// Accept authenticated desired state durably. Success acknowledges storage,
+	// not completed DNS or Service publication; bounded control workers reconcile it.
 	SubmitReport(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
 	SubmitPeers(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
 	SubmitKubernetes(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
