@@ -126,11 +126,9 @@ func (c *Controller) Reconcile(ctx context.Context, _ reconcile.Request) (ctrl.R
 		programmed := problem == ""
 		seen := false
 		for _, host := range result.Hosts {
-			for _, ref := range host.ResourceIDs {
-				if ref == id {
-					seen = true
-					programmed = programmed && set[host.Hostname]
-				}
+			if c.hostReferencesObject(ctx, object, host, result) {
+				seen = true
+				programmed = programmed && set[host.Hostname]
 			}
 		}
 		if !seen {

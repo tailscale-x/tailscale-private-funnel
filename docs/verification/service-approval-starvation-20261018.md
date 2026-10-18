@@ -40,3 +40,20 @@ Service authorization checks are retained.
 This correction is **not deployed or released**. No stale Service/device records
 were deleted, no ACL/network settings were changed, and no control restart was
 performed by this investigation. Cluster rollout remains a separate operation.
+
+## v3.2.3 deployment and additional status finding
+
+The release passed CI and was deployed through the DLKN GitOps `FunnelControl`
+image reference. Control became Ready with the same Secret UID, encryption key,
+configuration signing key, tsnet machine key, addresses, database credentials,
+provider configurations, zones, and enrolled node identities. All eight existing
+owned DNS records were retained; control published the additional Harbor record.
+Public Harbor health returned HTTP 200 with verified TLS, and its HTTPRoute became
+Programmed=True. Service-approval deadline error batches stopped.
+
+The parent Gateway remained Programmed=False because the status calculation
+looked for the Gateway's resource ID among host route IDs. A v3.2.4 follow-up
+aggregates the published route through its actual authorized parent/listener
+attachment instead. Its regression test verifies publication and withdrawal and
+keeps a second parent with a nonmatching hostname pending. This is a status
+aggregation correction, not an approval or policy bypass.
