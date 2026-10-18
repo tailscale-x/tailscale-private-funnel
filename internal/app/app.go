@@ -575,26 +575,7 @@ func Serve(ctx context.Context, mode string, o Options) error {
 	defer ln.Close()
 	control := &web.Control{BuildVersion: BuildVersion, Store: st}
 	h := control.Handler()
-	go func() {
-		ticker := time.NewTicker(15 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				reconcileCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
-				_ = control.ReconcilePolicy(reconcileCtx)
-				_, _ = control.ExpireReports(reconcileCtx, 5*time.Minute)
-				_, _ = control.CleanupStaleNodes(reconcileCtx, 5*time.Minute)
-				_ = control.ReconcileLoadBalancerDNS(reconcileCtx)
-				if err := control.ReconcileServiceApprovals(reconcileCtx); err != nil {
-					slog.Warn("service approval reconciliation failed", "error", err)
-				}
-				cancel()
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
+	startControlReconciliation(ctx, control, 15*time.Second, 45*time.Second)
 	localClient, err := s.LocalClient()
 	if err != nil {
 		return err

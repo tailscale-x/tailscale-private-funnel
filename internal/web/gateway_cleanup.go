@@ -137,13 +137,17 @@ func (c *Control) cleanupRevokedNodeLocked(ctx context.Context, n store.NodeReco
 	return nil
 }
 
-func (c *Control) retryNodeCleanup(ctx context.Context) {
+// RetryNodeCleanup runs independently so slow cleanup cannot starve Service approval.
+func (c *Control) RetryNodeCleanup(ctx context.Context) {
 	for _, mode := range []string{"gateways", "loadbalancer", "k8s-forwarder"} {
 		nodes, err := c.Store.Nodes(mode)
 		if err != nil {
 			continue
 		}
 		for _, item := range nodes {
+			if ctx.Err() != nil {
+				return
+			}
 			if item["revoked"] != true {
 				continue
 			}

@@ -21,25 +21,26 @@ import (
 )
 
 type Control struct {
-	PublicLookup    func(context.Context, string) ([]net.IPAddr, error)
-	BuildVersion    string
-	Store           *store.Store
-	TailscaleClient *tailscale.Client
-	ReleaseCheck    func(context.Context, string) error
-	tokenClientsMu  sync.Mutex
-	tokenClients    map[[32]byte]tailscale.Client
-	endpointMu      sync.Mutex
-	settingsMu      sync.Mutex
-	policyMu        sync.Mutex
-	cleanupMu       sync.Mutex
-	shutdownMu      sync.Mutex
-	syncMu          sync.Mutex
-	accessMu        sync.Mutex
-	provisionMu     sync.Mutex
-	roleMu          sync.Mutex
-	roleUsers       []tailscale.User
-	rolesExpire     time.Time
-	ReportTTL       time.Duration
+	PublicLookup      func(context.Context, string) ([]net.IPAddr, error)
+	BuildVersion      string
+	Store             *store.Store
+	TailscaleClient   *tailscale.Client
+	ReleaseCheck      func(context.Context, string) error
+	tokenClientsMu    sync.Mutex
+	tokenClients      map[[32]byte]tailscale.Client
+	endpointMu        sync.Mutex
+	settingsMu        sync.Mutex
+	policyMu          sync.Mutex
+	cleanupMu         sync.Mutex
+	shutdownMu        sync.Mutex
+	serviceApprovalMu sync.Mutex
+	syncMu            sync.Mutex
+	accessMu          sync.Mutex
+	provisionMu       sync.Mutex
+	roleMu            sync.Mutex
+	roleUsers         []tailscale.User
+	rolesExpire       time.Time
+	ReportTTL         time.Duration
 }
 
 type Principal struct {
@@ -484,7 +485,15 @@ func selectServiceTarget(addresses []string, serviceName, tailnet string) string
 // application explicitly allows that node. Unknown advertisements are left
 // pending for an administrator to inspect.
 func (c *Control) ReconcileServiceApprovals(ctx context.Context) error {
-	c.retryNodeCleanup(ctx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// Policy changes and periodic maintenance can both request reconciliation.
+	// Do not queue a second pass behind external API calls with a ticking deadline.
+	if !c.serviceApprovalMu.TryLock() {
+		return nil
+	}
+	defer c.serviceApprovalMu.Unlock()
 	client, err := c.tailscaleRuntimeClient()
 	if err != nil {
 		return nil
@@ -507,6 +516,9 @@ func (c *Control) ReconcileServiceApprovals(ctx context.Context) error {
 	}
 	failures := []string{}
 	for service, owners := range groups {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if !strings.HasPrefix(service, "svc:") {
 			continue
 		}

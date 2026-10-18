@@ -46,7 +46,7 @@ func TestShutdownRequiresReceiptConfirmationBeforeDeviceDeletion(t *testing.T) {
 	if e != nil || !r.Msg.Ok {
 		t.Fatal(r, e)
 	}
-	c.retryNodeCleanup(ctx)
+	c.RetryNodeCleanup(ctx)
 	if deleted != 0 {
 		t.Fatal("cut off caller before acknowledgment")
 	}
@@ -56,7 +56,7 @@ func TestShutdownRequiresReceiptConfirmationBeforeDeviceDeletion(t *testing.T) {
 	if _, e = client.Shutdown(ctx, connect.NewRequest(&v1.ShutdownRequest{Confirm: true})); e != nil {
 		t.Fatal(e)
 	}
-	c.retryNodeCleanup(ctx)
+	c.RetryNodeCleanup(ctx)
 	if deleted != 0 {
 		t.Fatal("deleted before acknowledgment reply grace")
 	}
@@ -64,7 +64,7 @@ func TestShutdownRequiresReceiptConfirmationBeforeDeviceDeletion(t *testing.T) {
 	s.GetJSON("node_cleanup:self", &state)
 	state.DeleteAfter = time.Now().Add(-time.Second).Unix()
 	s.SetJSON("node_cleanup:self", state)
-	c.retryNodeCleanup(ctx)
+	c.RetryNodeCleanup(ctx)
 	if deleted != 1 {
 		t.Fatal("device deletion not completed", deleted)
 	}
