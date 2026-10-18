@@ -112,12 +112,14 @@ func configureStorage(dataDir string) error {
 func caddyfile(listen, email, dataDir, tailscaleBlock string, routes []Route) (string, error) {
 	var sites strings.Builder
 	grouped := map[string][]HTTPRule{}
-	simple := []Route{}
 	for _, route := range routes {
 		if len(route.Rules) > 0 {
 			grouped[route.Hostname] = append(grouped[route.Hostname], route.Rules...)
 		} else {
-			simple = append(simple, route)
+			if err := validateRoute(route); err != nil {
+				return "", err
+			}
+			grouped[route.Hostname] = append(grouped[route.Hostname], HTTPRule{Matches: []Match{{Path: "/"}}, Backends: []Backend{{Key: route.Service, Service: route.Service, Port: route.Port, Weight: 1}}})
 		}
 	}
 	hosts := []string{}
@@ -133,15 +135,6 @@ func caddyfile(listen, email, dataDir, tailscaleBlock string, routes []Route) (s
 		}
 		sites.WriteString(text)
 	}
-	routes = simple
-	for _, route := range routes {
-		if err := validateRoute(route); err != nil {
-			return "", err
-		}
-		transport := "transport funnel_tsnet"
-		upstream := net.JoinHostPort(route.Service, strconv.Itoa(int(route.Port)))
-		fmt.Fprintf(&sites, "\n%s {\n\ttls {\n\t\ton_demand\n\t}\n\trequest_header -Forwarded\n\trequest_header -X-Forwarded-*\n\trequest_header -X-Real-IP\n\treverse_proxy %s {\n\t\theader_up X-Forwarded-Port {http.request.local.port}\n\t\theader_up X-Real-IP {http.request.remote.host}\n\t\t%s\n\t}\n}\n", route.Hostname, upstream, transport)
-	}
 	// Keep an explicit catch-all for hosts that have no approved application;
 	// on-demand TLS still uses the local always-allow permission endpoint, but
 	// the request receives 404 until control supplies a route.
@@ -152,6 +145,7 @@ func caddyfile(listen, email, dataDir, tailscaleBlock string, routes []Route) (s
 	}
 	return fmt.Sprintf(`{
 	%s
+	grace_period 5s
 	storage file_system %s
 %s
 	on_demand_tls {

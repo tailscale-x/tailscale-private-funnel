@@ -42,6 +42,8 @@ DNS, the load balancer is the only public edge, and specialized gateways report 
 approved services they can reach. The hero capture is a 1440×1024 synthetic,
 credential-free environment.
 
+HTTP path routing supports Kubernetes PathPrefix and named Docker route labels, with optional prefix stripping or replacement at the shared Caddy edge. See [configuration and examples](docs/path-routing.md).
+
 ## Architecture
 
 ```mermaid

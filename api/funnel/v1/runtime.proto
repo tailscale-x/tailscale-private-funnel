@@ -75,6 +75,8 @@ message BindSigningKeyRequest {
   bytes public_key = 3 [(buf.validate.field).bytes.len = 32];
 }
 message ResolveApplicationRequest {
+  string path_prefix = 3;
+  PrefixRewrite rewrite = 4;
   string hostname = 1;
   uint32 backend_port = 2 [(buf.validate.field).uint32 = {
     gt: 0
@@ -207,6 +209,7 @@ message HTTPRedirect {
   int32 status = 4;
 }
 message HTTPRule {
+  PrefixRewrite rewrite = 11;
   string backend_request_timeout = 1;
   repeated HTTPMatch matches = 2;
   repeated HTTPBackend backends = 3;

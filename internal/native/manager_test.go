@@ -306,3 +306,41 @@ func TestPostgresNativeCredentialsRemainInProtectedFiles(t *testing.T) {
 		t.Fatal("incorrect unit")
 	}
 }
+
+func TestInstallMakesVersionDirectoryTraversableBeforeInstallingBinary(t *testing.T) {
+	m := manager(t)
+	r, err := m.Resolve("gateways", "site", "tailnet-gateway", "Site", "site", "dev-permissions", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(m.UnitDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	m.Binary = "/tmp/test-funnel-binary"
+	for _, dir := range []string{r.StateDir, r.DataDir} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prepared := false
+	m.Run = func(_ context.Context, command string, args []string, _ io.Reader, _ []string) ([]byte, error) {
+		if command == "install" && len(args) > 0 {
+			if args[0] == "-d" {
+				want := "-d -o root -g root -m 0755 " + filepath.Join(m.BinaryRoot, r.Version)
+				if strings.Join(args, " ") != want {
+					t.Fatalf("directory command: %v", args)
+				}
+				prepared = true
+			} else if args[0] == "-D" && !prepared {
+				t.Fatal("binary installed before traversable directory")
+			}
+		}
+		return nil, nil
+	}
+	if err := m.install(t.Context(), &r); err != nil {
+		t.Fatal(err)
+	}
+	if !prepared {
+		t.Fatal("version directory permissions not set")
+	}
+}

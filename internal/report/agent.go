@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,17 +19,19 @@ import (
 
 // Exposure is a local discovery result, independent of the RPC representation.
 type Exposure struct {
-	BackendDeviceID string   `json:"backend_device_id,omitempty"`
-	ApplicationID   string   `json:"application_id,omitempty"`
-	ServiceName     string   `json:"service_name,omitempty"`
-	ContainerID     string   `json:"container_id,omitempty"`
-	PublicHostname  string   `json:"public_hostname"`
-	BackendHostname string   `json:"backend_hostname"`
-	BackendIP       string   `json:"backend_ip"`
-	Port            uint16   `json:"port"`
-	Protocol        string   `json:"protocol"`
-	Networks        []string `json:"networks,omitempty"`
-	Reachable       bool     `json:"reachable"`
+	PathPrefix      string               `json:"path_prefix,omitempty"`
+	Rewrite         *proxy.PrefixRewrite `json:"rewrite,omitempty"`
+	BackendDeviceID string               `json:"backend_device_id,omitempty"`
+	ApplicationID   string               `json:"application_id,omitempty"`
+	ServiceName     string               `json:"service_name,omitempty"`
+	ContainerID     string               `json:"container_id,omitempty"`
+	PublicHostname  string               `json:"public_hostname"`
+	BackendHostname string               `json:"backend_hostname"`
+	BackendIP       string               `json:"backend_ip"`
+	Port            uint16               `json:"port"`
+	Protocol        string               `json:"protocol"`
+	Networks        []string             `json:"networks,omitempty"`
+	Reachable       bool                 `json:"reachable"`
 }
 type Agent struct {
 	NodeID, ManagementURL, DataDir string
@@ -64,7 +67,11 @@ func Payload[T proto.Message](value any, out T) (T, error) {
 func (a Agent) Send(ctx context.Context, exposures []Exposure) error {
 	items := make([]*v1.ReportedExposure, 0, len(exposures))
 	for _, e := range exposures {
-		items = append(items, &v1.ReportedExposure{BackendDeviceId: e.BackendDeviceID, ApplicationId: e.ApplicationID, ServiceName: e.ServiceName, ContainerId: e.ContainerID, PublicHostname: e.PublicHostname, BackendHostname: e.BackendHostname, BackendIp: e.BackendIP, Port: uint32(e.Port), Protocol: e.Protocol, Networks: e.Networks, Reachable: e.Reachable})
+		var rewrite *v1.PrefixRewrite
+		if e.Rewrite != nil {
+			rewrite = &v1.PrefixRewrite{ReplacePrefix: e.Rewrite.ReplacePrefix}
+		}
+		items = append(items, &v1.ReportedExposure{PathPrefix: e.PathPrefix, Rewrite: rewrite, BackendDeviceId: e.BackendDeviceID, ApplicationId: e.ApplicationID, ServiceName: e.ServiceName, ContainerId: e.ContainerID, PublicHostname: e.PublicHostname, BackendHostname: e.BackendHostname, BackendIp: e.BackendIP, Port: uint32(e.Port), Protocol: e.Protocol, Networks: e.Networks, Reachable: e.Reachable})
 	}
 	env, e := a.envelope("report", &v1.ExposureReport{Exposures: items, ExpiresAt: time.Now().Add(5 * time.Minute).Unix()})
 	if e != nil {

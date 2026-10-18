@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,11 +28,13 @@ func httpSite(host string, rules []HTTPRule) (string, error) {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n%s {\n tls {\n on_demand\n }\n route {\n request_header -Forwarded\n request_header -X-Forwarded-*\n request_header -X-Real-IP\n", host)
-	counter := 0
 	for _, r := range rules {
-		if e := ValidateHTTPRule(r, true); e != nil {
-			return "", e
+		if err := ValidateHTTPRule(r, true); err != nil {
+			return "", err
 		}
+	}
+	counter := 0
+	for _, r := range OrderedRules(rules) {
 		matches := r.Matches
 		if len(matches) == 0 {
 			matches = []Match{{Path: "/"}}
@@ -64,6 +68,14 @@ func httpSite(host string, rules []HTTPRule) (string, error) {
 				}
 				fmt.Fprintf(&b, "redir %s %d\n", caddyToken(scheme+"://"+h+"{uri}"), d.Status)
 			} else {
+				if r.Rewrite != nil {
+					prefix := strings.TrimRight(m.Path, "/")
+					replacement := strings.TrimRight(r.Rewrite.ReplacePrefix, "/")
+					// Rewrite works in escaped-path space; suffix captures keep encoded slashes intact.
+					pattern := "^" + escapedPrefixPattern(prefix) + "((?:/|(?i:%2f)).*)?$"
+					target := (&url.URL{Path: replacement}).EscapedPath() + "$1"
+					fmt.Fprintf(&b, "uri path_regexp %s %s\nuri path_regexp ^%%2[fF] /\nuri path_regexp ^$ /\n", caddyToken(pattern), caddyToken(target))
+				}
 				var upstreams []string
 				for _, backend := range r.Backends {
 					for n := 0; n < backend.Weight; n++ {
@@ -205,3 +217,17 @@ func (m *ExactMatch) UnmarshalCaddyfile(d *caddyfilepkg.Dispenser) error {
 	return json.Unmarshal(raw, &m.MatchConfig)
 }
 func init() { caddy.RegisterModule(ExactMatch{}) }
+
+// escapedPrefixPattern matches the same decoded prefix as funnel_match while
+// retaining the original escaping of every byte in the unmatched suffix.
+func escapedPrefixPattern(prefix string) string {
+	var b strings.Builder
+	for _, r := range prefix {
+		var encoded strings.Builder
+		for _, v := range []byte(string(r)) {
+			fmt.Fprintf(&encoded, "%%%02X", v)
+		}
+		b.WriteString("(?:" + regexp.QuoteMeta(string(r)) + "|(?i:" + encoded.String() + "))")
+	}
+	return b.String()
+}

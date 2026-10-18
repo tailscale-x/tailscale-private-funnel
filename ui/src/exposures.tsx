@@ -51,6 +51,14 @@ export function ExposuresPage({
       setAlias(undefined);
     },
   });
+  const appsByHost = new Map<string, Application[]>();
+  for (const app of apps.data?.items ?? []) {
+    for (const hostname of app.publicHostnames) {
+      const members = appsByHost.get(hostname) ?? [];
+      members.push(app);
+      appsByHost.set(hostname, members);
+    }
+  }
   return (
     <>
       <Intro
@@ -71,22 +79,30 @@ export function ExposuresPage({
         <Table
           headers={[
             "Hostname / application",
+            "Path / rewrite",
             "Backend",
             "Service",
-            "Public readiness",
+            "Hostname readiness",
             "Actions",
           ]}
           empty={!exposures.isPending && !exposures.data?.items.length}
         >
-          {exposures.data?.items.map((e) => {
-            const app = apps.data?.items.find((a) => a.id === e.applicationId);
-            return (
-              <tr key={e.id}>
+          {exposures.data?.items.flatMap((e) => {
+            const members: (Application | undefined)[] = appsByHost.get(e.hostname) ?? [undefined];
+            return members.map((app) => (
+              <tr key={e.id + ":" + (app?.id ?? "pending")}>
                 <td>
                   <strong>{e.hostname}</strong>
                   <small className="pf-help">
                     {app?.name || e.applicationId}
                   </small>
+                </td>
+                <td>
+                  <code>{app?.backendSource === "kubernetes" ? "HTTPRoute / Ingress" : app?.pathPrefix || "/"}</code>
+                  <small className="pf-help">
+                    {app?.backendSource === "kubernetes" ? "Configured in Kubernetes" : app?.rewrite ? <>Replace prefix with <code>{app.rewrite.replacePrefix}</code></> : "Path preserved"}
+                  </small>
+                  {app && !app.enabled ? <Badge ok={false} label="Disabled" /> : null}
                 </td>
                 <td>
                   {app?.backendSource || "—"} · {app?.backendPort || "—"}
@@ -116,8 +132,9 @@ export function ExposuresPage({
                     <div key={edge.id}>
                       <Badge
                         ok={edge.ready}
-                        label={edge.ready ? "Ready" : edge.reason || "Pending"}
+                        label={edge.ready ? "Ready" : "Pending"}
                       />
+                      {!edge.ready && edge.reason ? <small className="pf-help">{edge.reason}</small> : null}
                       <small className="pf-help">
                         {edge.name} · {edge.publicIpv4.join(", ")}
                       </small>
@@ -137,7 +154,7 @@ export function ExposuresPage({
                     </a>
                   ) : admin && app?.backendSource === "docker" ? (
                     <button
-                      className="pf-secondary-button"
+                      className="pf-secondary-button whitespace-nowrap"
                       onClick={() => setAlias(app)}
                     >
                       Add alias
@@ -149,13 +166,13 @@ export function ExposuresPage({
                   )}
                 </td>
               </tr>
-            );
+            ));
           })}
         </Table>
       </Panel>
       {alias ? (
         <Modal
-          title={`Add alias to ${alias.name}`}
+          title={`Add alias to ${alias.name} (${alias.pathPrefix || "/"})`}
           onClose={() => setAlias(undefined)}
         >
           <form onSubmit={(e) => addAlias.mutate(formValues(e))}>
@@ -164,7 +181,7 @@ export function ExposuresPage({
             </Field>
             <p className="pf-help">
               The alias shares this application's Service and backend freshness.
-              Exposure policy and managed-zone validation still apply.
+              For a path route, the same prefix and rewrite apply to the alias. Exposure policy and managed-zone validation still apply.
             </p>
             <Submit pending={addAlias.isPending} label="Add alias" />
             <ErrorMessage error={addAlias.error} />

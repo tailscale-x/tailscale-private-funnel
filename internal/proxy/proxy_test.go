@@ -128,3 +128,27 @@ func testEdgeHeaders(t *testing.T, clientIP string, direct bool) {
 		t.Fatalf("unconfigured hostname returned %d; want 404", missing.StatusCode)
 	}
 }
+
+func TestLoadBalancerShutdownHasBoundedGracePeriod(t *testing.T) {
+	config, err := caddyfile(":443", "", t.TempDir(), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _, err := caddyconfig.GetAdapter("caddyfile").Adapt([]byte(config), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root struct {
+		Apps struct {
+			HTTP struct {
+				GracePeriod int64 `json:"grace_period"`
+			} `json:"http"`
+		} `json:"apps"`
+	}
+	if err := json.Unmarshal(raw, &root); err != nil {
+		t.Fatal(err)
+	}
+	if root.Apps.HTTP.GracePeriod != 5_000_000_000 {
+		t.Fatalf("unbounded or unexpected shutdown grace: %s", raw)
+	}
+}

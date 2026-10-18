@@ -652,3 +652,15 @@ func TestRPCReportAndServiceInspectionRetainFreshnessAndOwnership(t *testing.T) 
 		}
 	}
 }
+
+func TestNodeStorageFailureIsUnavailableRatherThanRevocation(t *testing.T) {
+	c, s := testControl(t)
+	client := nodeClient(t, c, Principal{NodeID: "enrolled"})
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, err := client.GetConfig(t.Context(), connect.NewRequest(&v1.Empty{}))
+	if connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Fatalf("storage failure classified as identity rejection: %v", err)
+	}
+}

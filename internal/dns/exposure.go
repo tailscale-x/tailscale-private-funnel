@@ -2,6 +2,7 @@ package dns
 
 import (
 	"fmt"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"net/netip"
 	"strings"
 	"time"
@@ -10,16 +11,18 @@ import (
 )
 
 type GatewayExposure struct {
-	BackendDeviceID string   `json:"backend_device_id,omitempty"`
-	ApplicationID   string   `json:"application_id,omitempty"`
-	ServiceName     string   `json:"service_name,omitempty"`
-	ContainerID     string   `json:"container_id,omitempty"`
-	PublicHostname  string   `json:"public_hostname"`
-	Port            uint16   `json:"port"`
-	BackendHostname string   `json:"backend_hostname,omitempty"`
-	BackendIP       string   `json:"backend_ip,omitempty"`
-	Networks        []string `json:"networks,omitempty"`
-	Reachable       bool     `json:"reachable"`
+	PathPrefix      string               `json:"path_prefix,omitempty"`
+	Rewrite         *proxy.PrefixRewrite `json:"rewrite,omitempty"`
+	BackendDeviceID string               `json:"backend_device_id,omitempty"`
+	ApplicationID   string               `json:"application_id,omitempty"`
+	ServiceName     string               `json:"service_name,omitempty"`
+	ContainerID     string               `json:"container_id,omitempty"`
+	PublicHostname  string               `json:"public_hostname"`
+	Port            uint16               `json:"port"`
+	BackendHostname string               `json:"backend_hostname,omitempty"`
+	BackendIP       string               `json:"backend_ip,omitempty"`
+	Networks        []string             `json:"networks,omitempty"`
+	Reachable       bool                 `json:"reachable"`
 }
 
 // GatewayRecords contains only the public records that control owns for an

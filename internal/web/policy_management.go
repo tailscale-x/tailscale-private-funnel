@@ -97,7 +97,7 @@ func (c *Control) authorizedReports(d policy.Document) map[string][]dns.GatewayE
 				continue
 			}
 			for _, a := range apps {
-				if !applicationAllows(a, n) || a.ID != e.ApplicationID || !contains(a.PublicHostnames, e.PublicHostname) || a.ServiceName != e.ServiceName || a.BackendPort != e.Port {
+				if !applicationAllows(a, n) || !dockerReportRouteMatches(a, e) || a.ID != e.ApplicationID || !contains(a.PublicHostnames, e.PublicHostname) || a.ServiceName != e.ServiceName || a.BackendPort != e.Port {
 					continue
 				}
 				if _, err := c.managedZone(e.PublicHostname); err != nil {

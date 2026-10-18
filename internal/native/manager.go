@@ -368,6 +368,11 @@ func (m *Manager) install(ctx context.Context, r *Resource) error {
 		}
 	}
 	dest := filepath.Join(m.BinaryRoot, r.Version, "tailscale-private-funnel")
+	// install -D creates parent directories using the caller's umask. Service
+	// accounts must be able to traverse the version directory even under 0077.
+	if _, e := m.run(ctx, "install", []string{"-d", "-o", "root", "-g", "root", "-m", "0755", filepath.Dir(dest)}, nil, nil); e != nil {
+		return e
+	}
 	if source != dest {
 		if _, e := m.run(ctx, "install", []string{"-D", "-o", "root", "-g", "root", "-m", "0555", source, dest}, nil, nil); e != nil {
 			return e

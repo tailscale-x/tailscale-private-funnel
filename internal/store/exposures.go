@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"strings"
 	"time"
 )
@@ -87,11 +88,11 @@ func (s *Store) migrateExposures() error {
 }
 func (s *Store) syncApplicationExposures(tx *transaction, a ApplicationRecord) error {
 	var err error
-	if _, err = tx.Exec(`UPDATE exposures SET active=0 WHERE application_id=?`, a.ID); err != nil {
-		return err
-	}
 	for _, host := range a.PublicHostnames {
 		host = strings.ToLower(strings.TrimSuffix(host, "."))
+		if err = validateSharedDockerHost(tx, a, host); err != nil {
+			return err
+		}
 		var id, app string
 		err = tx.QueryRow(`SELECT id,application_id FROM exposures WHERE hostname=?`, host).Scan(&id, &app)
 		if err == sql.ErrNoRows {
@@ -100,14 +101,67 @@ func (s *Store) syncApplicationExposures(tx *transaction, a ApplicationRecord) e
 				return err
 			}
 			_, err = tx.Exec(`INSERT INTO exposures(id,application_id,hostname) VALUES(?,?,?)`, id, a.ID, host)
-		} else if err == nil && app != a.ID {
-			return fmt.Errorf("hostname already assigned to another application")
 		}
 		if err != nil {
 			return err
 		}
-		if _, err = tx.Exec(`UPDATE exposures SET active=1 WHERE id=?`, id); err != nil {
-			return err
+	}
+	// Application hostnames are the membership relation. Keep the stable
+	// hostname/owner row active while any member still assigns it. Backend health and enabled state
+	// are evaluated separately by control, preserving disabled inventory rows.
+	rows, e := tx.Query(`SELECT public_hostnames FROM applications`)
+	if e != nil {
+		return e
+	}
+	active := map[string]bool{}
+	for rows.Next() {
+		var raw string
+		if e = rows.Scan(&raw); e != nil {
+			rows.Close()
+			return e
+		}
+		var hosts []string
+		if e = json.Unmarshal([]byte(raw), &hosts); e != nil {
+			rows.Close()
+			return e
+		}
+		for _, host := range hosts {
+			active[strings.ToLower(strings.TrimSuffix(host, "."))] = true
+		}
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return e
+	}
+	rows, e = tx.Query(`SELECT id,hostname,active FROM exposures`)
+	if e != nil {
+		return e
+	}
+	type item struct {
+		id, host string
+		active   int
+	}
+	var items []item
+	for rows.Next() {
+		var i item
+		if e = rows.Scan(&i.id, &i.host, &i.active); e != nil {
+			rows.Close()
+			return e
+		}
+		items = append(items, i)
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return e
+	}
+	for _, i := range items {
+		if i.active == boolInt(active[i.host]) {
+			continue
+		}
+		if _, e = tx.Exec(`UPDATE exposures SET active=? WHERE id=?`, boolInt(active[i.host]), i.id); e != nil {
+			return e
 		}
 	}
 	return nil
@@ -139,4 +193,58 @@ func (s *Store) Exposure(id string) (ExposureRecord, error) {
 		}
 	}
 	return ExposureRecord{}, sql.ErrNoRows
+}
+
+func validateSharedDockerHost(tx *transaction, a ApplicationRecord, host string) error {
+	rows, err := tx.Query(`SELECT id,backend_source,public_hostnames,allowed_gateway_nodes,http_config FROM applications WHERE id<>?`, a.ID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	prefix := func(rules []proxy.HTTPRule) string {
+		if len(rules) == 0 {
+			return "/"
+		}
+		if len(rules[0].Matches) == 0 {
+			return "/"
+		}
+		p := strings.TrimRight(rules[0].Matches[0].Path, "/")
+		if p == "" {
+			return "/"
+		}
+		return p
+	}
+	for rows.Next() {
+		var id, source, hostsRaw, nodesRaw, configRaw string
+		if err = rows.Scan(&id, &source, &hostsRaw, &nodesRaw, &configRaw); err != nil {
+			return err
+		}
+		var hosts, nodes []string
+		var config struct {
+			Rules []proxy.HTTPRule `json:"rules"`
+		}
+		if err = json.Unmarshal([]byte(hostsRaw), &hosts); err != nil {
+			return err
+		}
+		matched := false
+		for _, h := range hosts {
+			if h == host {
+				matched = true
+			}
+		}
+		if !matched {
+			continue
+		}
+		if err = json.Unmarshal([]byte(nodesRaw), &nodes); err != nil {
+			return err
+		}
+		if err = json.Unmarshal([]byte(configRaw), &config); err != nil {
+			return err
+		}
+		sameGateway := len(nodes) == 1 && len(a.AllowedGatewayNodes) == 1 && nodes[0] == a.AllowedGatewayNodes[0]
+		if a.BackendSource != "docker" || source != "docker" || !sameGateway || prefix(config.Rules) == prefix(a.HTTPRules) {
+			return fmt.Errorf("hostname/path already assigned to another application")
+		}
+	}
+	return rows.Err()
 }

@@ -387,6 +387,8 @@ message Settings {
   bool oauth_configured = 4;
 }
 message Application {
+  string path_prefix = 13;
+  PrefixRewrite rewrite = 14;
   string id = 1;
   string name = 2;
   string backend_source = 3;
@@ -567,7 +569,12 @@ message ExposureReport {
   repeated ReportedExposure exposures = 1;
   int64 expires_at = 2;
 }
+message PrefixRewrite {
+  string replace_prefix = 1;
+}
 message ReportedExposure {
+  string path_prefix = 12;
+  PrefixRewrite rewrite = 13;
   string backend_device_id = 1;
   string application_id = 2;
   string service_name = 3;

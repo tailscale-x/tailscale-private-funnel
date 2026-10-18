@@ -22,6 +22,7 @@ func TestNewCRReferencesBootstrapWithoutCredentials(t *testing.T) {
 func TestPrivateCredentials(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "key")
 	os.WriteFile(path, []byte("private"), 0644)
+	os.Chmod(path, 0644) // Explicitly public even when the test runner uses umask 0077.
 	if _, e := privateFile(path); e == nil {
 		t.Fatal("public credentials accepted")
 	}

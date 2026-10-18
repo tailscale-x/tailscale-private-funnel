@@ -5,8 +5,10 @@ import (
 	"net"
 	"net/netip"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"golang.org/x/net/http/httpguts"
 )
@@ -16,7 +18,7 @@ func ValidateHTTPRule(r HTTPRule, assigned bool) error {
 		return fmt.Errorf("route exceeds match/backend limit")
 	}
 	for _, m := range r.Matches {
-		if m.Path != "" && (!strings.HasPrefix(m.Path, "/") || strings.ContainsAny(m.Path, "\r\n*?{}")) {
+		if m.Path != "" && ValidatePath(m.Path) != nil {
 			return fmt.Errorf("unsupported HTTP path")
 		}
 		if m.Method != "" && !httpguts.ValidHeaderFieldName(m.Method) {
@@ -26,6 +28,14 @@ func ValidateHTTPRule(r HTTPRule, assigned bool) error {
 			if !httpguts.ValidHeaderFieldName(k) || !httpguts.ValidHeaderFieldValue(v) {
 				return fmt.Errorf("invalid header match")
 			}
+		}
+	}
+	if r.Rewrite != nil {
+		if r.Redirect != nil || len(r.Matches) != 1 || r.Matches[0].Exact || r.Matches[0].Path == "" {
+			return fmt.Errorf("prefix rewrite requires one PathPrefix match and no redirect")
+		}
+		if err := ValidatePath(r.Rewrite.ReplacePrefix); err != nil {
+			return err
 		}
 	}
 	for _, f := range []HeaderFilter{r.RequestHeaders, r.ResponseHeaders} {
@@ -93,4 +103,48 @@ func ValidateHTTPRule(r HTTPRule, assigned bool) error {
 		}
 	}
 	return nil
+}
+
+// ValidatePath accepts literal absolute paths only; configuration is never Caddy code.
+func ValidatePath(path string) error {
+	if len(path) > 2048 || !strings.HasPrefix(path, "/") || strings.ContainsAny(path, "?#{}*$%\\") || strings.ContainsFunc(path, unicode.IsControl) {
+		return fmt.Errorf("path must be an absolute literal without query, fragment, placeholders or captures")
+	}
+	if _, err := url.PathUnescape(path); err != nil {
+		return fmt.Errorf("invalid path escaping: %w", err)
+	}
+	return nil
+}
+
+// OrderedRules orders alternatives independently and preserves stable ties (Gateway API precedence).
+func OrderedRules(rules []HTTPRule) []HTTPRule {
+	var out []HTTPRule
+	for _, r := range rules {
+		matches := r.Matches
+		if len(matches) == 0 {
+			matches = []Match{{Path: "/"}}
+		}
+		for _, m := range matches {
+			one := r
+			one.Matches = []Match{m}
+			out = append(out, one)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return MatchPrecedes(out[i].Matches[0], out[j].Matches[0]) })
+	return out
+}
+func MatchPrecedes(a, b Match) bool {
+	if a.Exact != b.Exact {
+		return a.Exact
+	}
+	if x, y := len(strings.TrimRight(a.Path, "/")), len(strings.TrimRight(b.Path, "/")); x != y {
+		return x > y
+	}
+	if (a.Method != "") != (b.Method != "") {
+		return a.Method != ""
+	}
+	if len(a.Headers) != len(b.Headers) {
+		return len(a.Headers) > len(b.Headers)
+	}
+	return len(a.Query) > len(b.Query)
 }

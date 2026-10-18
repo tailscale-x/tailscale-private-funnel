@@ -17,7 +17,15 @@ import (
 )
 
 func applicationMessage(a store.ApplicationRecord) *v1.Application {
-	return &v1.Application{Id: a.ID, Name: a.Name, BackendSource: a.BackendSource, PublicHostnames: a.PublicHostnames, ServiceName: a.ServiceName, ServiceFqdn: a.ServiceFQDN, ServicePort: uint32(a.ServicePort), BackendPort: uint32(a.BackendPort), GatewayIds: a.AllowedGatewayNodes, Enabled: a.Enabled, BackendDeviceId: a.BackendDeviceID, Revision: a.PolicyRevision}
+	var path string
+	var rewrite *v1.PrefixRewrite
+	if a.BackendSource == "docker" && len(a.HTTPRules) == 1 && len(a.HTTPRules[0].Matches) == 1 {
+		path = a.HTTPRules[0].Matches[0].Path
+		if a.HTTPRules[0].Rewrite != nil {
+			rewrite = &v1.PrefixRewrite{ReplacePrefix: a.HTTPRules[0].Rewrite.ReplacePrefix}
+		}
+	}
+	return &v1.Application{PathPrefix: path, Rewrite: rewrite, Id: a.ID, Name: a.Name, BackendSource: a.BackendSource, PublicHostnames: a.PublicHostnames, ServiceName: a.ServiceName, ServiceFqdn: a.ServiceFQDN, ServicePort: uint32(a.ServicePort), BackendPort: uint32(a.BackendPort), GatewayIds: a.AllowedGatewayNodes, Enabled: a.Enabled, BackendDeviceId: a.BackendDeviceID, Revision: a.PolicyRevision}
 }
 func policyMessage(d policy.Document) *v1.Policy {
 	p := &v1.Policy{Revision: d.Revision}

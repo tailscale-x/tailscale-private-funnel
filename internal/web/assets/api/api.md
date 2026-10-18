@@ -879,6 +879,8 @@ Signed payload model: `funnel.v1.ConfigurationPayload`. Verify exact bytes befor
 
 | Field | Type | Notes |
 |---|---|---|
+| `pathPrefix` | string |  |
+| `rewrite` | funnel.v1.PrefixRewrite |  |
 | `hostname` | string |  |
 | `backendPort` | uint32 |  |
 

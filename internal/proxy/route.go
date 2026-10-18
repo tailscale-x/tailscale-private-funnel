@@ -41,15 +41,20 @@ type Redirect struct {
 	Port   uint16 `json:"port,omitempty"`
 	Status int    `json:"status"`
 }
+type PrefixRewrite struct {
+	ReplacePrefix string `json:"replace_prefix"`
+}
+
 type HTTPRule struct {
-	BackendRequestTimeout string       `json:"backend_request_timeout,omitempty"`
-	Matches               []Match      `json:"matches,omitempty"`
-	Backends              []Backend    `json:"backends,omitempty"`
-	RequestHeaders        HeaderFilter `json:"request_headers,omitempty"`
-	ResponseHeaders       HeaderFilter `json:"response_headers,omitempty"`
-	Redirect              *Redirect    `json:"redirect,omitempty"`
-	RequestTimeout        string       `json:"request_timeout,omitempty"`
-	BackendTimeout        string       `json:"backend_timeout,omitempty"`
-	MaxRequestBodyBytes   int64        `json:"max_request_body_bytes,omitempty"`
-	Priority              int          `json:"priority,omitempty"`
+	Rewrite               *PrefixRewrite `json:"rewrite,omitempty"`
+	BackendRequestTimeout string         `json:"backend_request_timeout,omitempty"`
+	Matches               []Match        `json:"matches,omitempty"`
+	Backends              []Backend      `json:"backends,omitempty"`
+	RequestHeaders        HeaderFilter   `json:"request_headers,omitempty"`
+	ResponseHeaders       HeaderFilter   `json:"response_headers,omitempty"`
+	Redirect              *Redirect      `json:"redirect,omitempty"`
+	RequestTimeout        string         `json:"request_timeout,omitempty"`
+	BackendTimeout        string         `json:"backend_timeout,omitempty"`
+	MaxRequestBodyBytes   int64          `json:"max_request_body_bytes,omitempty"`
+	Priority              int            `json:"priority,omitempty"`
 }

@@ -742,7 +742,7 @@ func (s *Store) NodeByTailnetID(tailnetID string) (NodeRecord, error) {
 		return NodeRecord{}, err
 	}
 	if matches != 1 {
-		return NodeRecord{}, fmt.Errorf("unknown or ambiguous tailnet identity")
+		return NodeRecord{}, fmt.Errorf("unknown or ambiguous tailnet identity: %w", sql.ErrNoRows)
 	}
 	var n NodeRecord
 	var revoked int

@@ -32,7 +32,7 @@ func (s *nodeRPC) GetConfig(ctx context.Context, _ *connect.Request[v1.Empty]) (
 	return envelopeResponse(s.c.nodeConfiguration(ctx))
 }
 func (s *nodeRPC) ResolveApplication(ctx context.Context, r *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.SignedEnvelope], error) {
-	return envelopeResponse(s.c.resolveApplication(ctx, r.Msg.Hostname, uint16(r.Msg.BackendPort)))
+	return envelopeResponse(s.c.resolveApplication(ctx, r.Msg))
 }
 func (s *nodeRPC) Acknowledge(ctx context.Context, r *connect.Request[v1.ConfigAck]) (*connect.Response[v1.Empty], error) {
 	node, e := s.c.callerNodeContext(ctx, "")

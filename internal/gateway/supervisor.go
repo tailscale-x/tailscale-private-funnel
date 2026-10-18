@@ -25,12 +25,13 @@ type Assignment struct {
 }
 
 type Resolver interface {
-	Resolve(ctx context.Context, hostname string, backendPort uint16) (Assignment, error)
+	Resolve(ctx context.Context, spec Spec) (Assignment, error)
 }
 
 type StaticResolver map[string]Assignment
 
-func (r StaticResolver) Resolve(_ context.Context, hostname string, backendPort uint16) (Assignment, error) {
+func (r StaticResolver) Resolve(_ context.Context, spec Spec) (Assignment, error) {
+	hostname, backendPort := spec.Hostname, spec.Port
 	assignment, ok := r[hostname]
 	if !ok || !assignment.Enabled || assignment.ServicePort == 0 || assignment.ServicePort != backendPort {
 		return Assignment{}, fmt.Errorf("no approved assignment for %s:%d", hostname, backendPort)
@@ -76,23 +77,28 @@ func (c Config) Reconcile(ctx context.Context) ([]Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
+	claims := map[string]int{}
+	for _, item := range containers {
+		if item.State != "running" {
+			continue
+		}
+		specs, e := ParseLabels(item.Labels, c.LabelKeys)
+		if e != nil {
+			continue
+		}
+		for _, spec := range specs {
+			claims[spec.Hostname+":"+NormalizePrefix(spec.PathPrefix)]++
+		}
+	}
 	activeListeners := map[string]struct{}{}
 	controlUnavailable := false
 	targets := map[string]bool{}
 	var out []Runtime
 	for _, item := range containers {
-		value := ""
-		for _, key := range append([]string{ExposureLabel}, c.LabelKeys...) {
-			if v := strings.TrimSpace(item.Labels[key]); v != "" {
-				if value != "" && value != v {
-					slog.Warn("gateway exposure aliases conflict", "container", item.ID)
-					value = ""
-					break
-				}
-				value = v
-			}
+		if item.State != "running" {
+			continue
 		}
-		specs, err := ParseLabel(value)
+		specs, err := ParseLabels(item.Labels, c.LabelKeys)
 		if err != nil {
 			slog.Warn("gateway exposure label rejected", "container", item.ID, "error", err)
 			continue
@@ -114,7 +120,11 @@ func (c Config) Reconcile(ctx context.Context) ([]Runtime, error) {
 			continue
 		}
 		for _, spec := range specs {
-			assignment, err := c.Resolver.Resolve(ctx, spec.Hostname, spec.Port)
+			if claims[spec.Hostname+":"+NormalizePrefix(spec.PathPrefix)] > 1 {
+				slog.Warn("duplicate Docker route claim rejected", "host", spec.Hostname, "path", spec.PathPrefix)
+				continue
+			}
+			assignment, err := c.Resolver.Resolve(ctx, spec)
 			if err != nil {
 				slog.Warn("gateway assignment resolution failed", "container", item.ID, "hostname", spec.Hostname, "port", spec.Port, "error", err)
 				if errors.Is(err, ErrControlUnavailable) {

@@ -16,6 +16,8 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/gateway"
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
@@ -30,6 +32,9 @@ func (c *Control) callerNodeContext(ctx context.Context, mode string) (store.Nod
 		return store.NodeRecord{}, fmt.Errorf("verified tailnet node identity required")
 	}
 	node, err := c.Store.NodeByTailnetID(p.NodeID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return node, rpcFailure(connect.CodeUnavailable, errors.New("node identity storage unavailable"))
+	}
 	if err != nil || node.Revoked || (mode != "" && node.Mode != mode) {
 		return node, fmt.Errorf("unknown, revoked, or mismatched node identity")
 	}
@@ -45,6 +50,9 @@ func (c *Control) callerNodeContext(ctx context.Context, mode string) (store.Nod
 	}
 	if node.ParentID != "" {
 		parent, e := c.Store.Node(node.ParentID)
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return node, rpcFailure(connect.CodeUnavailable, errors.New("controller identity storage unavailable"))
+		}
 		if e != nil || parent.Revoked {
 			return node, fmt.Errorf("controller revoked")
 		}
@@ -303,11 +311,21 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Enve
 	if applicationsErr != nil {
 		return rpcFailure(connectCodeHTTP(http.StatusInternalServerError), errors.New(applicationsErr.Error()))
 	}
+	if node.Mode == "docker-gateway" {
+		claims := map[string]string{}
+		for _, e := range reportPayload.Exposures {
+			key := e.PublicHostname + ":" + gateway.NormalizePrefix(e.PathPrefix)
+			if _, ok := claims[key]; ok {
+				return rpcFailure(connect.CodeInvalidArgument, errors.New("duplicate Docker hostname/path claim"))
+			}
+			claims[key] = e.ContainerID
+		}
+	}
 	reportPayload.Exposures = c.expandDockerAliases(reportPayload.Exposures, applications, node, roles)
 	for i := range reportPayload.Exposures {
 		exposure := &reportPayload.Exposures[i]
 		application, applicationOK := approvedApplication(applications, *exposure)
-		if !applicationOK || !applicationAllows(application, node) {
+		if !applicationOK || !applicationAllows(application, node) || !dockerReportRouteMatches(application, *exposure) {
 			return rpcFailure(connectCodeHTTP(http.StatusForbidden), errors.New("exposure does not match an enabled application Service"))
 		}
 		if store.BackendSource(node.Mode) != application.BackendSource && !(node.Mode == "docker-gateway" && application.BackendSource == "") {
@@ -439,7 +457,8 @@ func (c *Control) acceptPeerSnapshot(ctx context.Context, env report.Envelope) e
 	return nil
 }
 
-func (c *Control) resolveApplication(ctx context.Context, hostname string, backendPort uint16) (report.Envelope, error) {
+func (c *Control) resolveApplication(ctx context.Context, request *v1.ResolveApplicationRequest) (report.Envelope, error) {
+	hostname, backendPort := request.Hostname, uint16(request.BackendPort)
 	node, err := c.callerNodeContext(ctx, "docker-gateway")
 	if err != nil {
 		return report.Envelope{}, rpcFailure(connectCodeHTTP(403), errors.New(err.Error()))
@@ -447,6 +466,28 @@ func (c *Control) resolveApplication(ctx context.Context, hostname string, backe
 	hostname = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(hostname), "."))
 	if err := policy.ValidateHostname(hostname); err != nil {
 		return report.Envelope{}, rpcFailure(connectCodeHTTP(400), errors.New(err.Error()))
+	}
+	var path string
+	var rewrite *proxy.PrefixRewrite
+	if request != nil {
+		path = request.PathPrefix
+		if request.Rewrite != nil {
+			rewrite = &proxy.PrefixRewrite{ReplacePrefix: request.Rewrite.ReplacePrefix}
+		}
+	}
+	if path != "" {
+		if e := proxy.ValidatePath(path); e != nil {
+			return report.Envelope{}, rpcFailure(connect.CodeInvalidArgument, e)
+		}
+		path = gateway.NormalizePrefix(path)
+	}
+	if rewrite != nil && path == "" {
+		return report.Envelope{}, rpcFailure(connect.CodeInvalidArgument, errors.New("rewrite requires a path prefix"))
+	}
+	if rewrite != nil {
+		if e := proxy.ValidatePath(rewrite.ReplacePrefix); e != nil {
+			return report.Envelope{}, rpcFailure(connect.CodeInvalidArgument, e)
+		}
 	}
 	var settings struct {
 		Name         string `json:"name"`
@@ -467,18 +508,49 @@ func (c *Control) resolveApplication(ctx context.Context, hostname string, backe
 	if err != nil {
 		return report.Envelope{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
 	}
+	var existing *store.ApplicationRecord
 	for _, app := range apps {
-		for _, host := range app.PublicHostnames {
-			if strings.EqualFold(strings.TrimSuffix(host, "."), hostname) {
-				if app.BackendSource == "tailnet" || !applicationAllows(app, node) || app.BackendPort != backendPort {
-					return report.Envelope{}, rpcFailure(connectCodeHTTP(409), errors.New("hostname already assigned to a different gateway or backend port"))
-				}
-				return c.nodeConfiguration(ctx)
-			}
+		if !contains(app.PublicHostnames, hostname) {
+			continue
 		}
+		if app.BackendSource == "kubernetes" || app.BackendSource == "tailnet" || !applicationAllows(app, node) {
+			return report.Envelope{}, rpcFailure(connect.CodeAlreadyExists, errors.New("hostname already assigned to another backend source"))
+		}
+		appPath := "/"
+		if len(app.HTTPRules) > 0 && len(app.HTTPRules[0].Matches) > 0 {
+			appPath = gateway.NormalizePrefix(app.HTTPRules[0].Matches[0].Path)
+		}
+		if appPath != gateway.NormalizePrefix(path) {
+			continue
+		}
+		if !applicationAllows(app, node) || app.BackendPort != backendPort {
+			return report.Envelope{}, rpcFailure(connect.CodeAlreadyExists, errors.New("hostname/path already assigned to a different gateway or backend port"))
+		}
+		copy := app
+		existing = &copy
 	}
-	id := fmt.Sprintf("auto-%x", sha256.Sum256([]byte(node.ID+":"+hostname+fmt.Sprintf(":%d", backendPort))))[:25]
+	idInput := node.ID + ":" + hostname + fmt.Sprintf(":%d", backendPort)
+	if path != "" {
+		idInput += ":" + path
+	}
+	id := fmt.Sprintf("auto-%x", sha256.Sum256([]byte(idInput)))[:25]
 	app := store.ApplicationRecord{ID: id, ServiceName: "svc:tailscale-private-funnel-app-" + id, ServicePort: backendPort, BackendPort: backendPort, PublicHostnames: []string{hostname}, AllowedGatewayNodes: []string{node.ID}, Enabled: true}
+	if existing != nil {
+		app = *existing
+	}
+	app.HTTPRules = nil
+	if path != "" {
+		app.HTTPRules = []proxy.HTTPRule{{Matches: []proxy.Match{{Path: path}}, Rewrite: rewrite, Backends: []proxy.Backend{{Key: app.ID, Service: app.ServiceFQDN, Port: app.ServicePort, Weight: 1}}}}
+	}
+	if existing != nil {
+		if nodeconfig.Revision(existing.HTTPRules) != nodeconfig.Revision(app.HTTPRules) {
+			if err := c.Store.UpsertApplication(app); err != nil {
+				return report.Envelope{}, rpcFailure(connect.CodeInternal, err)
+			}
+			_ = c.Store.Audit("application.route.update:"+app.ID, "node:"+node.TailnetID)
+		}
+		return c.nodeConfiguration(ctx)
+	}
 	clientID, err := c.Store.GetSecret("tailscale_oauth_client_id")
 	if err != nil {
 		return report.Envelope{}, rpcFailure(connectCodeHTTP(428), errors.New("configure Tailscale OAuth first"))
@@ -492,6 +564,11 @@ func (c *Control) resolveApplication(ctx context.Context, hostname string, backe
 		return report.Envelope{}, rpcFailure(connectCodeHTTP(502), errors.New(err.Error()))
 	}
 	app.ServiceFQDN = selectServiceTarget(service.Addresses, app.ServiceName, settings.Name)
+	for i := range app.HTTPRules {
+		for j := range app.HTTPRules[i].Backends {
+			app.HTTPRules[i].Backends[j].Service = app.ServiceFQDN
+		}
+	}
 	if err := c.Store.UpsertApplication(app); err != nil {
 		return report.Envelope{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
 	}
@@ -663,4 +740,18 @@ func (c *Control) cleanupCallerContext(ctx context.Context) (store.NodeRecord, e
 		return n, fmt.Errorf("unknown node identity")
 	}
 	return n, nil
+}
+
+func dockerReportRouteMatches(app store.ApplicationRecord, e dns.GatewayExposure) bool {
+	if app.BackendSource != "docker" && app.BackendSource != "" {
+		return true
+	}
+	if len(app.HTTPRules) == 0 {
+		return e.PathPrefix == "" && e.Rewrite == nil
+	}
+	if len(app.HTTPRules) != 1 || len(app.HTTPRules[0].Matches) != 1 {
+		return false
+	}
+	rule := app.HTTPRules[0]
+	return gateway.NormalizePrefix(rule.Matches[0].Path) == gateway.NormalizePrefix(e.PathPrefix) && e.PathPrefix != "" && nodeconfig.Revision(rule.Rewrite) == nodeconfig.Revision(e.Rewrite)
 }

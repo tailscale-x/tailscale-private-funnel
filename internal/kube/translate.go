@@ -86,6 +86,9 @@ func Translate(ctx context.Context, c client.Client, options Options) (Result, e
 		if err := policy.ValidateHostname(host); err != nil || strings.Contains(host, "*") {
 			return fmt.Errorf("explicit public hostname required")
 		}
+		if err := proxy.ValidateHTTPRule(rule, false); err != nil {
+			return err
+		}
 		id := resourceID(object)
 		for _, match := range rule.Matches {
 			key := host + fmt.Sprintf("%#v", match)
@@ -267,7 +270,20 @@ func Translate(ctx context.Context, c client.Client, options Options) (Result, e
 					break
 				}
 				rule := proxy.HTTPRule{Matches: []proxy.Match{{Path: path.Path, Exact: path.PathType != nil && *path.PathType == networking.PathTypeExact}}, Backends: []proxy.Backend{backend}}
-				if e = optionsFromAnnotations(&rule, nil, ing.Annotations); e != nil {
+				annotations := map[string]string{}
+				for k, v := range ing.Annotations {
+					if k != AnnotationPrefix+"replace-prefix" {
+						annotations[k] = v
+					}
+				}
+				if replacement, ok := ing.Annotations[AnnotationPrefix+"replace-prefix"]; ok {
+					if path.PathType == nil || *path.PathType != networking.PathTypePrefix {
+						problem = fmt.Errorf("replace-prefix requires Prefix paths")
+						break
+					}
+					rule.Rewrite = &proxy.PrefixRewrite{ReplacePrefix: replacement}
+				}
+				if e = optionsFromAnnotations(&rule, nil, annotations); e != nil {
 					problem = e
 					break
 				}
@@ -312,21 +328,7 @@ func Translate(ctx context.Context, c client.Client, options Options) (Result, e
 	}
 	return result, nil
 }
-func matchPrecedes(a, b proxy.Match) bool {
-	if a.Exact != b.Exact {
-		return a.Exact
-	}
-	if x, y := len(strings.TrimRight(a.Path, "/")), len(strings.TrimRight(b.Path, "/")); x != y {
-		return x > y
-	}
-	if (a.Method != "") != (b.Method != "") {
-		return a.Method != ""
-	}
-	if len(a.Headers) != len(b.Headers) {
-		return len(a.Headers) > len(b.Headers)
-	}
-	return len(a.Query) > len(b.Query)
-}
+func matchPrecedes(a, b proxy.Match) bool { return proxy.MatchPrecedes(a, b) }
 func appendUniqueObject(objects []client.Object, o client.Object) []client.Object {
 	for _, x := range objects {
 		if resourceID(x) == resourceID(o) {
@@ -513,6 +515,15 @@ func translateRule(ctx context.Context, c client.Client, ns string, rr v1.HTTPRo
 				return r, nil, fmt.Errorf("missing header modifier")
 			}
 			r.ResponseHeaders = headers(*filter.ResponseHeaderModifier)
+		case v1.HTTPRouteFilterURLRewrite:
+			f := filter.URLRewrite
+			if f == nil || f.Hostname != nil || f.Path == nil || f.Path.Type != v1.PrefixMatchHTTPPathModifier || f.Path.ReplacePrefixMatch == nil || f.Path.ReplaceFullPath != nil {
+				return r, nil, fmt.Errorf("URLRewrite supports only path ReplacePrefixMatch")
+			}
+			if len(rr.Matches) != 1 || rr.Matches[0].Path == nil || (rr.Matches[0].Path.Type != nil && *rr.Matches[0].Path.Type != v1.PathMatchPathPrefix) {
+				return r, nil, fmt.Errorf("ReplacePrefixMatch requires exactly one PathPrefix match")
+			}
+			r.Rewrite = &proxy.PrefixRewrite{ReplacePrefix: *f.Path.ReplacePrefixMatch}
 		case v1.HTTPRouteFilterRequestRedirect:
 			f := filter.RequestRedirect
 			if f == nil || f.Path != nil {

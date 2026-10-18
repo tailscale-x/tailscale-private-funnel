@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
@@ -107,6 +109,10 @@ func TestBrowserPreview(t *testing.T) {
 			}
 		}
 		_ = s.SetJSON("node_peers:gateway-dev", snapshot)
+	}
+	for i, path := range []string{"/api", "/admin"} {
+		id := fmt.Sprintf("path-%d", i)
+		_ = s.UpsertApplication(store.ApplicationRecord{ID: id, BackendSource: "docker", ServiceName: "svc:" + id, ServiceFQDN: id + ".example.ts.net", ServicePort: 8080, BackendPort: uint16(8080 + i), PublicHostnames: []string{"paths.example.com"}, AllowedGatewayNodes: []string{"gateway-dev"}, Enabled: true, HTTPRules: []proxy.HTTPRule{{Matches: []proxy.Match{{Path: path}}, Rewrite: &proxy.PrefixRewrite{ReplacePrefix: "/"}}}})
 	}
 	_ = s.Audit("node.enroll:gateway-dev", "preview@example.com")
 	_ = s.Audit("policy.save:development", "preview@example.com")

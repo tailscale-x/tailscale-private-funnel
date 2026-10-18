@@ -37,7 +37,7 @@ func (s Session) Publish(ctx context.Context, config nodeconfig.Configuration, r
 		for _, n := range r.Networks {
 			networks = append(networks, n.ID)
 		}
-		exposures = append(exposures, report.Exposure{ApplicationID: r.Assignment.ApplicationID, ServiceName: r.Assignment.ServiceName, ContainerID: r.ContainerID, PublicHostname: r.Spec.Hostname, BackendHostname: r.BackendHostname, BackendIP: r.BackendIP, BackendDeviceID: r.BackendDeviceID, Port: r.Spec.Port, Protocol: "http", Networks: networks, Reachable: r.Reachable})
+		exposures = append(exposures, report.Exposure{PathPrefix: r.Spec.PathPrefix, Rewrite: r.Spec.Rewrite, ApplicationID: r.Assignment.ApplicationID, ServiceName: r.Assignment.ServiceName, ContainerID: r.ContainerID, PublicHostname: r.Spec.Hostname, BackendHostname: r.BackendHostname, BackendIP: r.BackendIP, BackendDeviceID: r.BackendDeviceID, Port: r.Spec.Port, Protocol: "http", Networks: networks, Reachable: r.Reachable})
 	}
 	// Discovery can own several backend listeners per reported HTTP application.
 	for _, a := range config.Applications {

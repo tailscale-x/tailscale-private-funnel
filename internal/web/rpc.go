@@ -60,7 +60,7 @@ func (c *Control) rpcInterceptor() connect.UnaryInterceptorFunc {
 					_, err = c.callerNodeContext(ctx, "")
 				}
 				if err != nil {
-					return nil, connect.NewError(connect.CodePermissionDenied, err)
+					return nil, rpcFailure(connect.CodePermissionDenied, err)
 				}
 			}
 			ctx = context.WithValue(ctx, principalKey{}, p)

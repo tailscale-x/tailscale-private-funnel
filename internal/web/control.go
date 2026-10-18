@@ -727,7 +727,7 @@ func backendRecordID(nodeID string, exposure dns.GatewayExposure) string {
 func approvedApplication(applications []store.ApplicationRecord, exposure dns.GatewayExposure) (store.ApplicationRecord, bool) {
 	hostname := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(exposure.PublicHostname), "."))
 	for _, application := range applications {
-		if !application.Enabled || application.ID != exposure.ApplicationID || application.ServiceName != strings.TrimSpace(exposure.ServiceName) || application.BackendPort != exposure.Port {
+		if !application.Enabled || !dockerReportRouteMatches(application, exposure) || application.ID != exposure.ApplicationID || application.ServiceName != strings.TrimSpace(exposure.ServiceName) || application.BackendPort != exposure.Port {
 			continue
 		}
 		for _, publicHostname := range application.PublicHostnames {

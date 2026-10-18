@@ -13,6 +13,7 @@ import (
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1/funnelv1connect"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 )
@@ -56,26 +57,26 @@ func resolverFixture(t *testing.T) (RPCResolver, *nodeFixture) {
 }
 func TestRPCResolverMatchesApprovedPublicHostname(t *testing.T) {
 	r, _ := resolverFixture(t)
-	a, e := r.Resolve(t.Context(), "checkout.dev.example.com.", 8080)
+	a, e := r.Resolve(t.Context(), Spec{Hostname: "checkout.dev.example.com.", Port: 8080})
 	if e != nil || a.ApplicationID != "checkout" {
 		t.Fatalf("assignment=%v error=%v", a, e)
 	}
 }
 func TestRPCResolverRejectsUnapprovedPort(t *testing.T) {
 	r, _ := resolverFixture(t)
-	if _, e := r.Resolve(t.Context(), "checkout.dev.example.com", 8443); e == nil {
+	if _, e := r.Resolve(t.Context(), Spec{Hostname: "checkout.dev.example.com", Port: 8443}); e == nil {
 		t.Fatal("unapproved port accepted")
 	}
 }
 func TestRPCResolverRejectsWrongSignedPurpose(t *testing.T) {
 	r, f := resolverFixture(t)
 	f.envelope.Purpose = "report"
-	if _, e := r.Resolve(t.Context(), "checkout.dev.example.com", 8080); e == nil {
+	if _, e := r.Resolve(t.Context(), Spec{Hostname: "checkout.dev.example.com", Port: 8080}); e == nil {
 		t.Fatal("report accepted as configuration")
 	}
 }
 func TestRPCResolverMarksControlOutage(t *testing.T) {
-	_, e := (RPCResolver{}).Resolve(t.Context(), "checkout.dev.example.com", 8080)
+	_, e := (RPCResolver{}).Resolve(t.Context(), Spec{Hostname: "checkout.dev.example.com", Port: 8080})
 	if !errors.Is(e, ErrControlUnavailable) {
 		t.Fatalf("outage=%v", e)
 	}
@@ -87,5 +88,31 @@ func TestRPCResolverReportsHealth(t *testing.T) {
 	}
 	if f.health != 1 {
 		t.Fatal("health not submitted")
+	}
+}
+
+func TestRPCResolverSelectsSignedPathAssignment(t *testing.T) {
+	r, f := resolverFixture(t)
+	pub, key, _ := report.GenerateKey()
+	r.ControlKey = base64.RawStdEncoding.EncodeToString(pub)
+	config := nodeconfig.Configuration{NodeID: "node-1", IssuedAt: time.Now().Unix()}
+	for _, path := range []string{"/api", "/admin"} {
+		config.Applications = append(config.Applications, store.ApplicationRecord{ID: path, ServiceName: "svc:" + path[1:], ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"app.example.com"}, Enabled: true, HTTPRules: []proxy.HTTPRule{{Matches: []proxy.Match{{Path: path}}, Rewrite: &proxy.PrefixRewrite{ReplacePrefix: "/"}}}})
+	}
+	config.Revision = nodeconfig.Revision(config)
+	env, err := report.NewEnvelopeWithPurpose("configuration", "node-1", config, pub, key, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.envelope, err = report.Wire(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assignment, err := r.Resolve(t.Context(), Spec{Hostname: "app.example.com", Port: 8080, PathPrefix: "/admin", Rewrite: &proxy.PrefixRewrite{ReplacePrefix: "/"}})
+	if err != nil || assignment.ApplicationID != "/admin" {
+		t.Fatal(assignment, err)
+	}
+	if _, err = r.Resolve(t.Context(), Spec{Hostname: "app.example.com", Port: 8080, PathPrefix: "/admin", Rewrite: &proxy.PrefixRewrite{ReplacePrefix: "/other"}}); err == nil {
+		t.Fatal("mismatched rewrite accepted")
 	}
 }

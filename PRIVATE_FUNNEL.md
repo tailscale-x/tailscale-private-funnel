@@ -143,6 +143,8 @@ Control never receives kubeconfigs. Credentials enter
 owned bootstrap Secrets rather than CRs or Helm values; successful bootstrap
 removes those Secrets. See [operator verification](docs/qa-kubernetes-operator.md).
 
+See [path routing and prefix replacement](docs/path-routing.md) for HTTPRoute, Ingress, and Docker examples.
+
 ### Supported HTTP subset
 
 | Capability | Support |
@@ -150,18 +152,20 @@ removes those Secrets. See [operator verification](docs/qa-kubernetes-operator.m
 | Gateway HTTP listener | Port 80; HTTPS terminates at external Caddy |
 | HTTPRoute matches | Explicit hosts; Exact/PathPrefix; methods; exact headers/query |
 | HTTPRoute backends | Weighted internal HTTP Services; verified node-local Pod endpoints |
-| Filters | Request/response header modifiers; scheme/host/port redirects |
+| Filters | Request/response header modifiers; scheme/host/port redirects; URLRewrite ReplacePrefixMatch |
 | Namespace boundaries | Gateway allowedRoutes and backend ReferenceGrant |
 | Ingress | Explicit hosts, Exact/Prefix, named/numeric Service ports |
 | ImplementationSpecific path | Treated as Prefix |
 | Public certificate Secrets / HTTPS listeners | Unsupported; Caddy manages public TLS |
 | Wildcard/hostless routes, regex, custom backend kinds | Unsupported |
 | ExternalName, headless Services, external-address backends | Unsupported |
-| Backend-specific filters, path-rewrite redirects, raw Caddy snippets | Unsupported |
+| ReplaceFullPath, hostname rewrites, backend-specific filters, path-rewrite redirects, raw Caddy snippets | Unsupported |
 
 This is a practical subset, not a Gateway API conformance claim. Unsupported configuration
 is rejected in resource conditions/Events. `Programmed=True` requires control authorization,
 backend/Service readiness, and load-balancer acknowledgment.
+
+Ingress additionally supports `tailscale-private-funnel.io/replace-prefix` for Prefix paths only.
 
 Supported annotations on HTTPRoute/Ingress:
 

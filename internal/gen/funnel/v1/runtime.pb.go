@@ -177,6 +177,8 @@ func (x *BindSigningKeyRequest) GetPublicKey() []byte {
 
 type ResolveApplicationRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	PathPrefix    string                 `protobuf:"bytes,3,opt,name=path_prefix,json=pathPrefix,proto3" json:"path_prefix,omitempty"`
+	Rewrite       *PrefixRewrite         `protobuf:"bytes,4,opt,name=rewrite,proto3" json:"rewrite,omitempty"`
 	Hostname      string                 `protobuf:"bytes,1,opt,name=hostname,proto3" json:"hostname,omitempty"`
 	BackendPort   uint32                 `protobuf:"varint,2,opt,name=backend_port,json=backendPort,proto3" json:"backend_port,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -211,6 +213,20 @@ func (x *ResolveApplicationRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ResolveApplicationRequest.ProtoReflect.Descriptor instead.
 func (*ResolveApplicationRequest) Descriptor() ([]byte, []int) {
 	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ResolveApplicationRequest) GetPathPrefix() string {
+	if x != nil {
+		return x.PathPrefix
+	}
+	return ""
+}
+
+func (x *ResolveApplicationRequest) GetRewrite() *PrefixRewrite {
+	if x != nil {
+		return x.Rewrite
+	}
+	return nil
 }
 
 func (x *ResolveApplicationRequest) GetHostname() string {
@@ -1373,6 +1389,7 @@ func (x *HTTPRedirect) GetStatus() int32 {
 
 type HTTPRule struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Rewrite               *PrefixRewrite         `protobuf:"bytes,11,opt,name=rewrite,proto3" json:"rewrite,omitempty"`
 	BackendRequestTimeout string                 `protobuf:"bytes,1,opt,name=backend_request_timeout,json=backendRequestTimeout,proto3" json:"backend_request_timeout,omitempty"`
 	Matches               []*HTTPMatch           `protobuf:"bytes,2,rep,name=matches,proto3" json:"matches,omitempty"`
 	Backends              []*HTTPBackend         `protobuf:"bytes,3,rep,name=backends,proto3" json:"backends,omitempty"`
@@ -1415,6 +1432,13 @@ func (x *HTTPRule) ProtoReflect() protoreflect.Message {
 // Deprecated: Use HTTPRule.ProtoReflect.Descriptor instead.
 func (*HTTPRule) Descriptor() ([]byte, []int) {
 	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *HTTPRule) GetRewrite() *PrefixRewrite {
+	if x != nil {
+		return x.Rewrite
+	}
+	return nil
 }
 
 func (x *HTTPRule) GetBackendRequestTimeout() string {
@@ -1882,8 +1906,11 @@ const file_funnel_v1_runtime_proto_rawDesc = "" +
 	"\renrollment_id\x18\x01 \x01(\tR\fenrollmentId\x12\x18\n" +
 	"\x04code\x18\x02 \x01(\tB\x04ص\x18\x01R\x04code\x12&\n" +
 	"\n" +
-	"public_key\x18\x03 \x01(\fB\a\xbaH\x04z\x02h R\tpublicKey\"g\n" +
-	"\x19ResolveApplicationRequest\x12\x1a\n" +
+	"public_key\x18\x03 \x01(\fB\a\xbaH\x04z\x02h R\tpublicKey\"\xbc\x01\n" +
+	"\x19ResolveApplicationRequest\x12\x1f\n" +
+	"\vpath_prefix\x18\x03 \x01(\tR\n" +
+	"pathPrefix\x122\n" +
+	"\arewrite\x18\x04 \x01(\v2\x18.funnel.v1.PrefixRewriteR\arewrite\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12.\n" +
 	"\fbackend_port\x18\x02 \x01(\rB\v\xbaH\b*\x06\x18\xff\xff\x03 \x00R\vbackendPort\"L\n" +
 	"\tConfigAck\x12#\n" +
@@ -2001,8 +2028,9 @@ const file_funnel_v1_runtime_proto_rawDesc = "" +
 	"\x06scheme\x18\x01 \x01(\tR\x06scheme\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x03 \x01(\rR\x04port\x12\x16\n" +
-	"\x06status\x18\x04 \x01(\x05R\x06status\"\x84\x04\n" +
-	"\bHTTPRule\x126\n" +
+	"\x06status\x18\x04 \x01(\x05R\x06status\"\xb8\x04\n" +
+	"\bHTTPRule\x122\n" +
+	"\arewrite\x18\v \x01(\v2\x18.funnel.v1.PrefixRewriteR\arewrite\x126\n" +
 	"\x17backend_request_timeout\x18\x01 \x01(\tR\x15backendRequestTimeout\x12.\n" +
 	"\amatches\x18\x02 \x03(\v2\x14.funnel.v1.HTTPMatchR\amatches\x122\n" +
 	"\bbackends\x18\x03 \x03(\v2\x16.funnel.v1.HTTPBackendR\bbackends\x12@\n" +
@@ -2117,75 +2145,78 @@ var file_funnel_v1_runtime_proto_goTypes = []any{
 	nil,                                // 27: funnel.v1.HTTPMatch.QueryEntry
 	nil,                                // 28: funnel.v1.HeaderFilter.SetEntry
 	nil,                                // 29: funnel.v1.HeaderFilter.AddEntry
-	(*Probe)(nil),                      // 30: funnel.v1.Probe
-	(*Empty)(nil),                      // 31: funnel.v1.Empty
-	(*Nodes)(nil),                      // 32: funnel.v1.Nodes
-	(*TestResult)(nil),                 // 33: funnel.v1.TestResult
+	(*PrefixRewrite)(nil),              // 30: funnel.v1.PrefixRewrite
+	(*Probe)(nil),                      // 31: funnel.v1.Probe
+	(*Empty)(nil),                      // 32: funnel.v1.Empty
+	(*Nodes)(nil),                      // 33: funnel.v1.Nodes
+	(*TestResult)(nil),                 // 34: funnel.v1.TestResult
 }
 var file_funnel_v1_runtime_proto_depIdxs = []int32{
-	9,  // 0: funnel.v1.PublicEndpointPayload.ingress:type_name -> funnel.v1.PublicIngress
-	24, // 1: funnel.v1.BrokerSession.state:type_name -> funnel.v1.BrokerSession.StateEntry
-	25, // 2: funnel.v1.KubernetesPayload.errors:type_name -> funnel.v1.KubernetesPayload.ErrorsEntry
-	13, // 3: funnel.v1.KubernetesPayload.hosts:type_name -> funnel.v1.KubernetesHost
-	19, // 4: funnel.v1.KubernetesHost.rules:type_name -> funnel.v1.HTTPRule
-	15, // 5: funnel.v1.KubernetesHost.backends:type_name -> funnel.v1.HTTPBackend
-	14, // 6: funnel.v1.HTTPBackend.endpoints:type_name -> funnel.v1.PodEndpoint
-	26, // 7: funnel.v1.HTTPMatch.headers:type_name -> funnel.v1.HTTPMatch.HeadersEntry
-	27, // 8: funnel.v1.HTTPMatch.query:type_name -> funnel.v1.HTTPMatch.QueryEntry
-	28, // 9: funnel.v1.HeaderFilter.set:type_name -> funnel.v1.HeaderFilter.SetEntry
-	29, // 10: funnel.v1.HeaderFilter.add:type_name -> funnel.v1.HeaderFilter.AddEntry
-	16, // 11: funnel.v1.HTTPRule.matches:type_name -> funnel.v1.HTTPMatch
-	15, // 12: funnel.v1.HTTPRule.backends:type_name -> funnel.v1.HTTPBackend
-	17, // 13: funnel.v1.HTTPRule.request_headers:type_name -> funnel.v1.HeaderFilter
-	17, // 14: funnel.v1.HTTPRule.response_headers:type_name -> funnel.v1.HeaderFilter
-	18, // 15: funnel.v1.HTTPRule.redirect:type_name -> funnel.v1.HTTPRedirect
-	19, // 16: funnel.v1.RuntimeApplication.http_rules:type_name -> funnel.v1.HTTPRule
-	15, // 17: funnel.v1.RuntimeApplication.http_backends:type_name -> funnel.v1.HTTPBackend
-	19, // 18: funnel.v1.HTTPRoute.rules:type_name -> funnel.v1.HTTPRule
-	21, // 19: funnel.v1.ConfigurationPayload.routes:type_name -> funnel.v1.HTTPRoute
-	30, // 20: funnel.v1.ConfigurationPayload.probes:type_name -> funnel.v1.Probe
-	20, // 21: funnel.v1.ConfigurationPayload.applications:type_name -> funnel.v1.RuntimeApplication
-	31, // 22: funnel.v1.NodeService.GetConfig:input_type -> funnel.v1.Empty
-	2,  // 23: funnel.v1.NodeService.ResolveApplication:input_type -> funnel.v1.ResolveApplicationRequest
-	3,  // 24: funnel.v1.NodeService.Acknowledge:input_type -> funnel.v1.ConfigAck
-	4,  // 25: funnel.v1.NodeService.ReportHealth:input_type -> funnel.v1.NodeHealth
-	0,  // 26: funnel.v1.NodeService.SubmitReport:input_type -> funnel.v1.SignedEnvelope
-	0,  // 27: funnel.v1.NodeService.SubmitPeers:input_type -> funnel.v1.SignedEnvelope
-	0,  // 28: funnel.v1.NodeService.SubmitKubernetes:input_type -> funnel.v1.SignedEnvelope
-	0,  // 29: funnel.v1.NodeService.SubmitPublicEndpoint:input_type -> funnel.v1.SignedEnvelope
-	0,  // 30: funnel.v1.NodeService.EnrollForwarder:input_type -> funnel.v1.SignedEnvelope
-	31, // 31: funnel.v1.NodeService.ListForwarders:input_type -> funnel.v1.Empty
-	0,  // 32: funnel.v1.NodeService.BindForwarder:input_type -> funnel.v1.SignedEnvelope
-	23, // 33: funnel.v1.NodeService.Shutdown:input_type -> funnel.v1.ShutdownRequest
-	1,  // 34: funnel.v1.EnrollmentService.BindSigningKey:input_type -> funnel.v1.BindSigningKeyRequest
-	31, // 35: funnel.v1.BrokerService.OpenSession:input_type -> funnel.v1.Empty
-	31, // 36: funnel.v1.BrokerService.GetConfig:input_type -> funnel.v1.Empty
-	31, // 37: funnel.v1.BrokerService.RenewLease:input_type -> funnel.v1.Empty
-	10, // 38: funnel.v1.BrokerService.WriteState:input_type -> funnel.v1.StateUpdate
-	31, // 39: funnel.v1.BrokerService.ReleaseLease:input_type -> funnel.v1.Empty
-	0,  // 40: funnel.v1.NodeService.GetConfig:output_type -> funnel.v1.SignedEnvelope
-	0,  // 41: funnel.v1.NodeService.ResolveApplication:output_type -> funnel.v1.SignedEnvelope
-	31, // 42: funnel.v1.NodeService.Acknowledge:output_type -> funnel.v1.Empty
-	31, // 43: funnel.v1.NodeService.ReportHealth:output_type -> funnel.v1.Empty
-	31, // 44: funnel.v1.NodeService.SubmitReport:output_type -> funnel.v1.Empty
-	31, // 45: funnel.v1.NodeService.SubmitPeers:output_type -> funnel.v1.Empty
-	31, // 46: funnel.v1.NodeService.SubmitKubernetes:output_type -> funnel.v1.Empty
-	31, // 47: funnel.v1.NodeService.SubmitPublicEndpoint:output_type -> funnel.v1.Empty
-	5,  // 48: funnel.v1.NodeService.EnrollForwarder:output_type -> funnel.v1.ForwarderEnrollment
-	32, // 49: funnel.v1.NodeService.ListForwarders:output_type -> funnel.v1.Nodes
-	31, // 50: funnel.v1.NodeService.BindForwarder:output_type -> funnel.v1.Empty
-	33, // 51: funnel.v1.NodeService.Shutdown:output_type -> funnel.v1.TestResult
-	31, // 52: funnel.v1.EnrollmentService.BindSigningKey:output_type -> funnel.v1.Empty
-	11, // 53: funnel.v1.BrokerService.OpenSession:output_type -> funnel.v1.BrokerSession
-	0,  // 54: funnel.v1.BrokerService.GetConfig:output_type -> funnel.v1.SignedEnvelope
-	31, // 55: funnel.v1.BrokerService.RenewLease:output_type -> funnel.v1.Empty
-	31, // 56: funnel.v1.BrokerService.WriteState:output_type -> funnel.v1.Empty
-	31, // 57: funnel.v1.BrokerService.ReleaseLease:output_type -> funnel.v1.Empty
-	40, // [40:58] is the sub-list for method output_type
-	22, // [22:40] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	30, // 0: funnel.v1.ResolveApplicationRequest.rewrite:type_name -> funnel.v1.PrefixRewrite
+	9,  // 1: funnel.v1.PublicEndpointPayload.ingress:type_name -> funnel.v1.PublicIngress
+	24, // 2: funnel.v1.BrokerSession.state:type_name -> funnel.v1.BrokerSession.StateEntry
+	25, // 3: funnel.v1.KubernetesPayload.errors:type_name -> funnel.v1.KubernetesPayload.ErrorsEntry
+	13, // 4: funnel.v1.KubernetesPayload.hosts:type_name -> funnel.v1.KubernetesHost
+	19, // 5: funnel.v1.KubernetesHost.rules:type_name -> funnel.v1.HTTPRule
+	15, // 6: funnel.v1.KubernetesHost.backends:type_name -> funnel.v1.HTTPBackend
+	14, // 7: funnel.v1.HTTPBackend.endpoints:type_name -> funnel.v1.PodEndpoint
+	26, // 8: funnel.v1.HTTPMatch.headers:type_name -> funnel.v1.HTTPMatch.HeadersEntry
+	27, // 9: funnel.v1.HTTPMatch.query:type_name -> funnel.v1.HTTPMatch.QueryEntry
+	28, // 10: funnel.v1.HeaderFilter.set:type_name -> funnel.v1.HeaderFilter.SetEntry
+	29, // 11: funnel.v1.HeaderFilter.add:type_name -> funnel.v1.HeaderFilter.AddEntry
+	30, // 12: funnel.v1.HTTPRule.rewrite:type_name -> funnel.v1.PrefixRewrite
+	16, // 13: funnel.v1.HTTPRule.matches:type_name -> funnel.v1.HTTPMatch
+	15, // 14: funnel.v1.HTTPRule.backends:type_name -> funnel.v1.HTTPBackend
+	17, // 15: funnel.v1.HTTPRule.request_headers:type_name -> funnel.v1.HeaderFilter
+	17, // 16: funnel.v1.HTTPRule.response_headers:type_name -> funnel.v1.HeaderFilter
+	18, // 17: funnel.v1.HTTPRule.redirect:type_name -> funnel.v1.HTTPRedirect
+	19, // 18: funnel.v1.RuntimeApplication.http_rules:type_name -> funnel.v1.HTTPRule
+	15, // 19: funnel.v1.RuntimeApplication.http_backends:type_name -> funnel.v1.HTTPBackend
+	19, // 20: funnel.v1.HTTPRoute.rules:type_name -> funnel.v1.HTTPRule
+	21, // 21: funnel.v1.ConfigurationPayload.routes:type_name -> funnel.v1.HTTPRoute
+	31, // 22: funnel.v1.ConfigurationPayload.probes:type_name -> funnel.v1.Probe
+	20, // 23: funnel.v1.ConfigurationPayload.applications:type_name -> funnel.v1.RuntimeApplication
+	32, // 24: funnel.v1.NodeService.GetConfig:input_type -> funnel.v1.Empty
+	2,  // 25: funnel.v1.NodeService.ResolveApplication:input_type -> funnel.v1.ResolveApplicationRequest
+	3,  // 26: funnel.v1.NodeService.Acknowledge:input_type -> funnel.v1.ConfigAck
+	4,  // 27: funnel.v1.NodeService.ReportHealth:input_type -> funnel.v1.NodeHealth
+	0,  // 28: funnel.v1.NodeService.SubmitReport:input_type -> funnel.v1.SignedEnvelope
+	0,  // 29: funnel.v1.NodeService.SubmitPeers:input_type -> funnel.v1.SignedEnvelope
+	0,  // 30: funnel.v1.NodeService.SubmitKubernetes:input_type -> funnel.v1.SignedEnvelope
+	0,  // 31: funnel.v1.NodeService.SubmitPublicEndpoint:input_type -> funnel.v1.SignedEnvelope
+	0,  // 32: funnel.v1.NodeService.EnrollForwarder:input_type -> funnel.v1.SignedEnvelope
+	32, // 33: funnel.v1.NodeService.ListForwarders:input_type -> funnel.v1.Empty
+	0,  // 34: funnel.v1.NodeService.BindForwarder:input_type -> funnel.v1.SignedEnvelope
+	23, // 35: funnel.v1.NodeService.Shutdown:input_type -> funnel.v1.ShutdownRequest
+	1,  // 36: funnel.v1.EnrollmentService.BindSigningKey:input_type -> funnel.v1.BindSigningKeyRequest
+	32, // 37: funnel.v1.BrokerService.OpenSession:input_type -> funnel.v1.Empty
+	32, // 38: funnel.v1.BrokerService.GetConfig:input_type -> funnel.v1.Empty
+	32, // 39: funnel.v1.BrokerService.RenewLease:input_type -> funnel.v1.Empty
+	10, // 40: funnel.v1.BrokerService.WriteState:input_type -> funnel.v1.StateUpdate
+	32, // 41: funnel.v1.BrokerService.ReleaseLease:input_type -> funnel.v1.Empty
+	0,  // 42: funnel.v1.NodeService.GetConfig:output_type -> funnel.v1.SignedEnvelope
+	0,  // 43: funnel.v1.NodeService.ResolveApplication:output_type -> funnel.v1.SignedEnvelope
+	32, // 44: funnel.v1.NodeService.Acknowledge:output_type -> funnel.v1.Empty
+	32, // 45: funnel.v1.NodeService.ReportHealth:output_type -> funnel.v1.Empty
+	32, // 46: funnel.v1.NodeService.SubmitReport:output_type -> funnel.v1.Empty
+	32, // 47: funnel.v1.NodeService.SubmitPeers:output_type -> funnel.v1.Empty
+	32, // 48: funnel.v1.NodeService.SubmitKubernetes:output_type -> funnel.v1.Empty
+	32, // 49: funnel.v1.NodeService.SubmitPublicEndpoint:output_type -> funnel.v1.Empty
+	5,  // 50: funnel.v1.NodeService.EnrollForwarder:output_type -> funnel.v1.ForwarderEnrollment
+	33, // 51: funnel.v1.NodeService.ListForwarders:output_type -> funnel.v1.Nodes
+	32, // 52: funnel.v1.NodeService.BindForwarder:output_type -> funnel.v1.Empty
+	34, // 53: funnel.v1.NodeService.Shutdown:output_type -> funnel.v1.TestResult
+	32, // 54: funnel.v1.EnrollmentService.BindSigningKey:output_type -> funnel.v1.Empty
+	11, // 55: funnel.v1.BrokerService.OpenSession:output_type -> funnel.v1.BrokerSession
+	0,  // 56: funnel.v1.BrokerService.GetConfig:output_type -> funnel.v1.SignedEnvelope
+	32, // 57: funnel.v1.BrokerService.RenewLease:output_type -> funnel.v1.Empty
+	32, // 58: funnel.v1.BrokerService.WriteState:output_type -> funnel.v1.Empty
+	32, // 59: funnel.v1.BrokerService.ReleaseLease:output_type -> funnel.v1.Empty
+	42, // [42:60] is the sub-list for method output_type
+	24, // [24:42] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_funnel_v1_runtime_proto_init() }

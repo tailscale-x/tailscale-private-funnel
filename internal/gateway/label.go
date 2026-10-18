@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"io"
 	"net"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,9 +21,11 @@ import (
 const ExposureLabel = "tailscale-private-funnel.expose"
 
 type Spec struct {
-	Port     uint16
-	Hostname string
-	Protocol string
+	PathPrefix string
+	Rewrite    *proxy.PrefixRewrite
+	Port       uint16
+	Hostname   string
+	Protocol   string
 }
 
 var hostnamePattern = regexp.MustCompile(`(?i)^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$`)
@@ -133,3 +137,98 @@ func closeWrite(conn net.Conn) {
 	}
 }
 func contextErr(ctx context.Context) error { return ctx.Err() }
+
+// ParseLabels resolves all configured namespaces before touching Docker or control.
+func ParseLabels(labels map[string]string, aliases []string) ([]Spec, error) {
+	keys := append([]string{ExposureLabel}, aliases...)
+	var canonical string
+	var out []Spec
+	seenKeys := map[string]bool{}
+	for _, key := range keys {
+		if seenKeys[key] {
+			continue
+		}
+		seenKeys[key] = true
+		if value := strings.TrimSpace(labels[key]); value != "" {
+			if canonical != "" && canonical != value {
+				return nil, fmt.Errorf("exposure aliases conflict")
+			}
+			canonical = value
+		}
+	}
+	var err error
+	out, err = ParseLabel(canonical)
+	if err != nil {
+		return nil, err
+	}
+	groups := map[string]map[string]string{}
+	for _, key := range keys {
+		base := strings.TrimSuffix(key, ".expose") + ".routes."
+		for label, value := range labels {
+			if !strings.HasPrefix(label, base) {
+				continue
+			}
+			parts := strings.Split(strings.TrimPrefix(label, base), ".")
+			if len(parts) != 2 || !routeName.MatchString(parts[0]) {
+				return nil, fmt.Errorf("invalid route label %s", label)
+			}
+			if groups[parts[0]] == nil {
+				groups[parts[0]] = map[string]string{}
+			}
+			field := parts[1]
+			switch field {
+			case "hostname", "port", "path-prefix", "replace-prefix":
+			default:
+				return nil, fmt.Errorf("unknown route field %s", field)
+			}
+			if old, ok := groups[parts[0]][field]; ok && old != value {
+				return nil, fmt.Errorf("route aliases conflict for %s", parts[0])
+			}
+			groups[parts[0]][field] = value
+		}
+	}
+	names := []string{}
+	for name := range groups {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		g := groups[name]
+		parsed, e := ParseLabel(g["port"] + ":" + g["hostname"] + ":http")
+		if e != nil || len(parsed) != 1 {
+			return nil, fmt.Errorf("invalid route %s: hostname and port required", name)
+		}
+		spec := parsed[0]
+		spec.PathPrefix = g["path-prefix"]
+		if e = proxy.ValidatePath(spec.PathPrefix); e != nil {
+			return nil, fmt.Errorf("route %s: %w", name, e)
+		}
+		spec.PathPrefix = NormalizePrefix(spec.PathPrefix)
+		if value, ok := g["replace-prefix"]; ok {
+			if e = proxy.ValidatePath(value); e != nil {
+				return nil, e
+			}
+			spec.Rewrite = &proxy.PrefixRewrite{ReplacePrefix: value}
+		}
+		out = append(out, spec)
+	}
+	claims := map[string]bool{}
+	for _, spec := range out {
+		key := spec.Hostname + ":" + NormalizePrefix(spec.PathPrefix)
+		if claims[key] {
+			return nil, fmt.Errorf("duplicate hostname/path claim %s", key)
+		}
+		claims[key] = true
+	}
+	return out, nil
+}
+
+var routeName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+func NormalizePrefix(path string) string {
+	p := strings.TrimRight(path, "/")
+	if p == "" {
+		return "/"
+	}
+	return p
+}

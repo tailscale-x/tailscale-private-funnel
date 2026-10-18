@@ -157,11 +157,12 @@ func (c *Control) exposureDesired(e store.ExposureRecord, d policy.Document) ([]
 	if err != nil {
 		return records, states
 	}
-	var app store.ApplicationRecord
+	members := map[string]store.ApplicationRecord{}
+	anyEnabled := false
 	for _, a := range apps {
-		if a.ID == e.ApplicationID {
-			app = a
-			break
+		if contains(a.PublicHostnames, e.Hostname) && a.Enabled {
+			members[a.ID] = a
+			anyEnabled = true
 		}
 	}
 	seen := map[string]bool{}
@@ -171,6 +172,7 @@ func (c *Control) exposureDesired(e store.ExposureRecord, d policy.Document) ([]
 		var roles []string
 		_ = c.Store.GetJSON("node_policy_roles:"+edge.ID, &roles)
 		policyOK := false
+		authorizedApps := map[string]bool{}
 		for id, exposures := range authorized {
 			n, er := c.Store.Node(id)
 			if er != nil || !store.IsGateway(n.Mode) {
@@ -179,19 +181,25 @@ func (c *Control) exposureDesired(e store.ExposureRecord, d policy.Document) ([]
 			var r []string
 			_ = c.Store.GetJSON("node_policy_roles:"+id, &r)
 			for _, x := range exposures {
-				if x.ApplicationID == app.ID && x.PublicHostname == e.Hostname {
+				if _, member := members[x.ApplicationID]; member && x.PublicHostname == e.Hostname {
 					if ok, _ := d.Allows(e.Hostname, []string{id, n.TailnetID}, r); ok {
 						policyOK = true
+						authorizedApps[x.ApplicationID] = true
 					}
 				}
 			}
 		}
 		selected := true
 		fresh := c.edgeFresh(edge)
-		backend := c.edgeReported(edge, app, e.Hostname)
+		backend := false
+		for _, app := range members {
+			if authorizedApps[app.ID] && c.edgeReported(edge, app, e.Hostname) {
+				backend = true
+			}
+		}
 		ips, degraded := c.edgeIPs(edge)
 		switch {
-		case !e.Active || !app.Enabled:
+		case !e.Active || !anyEnabled:
 			reason = "Exposure disabled or removed"
 		case !selected:
 			reason = "Not selected by override"
@@ -206,7 +214,7 @@ func (c *Control) exposureDesired(e store.ExposureRecord, d policy.Document) ([]
 		case degraded:
 			reason = "Retaining previous public IPv4; endpoint discovery degraded"
 		}
-		ready := e.Active && app.Enabled && selected && policyOK && fresh && backend && len(ips) > 0
+		ready := e.Active && anyEnabled && selected && policyOK && fresh && backend && len(ips) > 0
 		states = append(states, map[string]any{"id": edge.ID, "name": edge.Name, "selected": selected, "policy_allowed": policyOK, "healthy": fresh, "backend_reachable": backend, "public_ipv4": ips, "ready": ready, "reason": reason})
 		if ready {
 			for _, ip := range ips {

@@ -178,6 +178,10 @@
             "title": "name",
             "type": "string"
           },
+          "pathPrefix": {
+            "title": "path_prefix",
+            "type": "string"
+          },
           "publicHostnames": {
             "items": {
               "type": "string"
@@ -189,6 +193,14 @@
             "format": "int64",
             "title": "revision",
             "type": "string"
+          },
+          "rewrite": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.PrefixRewrite"
+              }
+            ],
+            "title": "rewrite"
           },
           "serviceFqdn": {
             "title": "service_fqdn",
@@ -1407,6 +1419,14 @@
               }
             ],
             "title": "response_headers"
+          },
+          "rewrite": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.PrefixRewrite"
+              }
+            ],
+            "title": "rewrite"
           }
         },
         "title": "HTTPRule",
@@ -2033,6 +2053,17 @@
         "title": "PolicyTestResult",
         "type": "object"
       },
+      "funnel.v1.PrefixRewrite": {
+        "additionalProperties": false,
+        "properties": {
+          "replacePrefix": {
+            "title": "replace_prefix",
+            "type": "string"
+          }
+        },
+        "title": "PrefixRewrite",
+        "type": "object"
+      },
       "funnel.v1.Probe": {
         "additionalProperties": false,
         "properties": {
@@ -2261,6 +2292,10 @@
             "title": "networks",
             "type": "array"
           },
+          "pathPrefix": {
+            "title": "path_prefix",
+            "type": "string"
+          },
           "port": {
             "title": "port",
             "type": "integer"
@@ -2276,6 +2311,14 @@
           "reachable": {
             "title": "reachable",
             "type": "boolean"
+          },
+          "rewrite": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.PrefixRewrite"
+              }
+            ],
+            "title": "rewrite"
           },
           "serviceName": {
             "title": "service_name",
@@ -2311,6 +2354,18 @@
           "hostname": {
             "title": "hostname",
             "type": "string"
+          },
+          "pathPrefix": {
+            "title": "path_prefix",
+            "type": "string"
+          },
+          "rewrite": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.PrefixRewrite"
+              }
+            ],
+            "title": "rewrite"
           }
         },
         "title": "ResolveApplicationRequest",
