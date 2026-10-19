@@ -47,7 +47,7 @@ func (c *Control) deploymentPlan(in *v1.DeploymentRequest) (*v1.DeploymentInstru
 	if in.Mode == "control" && in.Tailnet == "" {
 		in.Tailnet = stringValue(settings, "name", "")
 	}
-	version := stringValue(settings, "release_version", defaultRelease)
+	version := stringValue(settings, "release_version", c.BuildVersion)
 	if strings.HasPrefix(c.BuildVersion, "dev-") {
 		version = c.BuildVersion
 	}

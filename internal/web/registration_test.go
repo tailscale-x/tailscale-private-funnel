@@ -81,6 +81,7 @@ func TestRoleRegistrationAndManagementSeparation(t *testing.T) {
 
 func TestInstructionsBindCurrentInstallation(t *testing.T) {
 	c, _ := testControl(t)
+	c.BuildVersion = "v4.0.1"
 	c.Installation = "site-b"
 	if err := c.Store.SetJSON("tailnet", map[string]string{"management_url": "http://control.example.ts.net:8080"}); err != nil {
 		t.Fatal(err)
@@ -96,5 +97,21 @@ func TestInstructionsBindCurrentInstallation(t *testing.T) {
 	request.Installation = "other"
 	if _, err = c.deploymentPlan(request); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatal("foreign installation accepted", err)
+	}
+}
+
+func TestFreshInstallerDefaultsToRunningRelease(t *testing.T) {
+	c, s := testControl(t)
+	c.BuildVersion = "v4.0.1"
+	if err := s.SetJSON("tailnet", map[string]any{"management_url": "http://control.example.ts.net:8080"}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := c.deploymentPlan(&v1.DeploymentRequest{Mode: "docker-gateway", Target: "native", ResourceName: "site"})
+	if err != nil || p.Version != "v4.0.1" {
+		t.Fatal(p, err)
+	}
+	p, err = c.deploymentPlan(&v1.DeploymentRequest{Mode: "docker-gateway", Target: "native", ResourceName: "site", Version: "v4.0.2"})
+	if err != nil || p.Version != "v4.0.2" {
+		t.Fatal("explicit version lost", p, err)
 	}
 }

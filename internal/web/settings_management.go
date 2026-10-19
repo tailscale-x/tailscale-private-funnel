@@ -12,8 +12,6 @@ import (
 	"time"
 )
 
-const defaultRelease = "v2.0.0"
-
 var releasePattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
 
 type nodeDeployment struct {
