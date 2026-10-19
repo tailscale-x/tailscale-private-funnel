@@ -92,9 +92,71 @@ GitOps commit `81fee14cce0d7c9867485480caa7fb858ce59efe` pins only control to th
 fixed image; the Argo application returned to Synced/Healthy with reconciliation
 enabled. Operational receipts and credentials are kept outside the repository.
 
-## Release boundary
+## v4.0.2 release and deployment
 
-The fix is deployed as a development control build. The immutable v4.0.1 artifacts
-still contain the old append behavior; this task does not create a stable tag or
-GitHub release. The original rollout report remains historical evidence, with
-this follow-up providing the diagnosis and successful fresh-host acceptance.
+The follow-up release is [v4.0.2](https://github.com/tailscale-x/tailscale-private-funnel/releases/tag/v4.0.2),
+from commit `bffea99`. The immutable v4.0.1 artifacts retain the old append behavior.
+The tag workflow passed tests, vet, generated assets/contracts, PostgreSQL 16/18,
+image validation, binary packaging, multi-architecture publication, and chart
+publication. Downloaded release checksums passed for Linux amd64/arm64 and macOS
+arm64; both image binaries matched their corresponding release binaries.
+
+Released control image:
+
+```text
+ghcr.io/tailscale-x/tailscale-private-funnel@sha256:ce41c37ee2582a4e6857df87b1cf31120ac4c06da38be8a30277472a3a98deab
+```
+
+GitOps commit `2041356bddfce23c2144dcf4f5dd457e4d47b830` changed only control's
+image. The running executable reports `v4.0.2`; gateways, operators and the native
+load balancer remain compatible v4.0.1 components. No build ran on a VPS.
+
+### Rollout observations
+
+Concurrent CloudNativePG maintenance replaced the database primary during this
+rollout. Control reconnected to the new primary without a reset. Runtime Service
+connectivity recovered after the disposable control Pod was replaced; Pod readiness
+preceded runtime reconnection. Harbor was already NXDOMAIN and its HTTPRoute was
+not Programmed before the release image was applied. Normal reconciliation restored
+its record under the same exposure ownership, then the load balancer acknowledged
+its route and `Programmed=True` returned. This interruption is recorded rather than
+claimed as uninterrupted routing. No database maintenance, ACL change, human access
+grant, manual DNS mutation, gateway reset, or identity adoption was performed.
+
+A temporary role-tagged tsnet diagnostic reached the control Service using its
+FQDN, IPv4 and IPv6. Its requests were correctly denied human-management access
+with HTTP 403; it logged out and its single-use bootstrap key was revoked.
+
+### Post-release acceptance
+
+The first three-name fixture timed out before DNS publication while reconciliation
+recorded external API deadline errors. Its container and network were removed;
+authoritative inventory retired its registrations. A fresh retry published names
+in both zones. Two names immediately passed first-visit HTTPS, while the nested
+record briefly lagged the successful API/ledger update before authoritative DNS
+converged. Tests therefore wait for authoritative publication before recursive
+resolution and certificate checks. API acceptance alone remains insufficient
+evidence of served DNS. Slow reconciliation is an observed operational limitation
+of this rollout, separate from the complete-name serialization fix.
+
+The released build subsequently passed all three names: a single-label and nested
+name in `dlkn.dev`, and a name in `troly.ai.vn`. Receipts include authoritative
+`AA`/`NOERROR`, Cloudflare and Google public resolution, normal-DNS HTTPS 200 with
+certificate verification, hostname/query preservation, and HTTP-to-HTTPS 308.
+Caddy logged new Let's Encrypt certificates for all three names, including the
+nested name on its first HTTPS visit. HTTP/2 SSE completed 1,050,018 bytes with
+128 payload frames and the terminal `[DONE]`. No `--resolve` or insecure TLS
+option was used for those HTTPS acceptance checks.
+
+After recovery, the long monitor finished with 26 consecutive complete passing
+rounds for the seven established endpoints. Five additional rounds also passed,
+as did Flue's `/api/ping` and both Luonggia URLs. Harbor's brief pre-rollout
+interruption and the provisioning delays above remain part of the evidence.
+
+Control removed the fixture DNS records after authoritative inventory confirmed
+container deletion. Read-only Cloudflare API queries confirmed all six fixture
+names absent. Final comparison exactly matched all eleven baseline ledger
+records and owners. Prior exposure IDs and `main-material` encryption/signing
+material were unchanged. All six release-test exposures are inactive, and both
+fixture containers and their networks are absent. Argo reports Synced/Healthy
+with control pinned to the released digest.
