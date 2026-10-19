@@ -69,15 +69,28 @@ All three passed:
    expected echo backend. Curl used normal DNS, without `--resolve` or `-k`.
 4. Preservation of the original hostname and query string at the backend.
 
+Caddy logged successful Let's Encrypt certificate issuance for each of the three
+names. These were new certificates, not reuse of an existing wildcard or fixture
+certificate.
+
 The earlier relative-name fixture still returned authoritative NXDOMAIN in the
 same comparison while the complete-name fixtures resolved. This was a live
 before/after request-format comparison, rather than an assumption about caching.
 
-The seven established admissions/eOffice/SSO/API/Voice/Harbor/Metube checks were
-monitored repeatedly during the update. Temporary fixtures and their owned DNS
-records are cleaned up through Docker inventory and control reconciliation;
-unrelated resources are excluded. Operational receipts and credentials are kept
-outside the repository.
+The seven established admissions/eOffice/SSO/API/Voice/Harbor/Metube checks passed
+all 210 checks across 30 monitoring rounds around the update, plus three final
+rounds. Flue's `/api/ping` and both Luonggia root URLs also passed their expected
+200/302 checks with valid TLS.
+
+Both temporary containers and their network were removed. All four fixture
+exposures became inactive, and Cloudflare API reads confirmed that control had
+removed their DNS records. The final ledger exactly matched the eleven baseline
+records and owners; all previous exposure IDs were retained. No unrelated DNS
+record was adopted, overwritten, or deleted.
+
+GitOps commit `81fee14cce0d7c9867485480caa7fb858ce59efe` pins only control to the
+fixed image; the Argo application returned to Synced/Healthy with reconciliation
+enabled. Operational receipts and credentials are kept outside the repository.
 
 ## Release boundary
 
