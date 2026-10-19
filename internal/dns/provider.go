@@ -99,11 +99,13 @@ func (p *cloudflareProvider) List(ctx context.Context, zone string) ([]libdns.Re
 	return NormalizeRecords(records, zone), nil
 }
 func (p *cloudflareProvider) Capabilities() []string { return []string{"A", "CNAME", "SRV", "TXT"} }
-func relativeRecords(records []libdns.Record, zone string) ([]libdns.Record, error) {
+func cloudflareRecords(records []libdns.Record, zone string) ([]libdns.Record, error) {
 	out := make([]libdns.Record, 0, len(records))
-	for _, record := range records {
+	// The pinned Cloudflare provider serializes names unchanged. Cloudflare's
+	// write API requires the complete owner name, even though reads from libdns
+	// return zone-relative names. Do not strip the zone before an append.
+	for _, record := range NormalizeRecords(records, zone) {
 		rr := record.RR()
-		rr.Name = libdns.RelativeName(rr.Name, zone)
 		parsed, err := rr.Parse()
 		if err != nil {
 			return nil, err
@@ -117,11 +119,11 @@ func (p *cloudflareProvider) Apply(ctx context.Context, zone string, add, remove
 	// One-record operations make completed additions recoverable if a later
 	// append fails. The control ledger advances only after the full apply.
 	appendOne := func(ctx context.Context, record libdns.Record) error {
-		relative, err := relativeRecords([]libdns.Record{record}, zone)
+		qualified, err := cloudflareRecords([]libdns.Record{record}, zone)
 		if err != nil {
 			return err
 		}
-		_, err = p.p.AppendRecords(ctx, zone, relative)
+		_, err = p.p.AppendRecords(ctx, zone, qualified)
 		return err
 	}
 	return applyExact(ctx, add, remove, appendOne, func(ctx context.Context, record libdns.Record) error { return p.deleteExactRecord(ctx, zone, record) })
