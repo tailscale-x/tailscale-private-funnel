@@ -1888,6 +1888,135 @@ func (x *ShutdownRequest) GetConfirm() bool {
 	return false
 }
 
+// Only complete, successfully parsed scans may retire registrations.
+type DockerInventoryPayload struct {
+	state         protoimpl.MessageState      `protogen:"open.v1"`
+	Revision      int64                       `protobuf:"varint,1,opt,name=revision,proto3" json:"revision,omitempty"`
+	Complete      bool                        `protobuf:"varint,2,opt,name=complete,proto3" json:"complete,omitempty"`
+	Containers    []*DockerInventoryContainer `protobuf:"bytes,3,rep,name=containers,proto3" json:"containers,omitempty"`
+	LabelKeys     []string                    `protobuf:"bytes,4,rep,name=label_keys,json=labelKeys,proto3" json:"label_keys,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DockerInventoryPayload) Reset() {
+	*x = DockerInventoryPayload{}
+	mi := &file_funnel_v1_runtime_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DockerInventoryPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DockerInventoryPayload) ProtoMessage() {}
+
+func (x *DockerInventoryPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_funnel_v1_runtime_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DockerInventoryPayload.ProtoReflect.Descriptor instead.
+func (*DockerInventoryPayload) Descriptor() ([]byte, []int) {
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *DockerInventoryPayload) GetRevision() int64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+func (x *DockerInventoryPayload) GetComplete() bool {
+	if x != nil {
+		return x.Complete
+	}
+	return false
+}
+
+func (x *DockerInventoryPayload) GetContainers() []*DockerInventoryContainer {
+	if x != nil {
+		return x.Containers
+	}
+	return nil
+}
+
+func (x *DockerInventoryPayload) GetLabelKeys() []string {
+	if x != nil {
+		return x.LabelKeys
+	}
+	return nil
+}
+
+type DockerInventoryContainer struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Running       bool                   `protobuf:"varint,2,opt,name=running,proto3" json:"running,omitempty"`
+	Labels        map[string]string      `protobuf:"bytes,3,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DockerInventoryContainer) Reset() {
+	*x = DockerInventoryContainer{}
+	mi := &file_funnel_v1_runtime_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DockerInventoryContainer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DockerInventoryContainer) ProtoMessage() {}
+
+func (x *DockerInventoryContainer) ProtoReflect() protoreflect.Message {
+	mi := &file_funnel_v1_runtime_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DockerInventoryContainer.ProtoReflect.Descriptor instead.
+func (*DockerInventoryContainer) Descriptor() ([]byte, []int) {
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *DockerInventoryContainer) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *DockerInventoryContainer) GetRunning() bool {
+	if x != nil {
+		return x.Running
+	}
+	return false
+}
+
+func (x *DockerInventoryContainer) GetLabels() map[string]string {
+	if x != nil {
+		return x.Labels
+	}
+	return nil
+}
+
 var File_funnel_v1_runtime_proto protoreflect.FileDescriptor
 
 const file_funnel_v1_runtime_proto_rawDesc = "" +
@@ -2076,13 +2205,29 @@ const file_funnel_v1_runtime_proto_rawDesc = "" +
 	"\rlabel_aliases\x18\b \x03(\tR\flabelAliases\x12\x1b\n" +
 	"\tissued_at\x18\t \x01(\x03R\bissuedAt\"+\n" +
 	"\x0fShutdownRequest\x12\x18\n" +
-	"\aconfirm\x18\x01 \x01(\bR\aconfirm2\xe3\b\n" +
+	"\aconfirm\x18\x01 \x01(\bR\aconfirm\"\xbd\x01\n" +
+	"\x16DockerInventoryPayload\x12#\n" +
+	"\brevision\x18\x01 \x01(\x03B\a\xbaH\x04\"\x02 \x00R\brevision\x12\x1a\n" +
+	"\bcomplete\x18\x02 \x01(\bR\bcomplete\x12C\n" +
+	"\n" +
+	"containers\x18\x03 \x03(\v2#.funnel.v1.DockerInventoryContainerR\n" +
+	"containers\x12\x1d\n" +
+	"\n" +
+	"label_keys\x18\x04 \x03(\tR\tlabelKeys\"\xc8\x01\n" +
+	"\x18DockerInventoryContainer\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
+	"\arunning\x18\x02 \x01(\bR\arunning\x12G\n" +
+	"\x06labels\x18\x03 \x03(\v2/.funnel.v1.DockerInventoryContainer.LabelsEntryR\x06labels\x1a9\n" +
+	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012\xd3\t\n" +
 	"\vNodeService\x12`\n" +
 	"\tGetConfig\x12\x10.funnel.v1.Empty\x1a\x19.funnel.v1.SignedEnvelope\"&\x88\xb5\x18\x04\xa2\xb5\x18\x1efunnel.v1.ConfigurationPayload\x12}\n" +
 	"\x12ResolveApplication\x12$.funnel.v1.ResolveApplicationRequest\x1a\x19.funnel.v1.SignedEnvelope\"&\x88\xb5\x18\x04\xa2\xb5\x18\x1efunnel.v1.ConfigurationPayload\x12;\n" +
 	"\vAcknowledge\x12\x14.funnel.v1.ConfigAck\x1a\x10.funnel.v1.Empty\"\x04\x88\xb5\x18\x04\x12=\n" +
 	"\fReportHealth\x12\x15.funnel.v1.NodeHealth\x1a\x10.funnel.v1.Empty\"\x04\x88\xb5\x18\x04\x12]\n" +
-	"\fSubmitReport\x12\x19.funnel.v1.SignedEnvelope\x1a\x10.funnel.v1.Empty\" \x88\xb5\x18\x04\xa2\xb5\x18\x18funnel.v1.ExposureReport\x12Z\n" +
+	"\fSubmitReport\x12\x19.funnel.v1.SignedEnvelope\x1a\x10.funnel.v1.Empty\" \x88\xb5\x18\x04\xa2\xb5\x18\x18funnel.v1.ExposureReport\x12n\n" +
+	"\x15SubmitDockerInventory\x12\x19.funnel.v1.SignedEnvelope\x1a\x10.funnel.v1.Empty\"(\x88\xb5\x18\x04\xa2\xb5\x18 funnel.v1.DockerInventoryPayload\x12Z\n" +
 	"\vSubmitPeers\x12\x19.funnel.v1.SignedEnvelope\x1a\x10.funnel.v1.Empty\"\x1e\x88\xb5\x18\x04\xa2\xb5\x18\x16funnel.v1.PeerSnapshot\x12d\n" +
 	"\x10SubmitKubernetes\x12\x19.funnel.v1.SignedEnvelope\x1a\x10.funnel.v1.Empty\"#\x88\xb5\x18\x04\xa2\xb5\x18\x1bfunnel.v1.KubernetesPayload\x12l\n" +
 	"\x14SubmitPublicEndpoint\x12\x19.funnel.v1.SignedEnvelope\x1a\x10.funnel.v1.Empty\"'\x88\xb5\x18\x04\xa2\xb5\x18\x1ffunnel.v1.PublicEndpointPayload\x12~\n" +
@@ -2113,7 +2258,7 @@ func file_funnel_v1_runtime_proto_rawDescGZIP() []byte {
 	return file_funnel_v1_runtime_proto_rawDescData
 }
 
-var file_funnel_v1_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_funnel_v1_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_funnel_v1_runtime_proto_goTypes = []any{
 	(*SignedEnvelope)(nil),             // 0: funnel.v1.SignedEnvelope
 	(*BindSigningKeyRequest)(nil),      // 1: funnel.v1.BindSigningKeyRequest
@@ -2139,32 +2284,35 @@ var file_funnel_v1_runtime_proto_goTypes = []any{
 	(*HTTPRoute)(nil),                  // 21: funnel.v1.HTTPRoute
 	(*ConfigurationPayload)(nil),       // 22: funnel.v1.ConfigurationPayload
 	(*ShutdownRequest)(nil),            // 23: funnel.v1.ShutdownRequest
-	nil,                                // 24: funnel.v1.BrokerSession.StateEntry
-	nil,                                // 25: funnel.v1.KubernetesPayload.ErrorsEntry
-	nil,                                // 26: funnel.v1.HTTPMatch.HeadersEntry
-	nil,                                // 27: funnel.v1.HTTPMatch.QueryEntry
-	nil,                                // 28: funnel.v1.HeaderFilter.SetEntry
-	nil,                                // 29: funnel.v1.HeaderFilter.AddEntry
-	(*PrefixRewrite)(nil),              // 30: funnel.v1.PrefixRewrite
-	(*Probe)(nil),                      // 31: funnel.v1.Probe
-	(*Empty)(nil),                      // 32: funnel.v1.Empty
-	(*Nodes)(nil),                      // 33: funnel.v1.Nodes
-	(*TestResult)(nil),                 // 34: funnel.v1.TestResult
+	(*DockerInventoryPayload)(nil),     // 24: funnel.v1.DockerInventoryPayload
+	(*DockerInventoryContainer)(nil),   // 25: funnel.v1.DockerInventoryContainer
+	nil,                                // 26: funnel.v1.BrokerSession.StateEntry
+	nil,                                // 27: funnel.v1.KubernetesPayload.ErrorsEntry
+	nil,                                // 28: funnel.v1.HTTPMatch.HeadersEntry
+	nil,                                // 29: funnel.v1.HTTPMatch.QueryEntry
+	nil,                                // 30: funnel.v1.HeaderFilter.SetEntry
+	nil,                                // 31: funnel.v1.HeaderFilter.AddEntry
+	nil,                                // 32: funnel.v1.DockerInventoryContainer.LabelsEntry
+	(*PrefixRewrite)(nil),              // 33: funnel.v1.PrefixRewrite
+	(*Probe)(nil),                      // 34: funnel.v1.Probe
+	(*Empty)(nil),                      // 35: funnel.v1.Empty
+	(*Nodes)(nil),                      // 36: funnel.v1.Nodes
+	(*TestResult)(nil),                 // 37: funnel.v1.TestResult
 }
 var file_funnel_v1_runtime_proto_depIdxs = []int32{
-	30, // 0: funnel.v1.ResolveApplicationRequest.rewrite:type_name -> funnel.v1.PrefixRewrite
+	33, // 0: funnel.v1.ResolveApplicationRequest.rewrite:type_name -> funnel.v1.PrefixRewrite
 	9,  // 1: funnel.v1.PublicEndpointPayload.ingress:type_name -> funnel.v1.PublicIngress
-	24, // 2: funnel.v1.BrokerSession.state:type_name -> funnel.v1.BrokerSession.StateEntry
-	25, // 3: funnel.v1.KubernetesPayload.errors:type_name -> funnel.v1.KubernetesPayload.ErrorsEntry
+	26, // 2: funnel.v1.BrokerSession.state:type_name -> funnel.v1.BrokerSession.StateEntry
+	27, // 3: funnel.v1.KubernetesPayload.errors:type_name -> funnel.v1.KubernetesPayload.ErrorsEntry
 	13, // 4: funnel.v1.KubernetesPayload.hosts:type_name -> funnel.v1.KubernetesHost
 	19, // 5: funnel.v1.KubernetesHost.rules:type_name -> funnel.v1.HTTPRule
 	15, // 6: funnel.v1.KubernetesHost.backends:type_name -> funnel.v1.HTTPBackend
 	14, // 7: funnel.v1.HTTPBackend.endpoints:type_name -> funnel.v1.PodEndpoint
-	26, // 8: funnel.v1.HTTPMatch.headers:type_name -> funnel.v1.HTTPMatch.HeadersEntry
-	27, // 9: funnel.v1.HTTPMatch.query:type_name -> funnel.v1.HTTPMatch.QueryEntry
-	28, // 10: funnel.v1.HeaderFilter.set:type_name -> funnel.v1.HeaderFilter.SetEntry
-	29, // 11: funnel.v1.HeaderFilter.add:type_name -> funnel.v1.HeaderFilter.AddEntry
-	30, // 12: funnel.v1.HTTPRule.rewrite:type_name -> funnel.v1.PrefixRewrite
+	28, // 8: funnel.v1.HTTPMatch.headers:type_name -> funnel.v1.HTTPMatch.HeadersEntry
+	29, // 9: funnel.v1.HTTPMatch.query:type_name -> funnel.v1.HTTPMatch.QueryEntry
+	30, // 10: funnel.v1.HeaderFilter.set:type_name -> funnel.v1.HeaderFilter.SetEntry
+	31, // 11: funnel.v1.HeaderFilter.add:type_name -> funnel.v1.HeaderFilter.AddEntry
+	33, // 12: funnel.v1.HTTPRule.rewrite:type_name -> funnel.v1.PrefixRewrite
 	16, // 13: funnel.v1.HTTPRule.matches:type_name -> funnel.v1.HTTPMatch
 	15, // 14: funnel.v1.HTTPRule.backends:type_name -> funnel.v1.HTTPBackend
 	17, // 15: funnel.v1.HTTPRule.request_headers:type_name -> funnel.v1.HeaderFilter
@@ -2174,49 +2322,53 @@ var file_funnel_v1_runtime_proto_depIdxs = []int32{
 	15, // 19: funnel.v1.RuntimeApplication.http_backends:type_name -> funnel.v1.HTTPBackend
 	19, // 20: funnel.v1.HTTPRoute.rules:type_name -> funnel.v1.HTTPRule
 	21, // 21: funnel.v1.ConfigurationPayload.routes:type_name -> funnel.v1.HTTPRoute
-	31, // 22: funnel.v1.ConfigurationPayload.probes:type_name -> funnel.v1.Probe
+	34, // 22: funnel.v1.ConfigurationPayload.probes:type_name -> funnel.v1.Probe
 	20, // 23: funnel.v1.ConfigurationPayload.applications:type_name -> funnel.v1.RuntimeApplication
-	32, // 24: funnel.v1.NodeService.GetConfig:input_type -> funnel.v1.Empty
-	2,  // 25: funnel.v1.NodeService.ResolveApplication:input_type -> funnel.v1.ResolveApplicationRequest
-	3,  // 26: funnel.v1.NodeService.Acknowledge:input_type -> funnel.v1.ConfigAck
-	4,  // 27: funnel.v1.NodeService.ReportHealth:input_type -> funnel.v1.NodeHealth
-	0,  // 28: funnel.v1.NodeService.SubmitReport:input_type -> funnel.v1.SignedEnvelope
-	0,  // 29: funnel.v1.NodeService.SubmitPeers:input_type -> funnel.v1.SignedEnvelope
-	0,  // 30: funnel.v1.NodeService.SubmitKubernetes:input_type -> funnel.v1.SignedEnvelope
-	0,  // 31: funnel.v1.NodeService.SubmitPublicEndpoint:input_type -> funnel.v1.SignedEnvelope
-	0,  // 32: funnel.v1.NodeService.EnrollForwarder:input_type -> funnel.v1.SignedEnvelope
-	32, // 33: funnel.v1.NodeService.ListForwarders:input_type -> funnel.v1.Empty
-	0,  // 34: funnel.v1.NodeService.BindForwarder:input_type -> funnel.v1.SignedEnvelope
-	23, // 35: funnel.v1.NodeService.Shutdown:input_type -> funnel.v1.ShutdownRequest
-	1,  // 36: funnel.v1.EnrollmentService.BindSigningKey:input_type -> funnel.v1.BindSigningKeyRequest
-	32, // 37: funnel.v1.BrokerService.OpenSession:input_type -> funnel.v1.Empty
-	32, // 38: funnel.v1.BrokerService.GetConfig:input_type -> funnel.v1.Empty
-	32, // 39: funnel.v1.BrokerService.RenewLease:input_type -> funnel.v1.Empty
-	10, // 40: funnel.v1.BrokerService.WriteState:input_type -> funnel.v1.StateUpdate
-	32, // 41: funnel.v1.BrokerService.ReleaseLease:input_type -> funnel.v1.Empty
-	0,  // 42: funnel.v1.NodeService.GetConfig:output_type -> funnel.v1.SignedEnvelope
-	0,  // 43: funnel.v1.NodeService.ResolveApplication:output_type -> funnel.v1.SignedEnvelope
-	32, // 44: funnel.v1.NodeService.Acknowledge:output_type -> funnel.v1.Empty
-	32, // 45: funnel.v1.NodeService.ReportHealth:output_type -> funnel.v1.Empty
-	32, // 46: funnel.v1.NodeService.SubmitReport:output_type -> funnel.v1.Empty
-	32, // 47: funnel.v1.NodeService.SubmitPeers:output_type -> funnel.v1.Empty
-	32, // 48: funnel.v1.NodeService.SubmitKubernetes:output_type -> funnel.v1.Empty
-	32, // 49: funnel.v1.NodeService.SubmitPublicEndpoint:output_type -> funnel.v1.Empty
-	5,  // 50: funnel.v1.NodeService.EnrollForwarder:output_type -> funnel.v1.ForwarderEnrollment
-	33, // 51: funnel.v1.NodeService.ListForwarders:output_type -> funnel.v1.Nodes
-	32, // 52: funnel.v1.NodeService.BindForwarder:output_type -> funnel.v1.Empty
-	34, // 53: funnel.v1.NodeService.Shutdown:output_type -> funnel.v1.TestResult
-	32, // 54: funnel.v1.EnrollmentService.BindSigningKey:output_type -> funnel.v1.Empty
-	11, // 55: funnel.v1.BrokerService.OpenSession:output_type -> funnel.v1.BrokerSession
-	0,  // 56: funnel.v1.BrokerService.GetConfig:output_type -> funnel.v1.SignedEnvelope
-	32, // 57: funnel.v1.BrokerService.RenewLease:output_type -> funnel.v1.Empty
-	32, // 58: funnel.v1.BrokerService.WriteState:output_type -> funnel.v1.Empty
-	32, // 59: funnel.v1.BrokerService.ReleaseLease:output_type -> funnel.v1.Empty
-	42, // [42:60] is the sub-list for method output_type
-	24, // [24:42] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	25, // 24: funnel.v1.DockerInventoryPayload.containers:type_name -> funnel.v1.DockerInventoryContainer
+	32, // 25: funnel.v1.DockerInventoryContainer.labels:type_name -> funnel.v1.DockerInventoryContainer.LabelsEntry
+	35, // 26: funnel.v1.NodeService.GetConfig:input_type -> funnel.v1.Empty
+	2,  // 27: funnel.v1.NodeService.ResolveApplication:input_type -> funnel.v1.ResolveApplicationRequest
+	3,  // 28: funnel.v1.NodeService.Acknowledge:input_type -> funnel.v1.ConfigAck
+	4,  // 29: funnel.v1.NodeService.ReportHealth:input_type -> funnel.v1.NodeHealth
+	0,  // 30: funnel.v1.NodeService.SubmitReport:input_type -> funnel.v1.SignedEnvelope
+	0,  // 31: funnel.v1.NodeService.SubmitDockerInventory:input_type -> funnel.v1.SignedEnvelope
+	0,  // 32: funnel.v1.NodeService.SubmitPeers:input_type -> funnel.v1.SignedEnvelope
+	0,  // 33: funnel.v1.NodeService.SubmitKubernetes:input_type -> funnel.v1.SignedEnvelope
+	0,  // 34: funnel.v1.NodeService.SubmitPublicEndpoint:input_type -> funnel.v1.SignedEnvelope
+	0,  // 35: funnel.v1.NodeService.EnrollForwarder:input_type -> funnel.v1.SignedEnvelope
+	35, // 36: funnel.v1.NodeService.ListForwarders:input_type -> funnel.v1.Empty
+	0,  // 37: funnel.v1.NodeService.BindForwarder:input_type -> funnel.v1.SignedEnvelope
+	23, // 38: funnel.v1.NodeService.Shutdown:input_type -> funnel.v1.ShutdownRequest
+	1,  // 39: funnel.v1.EnrollmentService.BindSigningKey:input_type -> funnel.v1.BindSigningKeyRequest
+	35, // 40: funnel.v1.BrokerService.OpenSession:input_type -> funnel.v1.Empty
+	35, // 41: funnel.v1.BrokerService.GetConfig:input_type -> funnel.v1.Empty
+	35, // 42: funnel.v1.BrokerService.RenewLease:input_type -> funnel.v1.Empty
+	10, // 43: funnel.v1.BrokerService.WriteState:input_type -> funnel.v1.StateUpdate
+	35, // 44: funnel.v1.BrokerService.ReleaseLease:input_type -> funnel.v1.Empty
+	0,  // 45: funnel.v1.NodeService.GetConfig:output_type -> funnel.v1.SignedEnvelope
+	0,  // 46: funnel.v1.NodeService.ResolveApplication:output_type -> funnel.v1.SignedEnvelope
+	35, // 47: funnel.v1.NodeService.Acknowledge:output_type -> funnel.v1.Empty
+	35, // 48: funnel.v1.NodeService.ReportHealth:output_type -> funnel.v1.Empty
+	35, // 49: funnel.v1.NodeService.SubmitReport:output_type -> funnel.v1.Empty
+	35, // 50: funnel.v1.NodeService.SubmitDockerInventory:output_type -> funnel.v1.Empty
+	35, // 51: funnel.v1.NodeService.SubmitPeers:output_type -> funnel.v1.Empty
+	35, // 52: funnel.v1.NodeService.SubmitKubernetes:output_type -> funnel.v1.Empty
+	35, // 53: funnel.v1.NodeService.SubmitPublicEndpoint:output_type -> funnel.v1.Empty
+	5,  // 54: funnel.v1.NodeService.EnrollForwarder:output_type -> funnel.v1.ForwarderEnrollment
+	36, // 55: funnel.v1.NodeService.ListForwarders:output_type -> funnel.v1.Nodes
+	35, // 56: funnel.v1.NodeService.BindForwarder:output_type -> funnel.v1.Empty
+	37, // 57: funnel.v1.NodeService.Shutdown:output_type -> funnel.v1.TestResult
+	35, // 58: funnel.v1.EnrollmentService.BindSigningKey:output_type -> funnel.v1.Empty
+	11, // 59: funnel.v1.BrokerService.OpenSession:output_type -> funnel.v1.BrokerSession
+	0,  // 60: funnel.v1.BrokerService.GetConfig:output_type -> funnel.v1.SignedEnvelope
+	35, // 61: funnel.v1.BrokerService.RenewLease:output_type -> funnel.v1.Empty
+	35, // 62: funnel.v1.BrokerService.WriteState:output_type -> funnel.v1.Empty
+	35, // 63: funnel.v1.BrokerService.ReleaseLease:output_type -> funnel.v1.Empty
+	45, // [45:64] is the sub-list for method output_type
+	26, // [26:45] is the sub-list for method input_type
+	26, // [26:26] is the sub-list for extension type_name
+	26, // [26:26] is the sub-list for extension extendee
+	0,  // [0:26] is the sub-list for field type_name
 }
 
 func init() { file_funnel_v1_runtime_proto_init() }
@@ -2232,7 +2384,7 @@ func file_funnel_v1_runtime_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_funnel_v1_runtime_proto_rawDesc), len(file_funnel_v1_runtime_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   30,
+			NumMessages:   33,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

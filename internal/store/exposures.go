@@ -105,6 +105,30 @@ func (s *Store) syncApplicationExposures(tx *transaction, a ApplicationRecord) e
 		if err != nil {
 			return err
 		}
+		// Retain the hostname identity/ledger owner while changing the primary
+		// application after its previous membership has been retired.
+		if app != "" && app != a.ID {
+			var raw string
+			e := tx.QueryRow(`SELECT public_hostnames FROM applications WHERE id=?`, app).Scan(&raw)
+			if e != nil && e != sql.ErrNoRows {
+				return e
+			}
+			var prior []string
+			if e == nil {
+				if e = json.Unmarshal([]byte(raw), &prior); e != nil {
+					return e
+				}
+			}
+			member := false
+			for _, h := range prior {
+				member = member || h == host
+			}
+			if !member {
+				if _, err = tx.Exec(`UPDATE exposures SET application_id=? WHERE id=?`, a.ID, id); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	// Application hostnames are the membership relation. Keep the stable
 	// hostname/owner row active while any member still assigns it. Backend health and enabled state

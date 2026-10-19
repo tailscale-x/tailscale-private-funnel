@@ -1001,6 +1001,61 @@
         "title": "DiscoveredZones",
         "type": "object"
       },
+      "funnel.v1.DockerInventoryContainer": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "id",
+            "type": "string"
+          },
+          "labels": {
+            "additionalProperties": {
+              "title": "value",
+              "type": "string"
+            },
+            "title": "labels",
+            "type": "object"
+          },
+          "running": {
+            "title": "running",
+            "type": "boolean"
+          }
+        },
+        "title": "DockerInventoryContainer",
+        "type": "object"
+      },
+      "funnel.v1.DockerInventoryPayload": {
+        "additionalProperties": false,
+        "description": "Only complete, successfully parsed scans may retire registrations.",
+        "properties": {
+          "complete": {
+            "title": "complete",
+            "type": "boolean"
+          },
+          "containers": {
+            "items": {
+              "$ref": "#/components/schemas/funnel.v1.DockerInventoryContainer"
+            },
+            "title": "containers",
+            "type": "array"
+          },
+          "labelKeys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "label_keys",
+            "type": "array"
+          },
+          "revision": {
+            "exclusiveMinimum": 0,
+            "format": "int64",
+            "title": "revision",
+            "type": "string"
+          }
+        },
+        "title": "DockerInventoryPayload",
+        "type": "object"
+      },
       "funnel.v1.Edge": {
         "additionalProperties": false,
         "properties": {
@@ -3476,6 +3531,71 @@
         ],
         "x-funnel-audit": false,
         "x-funnel-permission": "NODE"
+      }
+    },
+    "/funnel.v1.NodeService/SubmitDockerInventory": {
+      "post": {
+        "description": "Complete Docker declarations, including stopped containers. No external API work.\nRequires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "operationId": "funnel.v1.NodeService.SubmitDockerInventory",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.Empty"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "SubmitDockerInventory",
+        "tags": [
+          "funnel.v1.NodeService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "NODE",
+        "x-funnel-signed-payload": "funnel.v1.DockerInventoryPayload"
       }
     },
     "/funnel.v1.NodeService/SubmitKubernetes": {

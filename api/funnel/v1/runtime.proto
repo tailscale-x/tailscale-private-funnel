@@ -38,6 +38,11 @@ service NodeService {
     option (permission) = PERMISSION_NODE;
     option (payload_type) = "funnel.v1.ExposureReport";
   }
+  // Complete Docker declarations, including stopped containers. No external API work.
+  rpc SubmitDockerInventory(SignedEnvelope) returns (Empty) {
+    option (permission) = PERMISSION_NODE;
+    option (payload_type) = "funnel.v1.DockerInventoryPayload";
+  }
   rpc SubmitPeers(SignedEnvelope) returns (Empty) {
     option (permission) = PERMISSION_NODE;
     option (payload_type) = "funnel.v1.PeerSnapshot";
@@ -261,3 +266,16 @@ message ConfigurationPayload {
 
 // Shutdown first withdraws owned state; confirm acknowledges receipt before device deletion.
 message ShutdownRequest { bool confirm = 1; }
+
+// Only complete, successfully parsed scans may retire registrations.
+message DockerInventoryPayload {
+  int64 revision = 1 [(buf.validate.field).int64.gt = 0];
+  bool complete = 2;
+  repeated DockerInventoryContainer containers = 3;
+  repeated string label_keys = 4;
+}
+message DockerInventoryContainer {
+  string id = 1;
+  bool running = 2;
+  map<string, string> labels = 3;
+}

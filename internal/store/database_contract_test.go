@@ -337,7 +337,7 @@ func TestPostgresConcurrentFirstInitialization(t *testing.T) {
 	}
 	defer s.Close()
 	var count int
-	if e = s.db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); e != nil || count != 1 {
+	if e = s.db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); e != nil || count != 2 {
 		t.Fatal("migration applied incorrectly", count, e)
 	}
 	key, e := os.ReadFile(filepath.Join(dir, "master.key"))

@@ -136,3 +136,8 @@ func (a Agent) RecordContact() {
 		_ = os.WriteFile(filepath.Join(a.DataDir, "last-control-report"), []byte(fmt.Sprint(time.Now().Unix())), 0600)
 	}
 }
+
+func (a Agent) SendDockerInventory(ctx context.Context, payload *v1.DockerInventoryPayload) error {
+ env,e:=a.envelope("docker-inventory",payload); if e!=nil{return e}
+ _,e=a.client().SubmitDockerInventory(ctx,connect.NewRequest(env));return e
+}

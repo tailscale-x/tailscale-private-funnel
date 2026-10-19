@@ -13,6 +13,7 @@ type periodicControl interface {
 	CleanupStaleNodes(context.Context, time.Duration) (int, error)
 	ReconcileLoadBalancerDNS(context.Context) error
 	ReconcileServiceApprovals(context.Context) error
+	ReconcileDockerRetirements(context.Context) error
 }
 
 // Service approval must keep progressing while provider reconciliation is slow.
@@ -32,6 +33,11 @@ func startControlReconciliation(ctx context.Context, control periodicControl, in
 		_ = control.ReconcileLoadBalancerDNS(pass)
 	})
 	go reconcileEvery(ctx, interval, budget, control.RetryNodeCleanup)
+	go reconcileEvery(ctx, interval, budget, func(pass context.Context) {
+		if err := control.ReconcileDockerRetirements(pass); err != nil && ctx.Err() == nil {
+			slog.Warn("Docker retirement cleanup pending", "error", err)
+		}
+	})
 	go reconcileEvery(ctx, interval, budget, func(pass context.Context) {
 		if err := control.ReconcileServiceApprovals(pass); err != nil && ctx.Err() == nil {
 			slog.Warn("service approval reconciliation failed", "error", err)

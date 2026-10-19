@@ -755,6 +755,18 @@ func runGatewaySupervisor(ctx context.Context, o Options, s *tsnet.Server) error
 	reconcile := func() {
 		reconcileMu.Lock()
 		defer reconcileMu.Unlock()
+		// Complete declaration inventory is sent before any backend/Service work.
+		// A failed scan sends no authoritative absence proof.
+		inventoryCtx, inventoryCancel := context.WithTimeout(ctx, 10*time.Second)
+		inventory, inventoryErr := supervisor.Inventory(inventoryCtx)
+		inventoryCancel()
+		if e := inventoryErr; e != nil {
+			slog.Warn("Docker inventory unavailable; registrations retained", "error", e)
+		} else if inventory.Revision, e = gateway.NextInventoryRevision(o.DataDir); e != nil {
+			slog.Error("Docker inventory revision unavailable", "error", e)
+		} else if e = (report.Agent{NodeID: nodeID, ManagementURL: o.ManagementURL, DataDir: o.DataDir, HTTPClient: managementClient}).SendDockerInventory(ctx, inventory); e != nil {
+			slog.Warn("Docker inventory submission failed; registrations retained", "error", e)
+		}
 		var runtimes []gateway.Runtime
 		if client != nil {
 			var err error

@@ -964,6 +964,34 @@ Signed payload model: `funnel.v1.ExposureReport`. Verify exact bytes before deco
 | `exposures` | list of funnel.v1.ReportedExposure |  |
 | `expiresAt` | int64 |  |
 
+### SubmitDockerInventory
+
+Complete Docker declarations, including stopped containers. No external API work.
+
+- RPC: `/funnel.v1.NodeService/SubmitDockerInventory`
+- Permission: `PERMISSION_NODE`
+- Input: `funnel.v1.SignedEnvelope`
+- Output: `funnel.v1.Empty`
+
+| Field | Type | Notes |
+|---|---|---|
+| `nodeId` | string |  |
+| `timestamp` | int64 |  |
+| `nonce` | string |  |
+| `publicKey` | bytes |  |
+| `payload` | bytes |  |
+| `signature` | bytes |  |
+| `purpose` | string |  |
+
+Signed payload model: `funnel.v1.DockerInventoryPayload`. Verify exact bytes before decoding.
+
+| Field | Type | Notes |
+|---|---|---|
+| `revision` | int64 |  |
+| `complete` | bool |  |
+| `containers` | list of funnel.v1.DockerInventoryContainer |  |
+| `labelKeys` | list of string |  |
+
 ### SubmitPeers
 
 

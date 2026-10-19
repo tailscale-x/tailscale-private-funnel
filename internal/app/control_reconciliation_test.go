@@ -91,3 +91,5 @@ func TestServiceApprovalDoesNotWaitForDNSReconciliation(t *testing.T) {
 		}
 	}
 }
+
+func (*blockedDNSControl) ReconcileDockerRetirements(context.Context) error { return nil }

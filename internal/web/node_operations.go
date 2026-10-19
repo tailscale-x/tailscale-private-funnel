@@ -323,6 +323,33 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Enve
 		}
 	}
 	reportPayload.Exposures = c.expandDockerAliases(reportPayload.Exposures, applications, node, roles)
+	// Keep the original signed envelope for audit; derive only current backend
+	// assignments from it. A known retired claim cannot starve other apps.
+	filtered := reportPayload.Exposures[:0]
+	for _, exposure := range reportPayload.Exposures {
+		if node.Mode == "docker-gateway" {
+			app, found := approvedApplication(applications, exposure)
+			valid := found && applicationAllows(app, node) && contains(app.PublicHostnames, exposure.PublicHostname)
+			retired, e := c.Store.RetiredDockerExposure(node.ID, exposure.ApplicationID, exposure.PublicHostname, exposure.ServiceName, exposure.Port)
+			if e != nil {
+				return rpcFailure(connect.CodeUnavailable, e)
+			}
+			if !valid && retired {
+				continue
+			}
+			if valid {
+				ok, e := c.Store.DockerDeclarationAllowed(node.ID, app, exposure.ContainerID, true)
+				if e != nil {
+					return rpcFailure(connect.CodeUnavailable, e)
+				}
+				if !ok {
+					continue
+				}
+			}
+		}
+		filtered = append(filtered, exposure)
+	}
+	reportPayload.Exposures = filtered
 	for i := range reportPayload.Exposures {
 		exposure := &reportPayload.Exposures[i]
 		application, applicationOK := approvedApplication(applications, *exposure)
@@ -486,11 +513,20 @@ func (c *Control) resolveApplication(ctx context.Context, request *v1.ResolveApp
 	if err := c.Store.GetJSON("tailnet", &settings); err != nil {
 		return report.Envelope{}, rpcFailure(connectCodeHTTP(503), errors.New("Unable to read control settings"))
 	}
-	if !c.anyEdgeAllows(c.loadExposurePolicy(), hostname, []string{node.ID, node.TailnetID}, rpcPrincipal(ctx).RoleSelectors()) {
+	if allowed, _ := c.loadExposurePolicy().Allows(hostname, []string{node.ID, node.TailnetID}, rpcPrincipal(ctx).RoleSelectors()); !allowed {
 		return report.Envelope{}, rpcFailure(connectCodeHTTP(403), errors.New("hostname denied by exposure policy"))
 	}
 	if _, err := c.managedZone(hostname); err != nil {
 		return report.Envelope{}, rpcFailure(connectCodeHTTP(403), errors.New(err.Error()))
+	}
+	declaration := store.ApplicationRecord{BackendPort: backendPort, PublicHostnames: []string{hostname}}
+	if path != "" {
+		declaration.HTTPRules = []proxy.HTTPRule{{Matches: []proxy.Match{{Path: path}}, Rewrite: rewrite}}
+	}
+	if ok, e := c.Store.DockerDeclarationAllowed(node.ID, declaration, "", true); e != nil {
+		return report.Envelope{}, rpcFailure(connect.CodeUnavailable, e)
+	} else if !ok {
+		return report.Envelope{}, rpcFailure(connect.CodeFailedPrecondition, errors.New("declaration absent from current Docker inventory"))
 	}
 	// Discovery re-resolves existing labels on every tick. Reading an unchanged,
 	// authorized binding must never wait behind creation of another Service.

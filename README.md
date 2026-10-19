@@ -46,6 +46,8 @@ HTTP path routing supports Kubernetes PathPrefix and named Docker route labels, 
 
 Runtime reports are accepted independently of external DNS and Tailscale API work, so API stalls do not consume healthy nodes' report leases. See [report acceptance and reconciliation](docs/report-reconciliation.md).
 
+Docker container/label removal automatically retires registrations after a complete signed scan, allowing authorized Kubernetes reclamation without changing DNS ownership. See [registration lifecycle](docs/docker-registration-lifecycle.md).
+
 ## Architecture
 
 ```mermaid

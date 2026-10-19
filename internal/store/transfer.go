@@ -29,7 +29,7 @@ type TransferValue struct {
 	Integer *int64  `json:"integer,omitempty"`
 }
 
-var transferTables = []string{"applications", "audit", "backend_assignments", "enrollments", "exposures", "managed_zones", "nodes", "kubernetes_forwarders", "providers", "records", "report_nonces", "reports", "service_hosts", "settings"}
+var transferTables = []string{"applications", "audit", "docker_inventories", "docker_retirements", "backend_assignments", "enrollments", "exposures", "managed_zones", "nodes", "kubernetes_forwarders", "providers", "records", "report_nonces", "reports", "service_hosts", "settings"}
 
 const transferFence = "control_transfer_source"
 

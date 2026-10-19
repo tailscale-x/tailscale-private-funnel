@@ -1,0 +1,2 @@
+CREATE TABLE docker_inventories(node_id TEXT PRIMARY KEY, revision BIGINT NOT NULL, payload TEXT NOT NULL, received_at BIGINT NOT NULL);
+CREATE TABLE docker_retirements(node_id TEXT NOT NULL, application_id TEXT NOT NULL, hostname TEXT NOT NULL, service_name TEXT NOT NULL, port INTEGER NOT NULL, retired_at BIGINT NOT NULL, cleanup_pending INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(node_id,application_id,hostname));

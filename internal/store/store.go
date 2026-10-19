@@ -1005,6 +1005,9 @@ func (s *Store) UpsertApplication(a ApplicationRecord) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err = validateDockerDeclaration(tx, a); err != nil {
+		return err
+	}
 	now := time.Now().Unix()
 	_, err = tx.Exec(`INSERT INTO applications(id,name,service_name,service_fqdn,service_port,backend_port,public_hostnames,allowed_gateway_nodes,policy_revision,enabled,created_at,updated_at,backend_source,backend_device_id,backend_addresses) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,service_name=excluded.service_name,service_fqdn=excluded.service_fqdn,service_port=excluded.service_port,backend_port=excluded.backend_port,public_hostnames=excluded.public_hostnames,allowed_gateway_nodes=excluded.allowed_gateway_nodes,policy_revision=excluded.policy_revision,enabled=excluded.enabled,updated_at=excluded.updated_at,backend_source=excluded.backend_source,backend_device_id=excluded.backend_device_id,backend_addresses=excluded.backend_addresses`, a.ID, a.Name, a.ServiceName, a.ServiceFQDN, a.ServicePort, a.BackendPort, string(hosts), string(nodes), a.PolicyRevision, boolInt(a.Enabled), now, now, a.BackendSource, a.BackendDeviceID, string(addresses))
 	if err != nil {

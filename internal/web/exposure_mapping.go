@@ -104,6 +104,31 @@ func (c *Control) freshReport(n store.NodeRecord) []dns.GatewayExposure {
 	if json.Unmarshal([]byte(raw), &env) != nil || json.Unmarshal(env.Payload, &p) != nil || p.ExpiresAt <= time.Now().Unix() {
 		return nil
 	}
+	if n.Mode == "docker-gateway" {
+		apps, e := c.Store.Applications()
+		if e != nil {
+			return nil
+		}
+		current := map[string]store.ApplicationRecord{}
+		for _, a := range apps {
+			current[a.ID] = a
+		}
+		filtered := make([]dns.GatewayExposure, 0, len(p.Exposures))
+		for _, x := range p.Exposures {
+			a, ok := current[x.ApplicationID]
+			if !ok || !applicationAllows(a, n) || !contains(a.PublicHostnames, x.PublicHostname) {
+				continue
+			}
+			allowed, e := c.Store.DockerDeclarationAllowed(n.ID, a, x.ContainerID, true)
+			if e != nil {
+				return nil
+			}
+			if allowed {
+				filtered = append(filtered, x)
+			}
+		}
+		return filtered
+	}
 	return p.Exposures
 }
 func (c *Control) edgeReported(n store.NodeRecord, app store.ApplicationRecord, host string) bool {

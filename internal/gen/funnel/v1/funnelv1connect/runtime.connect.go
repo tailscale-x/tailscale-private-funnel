@@ -50,6 +50,9 @@ const (
 	// NodeServiceSubmitReportProcedure is the fully-qualified name of the NodeService's SubmitReport
 	// RPC.
 	NodeServiceSubmitReportProcedure = "/funnel.v1.NodeService/SubmitReport"
+	// NodeServiceSubmitDockerInventoryProcedure is the fully-qualified name of the NodeService's
+	// SubmitDockerInventory RPC.
+	NodeServiceSubmitDockerInventoryProcedure = "/funnel.v1.NodeService/SubmitDockerInventory"
 	// NodeServiceSubmitPeersProcedure is the fully-qualified name of the NodeService's SubmitPeers RPC.
 	NodeServiceSubmitPeersProcedure = "/funnel.v1.NodeService/SubmitPeers"
 	// NodeServiceSubmitKubernetesProcedure is the fully-qualified name of the NodeService's
@@ -98,6 +101,8 @@ type NodeServiceClient interface {
 	// Accept authenticated desired state durably. Success acknowledges storage,
 	// not completed DNS or Service publication; bounded control workers reconcile it.
 	SubmitReport(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
+	// Complete Docker declarations, including stopped containers. No external API work.
+	SubmitDockerInventory(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
 	SubmitPeers(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
 	SubmitKubernetes(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
 	SubmitPublicEndpoint(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
@@ -148,6 +153,12 @@ func NewNodeServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(nodeServiceMethods.ByName("SubmitReport")),
 			connect.WithClientOptions(opts...),
 		),
+		submitDockerInventory: connect.NewClient[v1.SignedEnvelope, v1.Empty](
+			httpClient,
+			baseURL+NodeServiceSubmitDockerInventoryProcedure,
+			connect.WithSchema(nodeServiceMethods.ByName("SubmitDockerInventory")),
+			connect.WithClientOptions(opts...),
+		),
 		submitPeers: connect.NewClient[v1.SignedEnvelope, v1.Empty](
 			httpClient,
 			baseURL+NodeServiceSubmitPeersProcedure,
@@ -195,18 +206,19 @@ func NewNodeServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 
 // nodeServiceClient implements NodeServiceClient.
 type nodeServiceClient struct {
-	getConfig            *connect.Client[v1.Empty, v1.SignedEnvelope]
-	resolveApplication   *connect.Client[v1.ResolveApplicationRequest, v1.SignedEnvelope]
-	acknowledge          *connect.Client[v1.ConfigAck, v1.Empty]
-	reportHealth         *connect.Client[v1.NodeHealth, v1.Empty]
-	submitReport         *connect.Client[v1.SignedEnvelope, v1.Empty]
-	submitPeers          *connect.Client[v1.SignedEnvelope, v1.Empty]
-	submitKubernetes     *connect.Client[v1.SignedEnvelope, v1.Empty]
-	submitPublicEndpoint *connect.Client[v1.SignedEnvelope, v1.Empty]
-	enrollForwarder      *connect.Client[v1.SignedEnvelope, v1.ForwarderEnrollment]
-	listForwarders       *connect.Client[v1.Empty, v1.Nodes]
-	bindForwarder        *connect.Client[v1.SignedEnvelope, v1.Empty]
-	shutdown             *connect.Client[v1.ShutdownRequest, v1.TestResult]
+	getConfig             *connect.Client[v1.Empty, v1.SignedEnvelope]
+	resolveApplication    *connect.Client[v1.ResolveApplicationRequest, v1.SignedEnvelope]
+	acknowledge           *connect.Client[v1.ConfigAck, v1.Empty]
+	reportHealth          *connect.Client[v1.NodeHealth, v1.Empty]
+	submitReport          *connect.Client[v1.SignedEnvelope, v1.Empty]
+	submitDockerInventory *connect.Client[v1.SignedEnvelope, v1.Empty]
+	submitPeers           *connect.Client[v1.SignedEnvelope, v1.Empty]
+	submitKubernetes      *connect.Client[v1.SignedEnvelope, v1.Empty]
+	submitPublicEndpoint  *connect.Client[v1.SignedEnvelope, v1.Empty]
+	enrollForwarder       *connect.Client[v1.SignedEnvelope, v1.ForwarderEnrollment]
+	listForwarders        *connect.Client[v1.Empty, v1.Nodes]
+	bindForwarder         *connect.Client[v1.SignedEnvelope, v1.Empty]
+	shutdown              *connect.Client[v1.ShutdownRequest, v1.TestResult]
 }
 
 // GetConfig calls funnel.v1.NodeService.GetConfig.
@@ -232,6 +244,11 @@ func (c *nodeServiceClient) ReportHealth(ctx context.Context, req *connect.Reque
 // SubmitReport calls funnel.v1.NodeService.SubmitReport.
 func (c *nodeServiceClient) SubmitReport(ctx context.Context, req *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
 	return c.submitReport.CallUnary(ctx, req)
+}
+
+// SubmitDockerInventory calls funnel.v1.NodeService.SubmitDockerInventory.
+func (c *nodeServiceClient) SubmitDockerInventory(ctx context.Context, req *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
+	return c.submitDockerInventory.CallUnary(ctx, req)
 }
 
 // SubmitPeers calls funnel.v1.NodeService.SubmitPeers.
@@ -279,6 +296,8 @@ type NodeServiceHandler interface {
 	// Accept authenticated desired state durably. Success acknowledges storage,
 	// not completed DNS or Service publication; bounded control workers reconcile it.
 	SubmitReport(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
+	// Complete Docker declarations, including stopped containers. No external API work.
+	SubmitDockerInventory(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
 	SubmitPeers(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
 	SubmitKubernetes(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
 	SubmitPublicEndpoint(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
@@ -323,6 +342,12 @@ func NewNodeServiceHandler(svc NodeServiceHandler, opts ...connect.HandlerOption
 		NodeServiceSubmitReportProcedure,
 		svc.SubmitReport,
 		connect.WithSchema(nodeServiceMethods.ByName("SubmitReport")),
+		connect.WithHandlerOptions(opts...),
+	)
+	nodeServiceSubmitDockerInventoryHandler := connect.NewUnaryHandler(
+		NodeServiceSubmitDockerInventoryProcedure,
+		svc.SubmitDockerInventory,
+		connect.WithSchema(nodeServiceMethods.ByName("SubmitDockerInventory")),
 		connect.WithHandlerOptions(opts...),
 	)
 	nodeServiceSubmitPeersHandler := connect.NewUnaryHandler(
@@ -379,6 +404,8 @@ func NewNodeServiceHandler(svc NodeServiceHandler, opts ...connect.HandlerOption
 			nodeServiceReportHealthHandler.ServeHTTP(w, r)
 		case NodeServiceSubmitReportProcedure:
 			nodeServiceSubmitReportHandler.ServeHTTP(w, r)
+		case NodeServiceSubmitDockerInventoryProcedure:
+			nodeServiceSubmitDockerInventoryHandler.ServeHTTP(w, r)
 		case NodeServiceSubmitPeersProcedure:
 			nodeServiceSubmitPeersHandler.ServeHTTP(w, r)
 		case NodeServiceSubmitKubernetesProcedure:
@@ -420,6 +447,10 @@ func (UnimplementedNodeServiceHandler) ReportHealth(context.Context, *connect.Re
 
 func (UnimplementedNodeServiceHandler) SubmitReport(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.SubmitReport is not implemented"))
+}
+
+func (UnimplementedNodeServiceHandler) SubmitDockerInventory(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.SubmitDockerInventory is not implemented"))
 }
 
 func (UnimplementedNodeServiceHandler) SubmitPeers(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {

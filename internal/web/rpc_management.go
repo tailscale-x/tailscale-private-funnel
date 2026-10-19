@@ -98,7 +98,13 @@ func (s *managementRPC) Health(ctx context.Context, _ *connect.Request[v1.Empty]
 	if e != nil {
 		return nil, rpcFailure(connect.CodeInternal, e)
 	}
-	return connect.NewResponse(&v1.HealthResponse{Version: s.c.BuildVersion, DatabaseBackend: s.c.Store.Backend(), DatabaseReady: s.c.Store.Ping(ctx) == nil, Deployment: &v1.DeploymentMetadata{Target: os.Getenv("FUNNEL_DEPLOYMENT_TARGET"), ResourceName: os.Getenv("FUNNEL_RESOURCE_NAME"), Namespace: os.Getenv("FUNNEL_RESOURCE_NAMESPACE"), Version: s.c.BuildVersion}, Providers: uint32(len(p)), Zones: uint32(len(z)), Nodes: uint32(len(n)), Applications: uint32(len(a))}), nil
+	activeApplications := uint32(0)
+	for _, app := range a {
+		if app.BackendSource != "docker" || len(app.PublicHostnames) > 0 {
+			activeApplications++
+		}
+	}
+	return connect.NewResponse(&v1.HealthResponse{Version: s.c.BuildVersion, DatabaseBackend: s.c.Store.Backend(), DatabaseReady: s.c.Store.Ping(ctx) == nil, Deployment: &v1.DeploymentMetadata{Target: os.Getenv("FUNNEL_DEPLOYMENT_TARGET"), ResourceName: os.Getenv("FUNNEL_RESOURCE_NAME"), Namespace: os.Getenv("FUNNEL_RESOURCE_NAMESPACE"), Version: s.c.BuildVersion}, Providers: uint32(len(p)), Zones: uint32(len(z)), Nodes: uint32(len(n)), Applications: activeApplications}), nil
 }
 func (s *managementRPC) ListProviders(ctx context.Context, _ *connect.Request[v1.Empty]) (*connect.Response[v1.Providers], error) {
 	items, e := s.c.Store.Providers()
@@ -313,6 +319,9 @@ func (s *managementRPC) ListApplications(ctx context.Context, _ *connect.Request
 	}
 	out := &v1.Applications{}
 	for _, a := range items {
+		if a.BackendSource == "docker" && len(a.PublicHostnames) == 0 {
+			continue
+		}
 		out.Items = append(out.Items, applicationMessage(a))
 	}
 	return connect.NewResponse(out), nil
