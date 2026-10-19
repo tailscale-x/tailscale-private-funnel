@@ -166,7 +166,8 @@ func (s *managementRPC) SaveOAuth(ctx context.Context, r *connect.Request[v1.OAu
 	return s.oauth(ctx, r.Msg, true)
 }
 func (s *managementRPC) ListExposures(ctx context.Context, _ *connect.Request[v1.Empty]) (*connect.Response[v1.Exposures], error) {
-	items, e := s.c.Store.Exposures()
+	reader := s.c.readControl(ctx)
+	items, e := reader.Store.Exposures()
 	if e != nil {
 		return nil, rpcFailure(connect.CodeInternal, e)
 	}
@@ -175,13 +176,16 @@ func (s *managementRPC) ListExposures(ctx context.Context, _ *connect.Request[v1
 		if !item.Active {
 			continue
 		}
-		_, states := s.c.exposureDesired(item, s.c.loadExposurePolicy())
+		_, states := reader.exposureDesired(item, reader.loadExposurePolicy())
 		exposure := &v1.Exposure{Id: item.ID, ApplicationId: item.ApplicationID, Hostname: item.Hostname, Active: item.Active}
 		for _, edge := range states {
 			ips, _ := edge["public_ipv4"].([]string)
 			exposure.Edges = append(exposure.Edges, &v1.Edge{Id: stringValue(edge, "id", ""), Name: stringValue(edge, "name", ""), Ready: edge["ready"] == true, Healthy: edge["healthy"] == true, PolicyAllowed: edge["policy_allowed"] == true, BackendReachable: edge["backend_reachable"] == true, PublicIpv4: ips, Reason: stringValue(edge, "reason", "")})
 		}
 		out.Items = append(out.Items, exposure)
+	}
+	if err := reader.Store.ReadError(); err != nil {
+		return nil, rpcFailure(connect.CodeUnavailable, err)
 	}
 	return connect.NewResponse(out), nil
 }

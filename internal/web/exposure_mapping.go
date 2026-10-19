@@ -15,6 +15,12 @@ import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 )
 
+// readControl is private to one readiness calculation. Mutation paths and locks
+// stay on the live control; only routing metadata reads are memoized.
+func (c *Control) readControl(ctx context.Context) *Control {
+	return &Control{Store: c.Store.ReadView(ctx), Installation: c.Installation, ReportTTL: c.ReportTTL}
+}
+
 func (c *Control) loadBalancers() []store.NodeRecord {
 	items, err := c.Store.Nodes("loadbalancer")
 	if err != nil {
@@ -253,23 +259,42 @@ func (c *Control) exposureDesired(e store.ExposureRecord, d policy.Document) ([]
 	return records, states
 }
 func (c *Control) reconcileExposures(ctx context.Context) error {
-	es, err := c.Store.Exposures()
+	reader := c.readControl(ctx)
+	es, err := reader.Store.Exposures()
 	if err != nil {
 		return err
 	}
-	if _, err = c.Store.Applications(); err != nil {
+	if _, err = reader.Store.Applications(); err != nil {
 		return err
 	}
-	if _, err = c.Store.Reports(); err != nil {
+	if _, err = reader.Store.Reports(); err != nil {
 		return err
 	}
-	if _, err = c.Store.Nodes("loadbalancer"); err != nil {
+	if _, err = reader.Store.Nodes("loadbalancer"); err != nil {
 		return err
 	}
-	d := c.loadExposurePolicy()
+	d := reader.loadExposurePolicy()
 	failures := []string{}
-	for _, e := range es {
-		records, _ := c.exposureDesired(e, d)
+	start := 0
+	if len(es) > 0 {
+		start = int(c.exposureCursor.Load() % uint64(len(es)))
+	}
+	for i := range es {
+		index := (start + i) % len(es)
+		if err := ctx.Err(); err != nil {
+			c.exposureCursor.Store(uint64(index))
+			failures = append(failures, err.Error())
+			break
+		}
+		e := es[index]
+		records, _ := reader.exposureDesired(e, d)
+		if err := reader.Store.ReadError(); err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			c.exposureCursor.Store(uint64(index))
+			return err
+		}
 		desired := map[store.LedgerPartition][]libdns.Record{}
 		if len(records) > 0 {
 			z, err := c.managedZone(e.Hostname)
@@ -282,8 +307,11 @@ func (c *Control) reconcileExposures(ctx context.Context) error {
 		if err = c.reconcilePartitions(ctx, "exposure:"+e.ID, desired); err != nil {
 			failures = append(failures, e.Hostname+": "+err.Error())
 		}
+		c.exposureCursor.Store(uint64((index + 1) % len(es)))
 	}
-	_ = c.Store.SetJSON("exposure_mapping_sync", map[string]any{"pending": len(failures) > 0, "errors": failures, "at": time.Now().Unix()})
+	statusCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_ = c.Store.WithContext(statusCtx).SetJSON("exposure_mapping_sync", map[string]any{"pending": len(failures) > 0, "errors": failures, "at": time.Now().Unix()})
 	if len(failures) > 0 {
 		return fmt.Errorf("%s", strings.Join(failures, "; "))
 	}

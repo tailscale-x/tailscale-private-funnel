@@ -19,8 +19,9 @@ import (
 )
 
 type Store struct {
-	db  *database
-	key []byte
+	db    *database
+	key   []byte
+	reads *readView
 }
 
 // Migrations are shipped inside the executable so a standalone binary and its
@@ -302,11 +303,14 @@ func (s *Store) SetJSON(name string, value any) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`INSERT INTO settings(name,value,secret) VALUES(?,?,0) ON CONFLICT(name) DO UPDATE SET value=excluded.value,secret=0`, name, string(b))
+	_, err = s.db.Exec(`INSERT INTO settings(name,value,secret) VALUES(?,?,0) ON CONFLICT(name) DO UPDATE SET value=excluded.value,secret=0 WHERE settings.value<>excluded.value OR settings.secret<>0`, name, string(b))
 	return err
 }
 
 func (s *Store) GetJSON(name string, out any) error {
+	if s.reads != nil {
+		return s.cachedJSON(name, out)
+	}
 	var value string
 	if err := s.db.QueryRow(`SELECT value FROM settings WHERE name=? AND secret=0`, name).Scan(&value); err != nil {
 		return err
@@ -357,6 +361,9 @@ func (s *Store) AcceptReport(nodeID, nonce string, payload []byte) error {
 
 // Reports returns the control-owned reference projection, never a signature proof.
 func (s *Store) Reports() (map[string]string, error) {
+	if s.reads != nil {
+		return readCached(s, "reports", func(b *Store) (map[string]string, error) { return b.Reports() })
+	}
 	rows, err := s.db.Query(`SELECT node_id,snapshot FROM reports ORDER BY received_at DESC`)
 	if err != nil {
 		return nil, err
@@ -439,6 +446,9 @@ func (s *Store) SaveProvider(id, provider string, config map[string]string, enab
 }
 
 func (s *Store) Providers() ([]ProviderRecord, error) {
+	if s.reads != nil {
+		return readCached(s, "providers", func(b *Store) ([]ProviderRecord, error) { return b.Providers() })
+	}
 	rows, err := s.db.Query(`SELECT id,name,provider,enabled,account_id,capabilities,tested_at FROM providers ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -540,6 +550,9 @@ func (s *Store) AddZone(providerID, zone string) error {
 }
 
 func (s *Store) Zones() ([]ManagedZone, error) {
+	if s.reads != nil {
+		return readCached(s, "zones", func(b *Store) ([]ManagedZone, error) { return b.Zones() })
+	}
 	rows, err := s.db.Query(`SELECT id,provider_id,zone FROM managed_zones ORDER BY provider_id,zone`)
 	if err != nil {
 		return nil, err
@@ -570,6 +583,9 @@ func (s *Store) RevokeNode(id string) error {
 }
 
 func (s *Store) Node(id string) (NodeRecord, error) {
+	if s.reads != nil {
+		return readCached(s, "node:"+id, func(b *Store) (NodeRecord, error) { return b.Node(id) })
+	}
 	var n NodeRecord
 	var revoked int
 	err := s.db.QueryRow(`SELECT id,name,mode,hostname,revoked,last_report,revoked_at,tailnet_id FROM nodes WHERE id=?`, id).Scan(&n.ID, &n.Name, &n.Mode, &n.Hostname, &revoked, &n.LastReport, &n.RevokedAt, &n.TailnetID)
@@ -620,6 +636,9 @@ func (s *Store) TouchNodeReport(id string) error {
 }
 
 func (s *Store) Nodes(mode string) ([]map[string]any, error) {
+	if s.reads != nil {
+		return readCached(s, "nodes:"+mode, func(b *Store) ([]map[string]any, error) { return b.Nodes(mode) })
+	}
 	rows, err := s.db.Query(`SELECT id,name,mode,hostname,revoked,last_report FROM nodes WHERE ?='' OR mode=? OR (?='gateways' AND mode IN ('docker-gateway','tailnet-gateway','k8s-gateway')) ORDER BY hostname`, mode, mode, mode)
 	if err != nil {
 		return nil, err
@@ -851,6 +870,9 @@ func (s *Store) UpsertApplication(a ApplicationRecord) error {
 }
 
 func (s *Store) Applications() ([]ApplicationRecord, error) {
+	if s.reads != nil {
+		return readCached(s, "applications", func(b *Store) ([]ApplicationRecord, error) { return b.Applications() })
+	}
 	rows, err := s.db.Query(`SELECT id,name,service_name,service_fqdn,service_port,backend_port,public_hostnames,allowed_gateway_nodes,policy_revision,enabled,backend_source,backend_device_id,backend_addresses,http_config FROM applications ORDER BY id`)
 	if err != nil {
 		return nil, err

@@ -153,13 +153,28 @@ func (s *Store) CheckInstance(id, instance, device string, now time.Time) error 
 // verified holder. Replacement changes the instance/device pair; explicit release
 // sets zero. Neither can be resurrected by this update.
 func (s *Store) RenewInstance(id, instance, device string, now time.Time) error {
-	r, e := s.db.Exec(`UPDATE component_instances SET lease_until=? WHERE component_id=? AND instance_id=? AND device_id=? AND lease_until>0`, now.Add(time.Minute).Unix(), id, instance, device)
+	// Authorize every call, but avoid a durable WAL flush for every config poll,
+	// report and health request. Renew a one-minute lease at most every 15s.
+	var until int64
+	e := s.db.QueryRow(`SELECT lease_until FROM component_instances WHERE component_id=? AND instance_id=? AND device_id=? AND lease_until>0`, id, instance, device).Scan(&until)
+	if errors.Is(e, sql.ErrNoRows) {
+		return ErrInstanceConflict
+	}
+	if e != nil {
+		return e
+	}
+	if until > now.Add(45*time.Second).Unix() {
+		return nil
+	}
+	r, e := s.db.Exec(`UPDATE component_instances SET lease_until=? WHERE component_id=? AND instance_id=? AND device_id=? AND lease_until>0 AND lease_until<=?`, now.Add(time.Minute).Unix(), id, instance, device, now.Add(45*time.Second).Unix())
 	if e != nil {
 		return e
 	}
 	n, e := r.RowsAffected()
 	if e == nil && n != 1 {
-		return ErrInstanceConflict
+		// Another request may have renewed it. Recheck the verified holder;
+		// replacement and explicit release must still fail closed.
+		return s.CheckInstance(id, instance, device, now)
 	}
 	return e
 }

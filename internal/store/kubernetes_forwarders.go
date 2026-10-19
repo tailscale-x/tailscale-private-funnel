@@ -10,6 +10,9 @@ func (s *Store) ForwarderParent(id string) string {
 	return r.ParentID
 }
 func (s *Store) Forwarders(parent string) ([]NodeRecord, error) {
+	if s.reads != nil {
+		return readCached(s, "forwarders:"+parent, func(b *Store) ([]NodeRecord, error) { return b.Forwarders(parent) })
+	}
 	rows, e := s.db.Query(`SELECT name FROM settings WHERE name LIKE 'component_registration:%' ORDER BY name`)
 	if e != nil {
 		return nil, e

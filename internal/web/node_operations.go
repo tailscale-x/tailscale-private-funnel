@@ -65,7 +65,7 @@ func (c *Control) callerNodeContext(ctx context.Context, mode string) (store.Nod
 	if selection.Instance == "" {
 		return node, fmt.Errorf("runtime instance selector required")
 	}
-	if err = c.Store.RenewInstance(node.ID, selection.Instance, p.NodeID, time.Now()); err != nil {
+	if err = c.Store.WithContext(ctx).RenewInstance(node.ID, selection.Instance, p.NodeID, time.Now()); err != nil {
 		return node, err
 	}
 	verifiedHostname := strings.SplitN(strings.TrimSuffix(p.Hostname, "."), ".", 2)[0]

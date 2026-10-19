@@ -18,7 +18,9 @@ func (c *Control) addZoneOperation(ctx context.Context, providerID, domain, acto
 	if policy.ValidateHostname(domain) != nil || providerID == "" {
 		return fail(connect.CodeInvalidArgument, "DNS provider and valid domain are required")
 	}
-	c.syncMu.Lock()
+	if err := c.syncMu.Lock(ctx); err != nil {
+		return store.ManagedZone{}, err
+	}
 	defer c.syncMu.Unlock()
 	zones, e := c.Store.Zones()
 	if e != nil {

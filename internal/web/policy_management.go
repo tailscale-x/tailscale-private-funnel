@@ -158,10 +158,11 @@ func (c *Control) managedZone(host string) (store.ManagedZone, error) {
 	return best, nil
 }
 func (c *Control) reconcilePartitions(ctx context.Context, owner string, desired map[store.LedgerPartition][]libdns.Record) error {
+	s := c.Store.WithContext(ctx)
 	if desired == nil {
 		desired = map[store.LedgerPartition][]libdns.Record{}
 	}
-	zones, zoneErr := c.Store.Zones()
+	zones, zoneErr := s.Zones()
 	if zoneErr != nil {
 		return zoneErr
 	}
@@ -176,7 +177,7 @@ func (c *Control) reconcilePartitions(ctx context.Context, owner string, desired
 		normalized[p] = append(normalized[p], records...)
 	}
 	desired = normalized
-	parts, err := c.Store.LedgerPartitions()
+	parts, err := s.LedgerPartitions()
 	if err != nil {
 		return err
 	}

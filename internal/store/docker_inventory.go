@@ -83,6 +83,9 @@ func inventoryHas(i DockerInventory, a ApplicationRecord, container string, runn
 	return false
 }
 func (s *Store) DockerDeclarationAllowed(node string, a ApplicationRecord, container string, running bool) (bool, error) {
+	if s.reads != nil {
+		return readCached(s, fmt.Sprintf("docker:%q:%q:%q:%t", node, a.ID, container, running), func(b *Store) (bool, error) { return b.DockerDeclarationAllowed(node, a, container, running) })
+	}
 	var raw string
 	err := s.db.QueryRow(`SELECT payload FROM docker_inventories WHERE node_id=?`, node).Scan(&raw)
 	if err == sql.ErrNoRows {

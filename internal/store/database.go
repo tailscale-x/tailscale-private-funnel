@@ -12,10 +12,26 @@ import (
 type database struct {
 	*sql.DB
 	postgres bool
+	ctx      context.Context
 }
 type transaction struct {
 	*sql.Tx
 	postgres bool
+	ctx      context.Context
+}
+
+// WithContext bounds connection-pool waits and all nested store queries without
+// changing the lifetime or ownership of the shared database.
+func (s *Store) WithContext(ctx context.Context) *Store {
+	d := *s.db
+	d.ctx = ctx
+	return &Store{db: &d, key: s.key}
+}
+func queryContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
 }
 
 func bind(q string, postgres bool) string {
@@ -25,29 +41,29 @@ func bind(q string, postgres bool) string {
 	return q
 }
 func (d *database) Exec(q string, args ...any) (sql.Result, error) {
-	return d.DB.Exec(bind(q, d.postgres), arguments(args, d.postgres)...)
+	return d.DB.ExecContext(queryContext(d.ctx), bind(q, d.postgres), arguments(args, d.postgres)...)
 }
 func (d *database) Query(q string, args ...any) (*sql.Rows, error) {
-	return d.DB.Query(bind(q, d.postgres), arguments(args, d.postgres)...)
+	return d.DB.QueryContext(queryContext(d.ctx), bind(q, d.postgres), arguments(args, d.postgres)...)
 }
 func (d *database) QueryRow(q string, args ...any) *sql.Row {
-	return d.DB.QueryRow(bind(q, d.postgres), arguments(args, d.postgres)...)
+	return d.DB.QueryRowContext(queryContext(d.ctx), bind(q, d.postgres), arguments(args, d.postgres)...)
 }
 func (d *database) Begin() (*transaction, error) {
-	t, e := d.DB.Begin()
+	t, e := d.DB.BeginTx(queryContext(d.ctx), nil)
 	if e != nil {
 		return nil, e
 	}
-	return &transaction{Tx: t, postgres: d.postgres}, nil
+	return &transaction{Tx: t, postgres: d.postgres, ctx: d.ctx}, nil
 }
 func (t *transaction) Exec(q string, args ...any) (sql.Result, error) {
-	return t.Tx.Exec(bind(q, t.postgres), arguments(args, t.postgres)...)
+	return t.Tx.ExecContext(queryContext(t.ctx), bind(q, t.postgres), arguments(args, t.postgres)...)
 }
 func (t *transaction) Query(q string, args ...any) (*sql.Rows, error) {
-	return t.Tx.Query(bind(q, t.postgres), arguments(args, t.postgres)...)
+	return t.Tx.QueryContext(queryContext(t.ctx), bind(q, t.postgres), arguments(args, t.postgres)...)
 }
 func (t *transaction) QueryRow(q string, args ...any) *sql.Row {
-	return t.Tx.QueryRow(bind(q, t.postgres), arguments(args, t.postgres)...)
+	return t.Tx.QueryRowContext(queryContext(t.ctx), bind(q, t.postgres), arguments(args, t.postgres)...)
 }
 func (s *Store) Backend() string {
 	if s.db.postgres {

@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tailscale-x/tailscale-private-funnel/internal/identity"
@@ -38,7 +39,8 @@ type Control struct {
 	reportMu          sync.Mutex // Local report/state writes only; never external I/O.
 	shutdownMu        sync.Mutex
 	serviceApprovalMu sync.Mutex
-	syncMu            sync.Mutex
+	syncMu            contextMutex
+	exposureCursor    atomic.Uint64
 	accessMu          sync.Mutex
 	provisionMu       sync.Mutex
 	roleMu            sync.Mutex
@@ -173,6 +175,10 @@ type syncInput struct {
 }
 
 func (c *Control) reconcile(ctx context.Context, providerID, zone, ownerID string, desired []libdns.Record, dryRun, allowUnowned bool, approvalToken ...string) (result map[string]any, failure error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s := c.Store.WithContext(ctx)
 	defer func() {
 		if dryRun {
 			return
@@ -184,11 +190,18 @@ func (c *Control) reconcile(ctx context.Context, providerID, zone, ownerID strin
 		if failure != nil {
 			status = "Pending / failed: " + failure.Error()
 		}
-		_ = c.Store.SetJSON("zone_sync:"+providerID+":"+zone, status)
+		statusCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+		defer cancel()
+		_ = c.Store.WithContext(statusCtx).SetJSON("zone_sync:"+providerID+":"+zone, status)
 	}()
-	c.syncMu.Lock()
+	if err := c.syncMu.Lock(ctx); err != nil {
+		return nil, err
+	}
 	defer c.syncMu.Unlock()
-	p, config, err := c.Store.ProviderConfig(providerID)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	p, config, err := s.ProviderConfig(providerID)
 	if err != nil {
 		return nil, fmt.Errorf("provider not found")
 	}
@@ -219,7 +232,7 @@ func (c *Control) reconcile(ctx context.Context, providerID, zone, ownerID strin
 	if zone == "" {
 		return nil, fmt.Errorf("an explicit managed zone is required")
 	}
-	zones, err := c.Store.Zones()
+	zones, err := s.Zones()
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +252,7 @@ func (c *Control) reconcile(ctx context.Context, providerID, zone, ownerID strin
 			return nil, fmt.Errorf("record %s is outside zone %s", name, zone)
 		}
 	}
-	allLedger, err := c.Store.PartitionZoneLedger(providerID, zone)
+	allLedger, err := s.PartitionZoneLedger(providerID, zone)
 	if err != nil {
 		return nil, err
 	}
@@ -278,24 +291,47 @@ func (c *Control) reconcile(ctx context.Context, providerID, zone, ownerID strin
 		return nil, fmt.Errorf("record ownership conflict: managed by another node; preview and approve the specific overwrite")
 	}
 	if !dryRun {
+		// A verified no-op must not delete/reinsert the ledger and fsync an audit
+		// event on every poll. Keep the provider read and exact ownership checks.
+		counts := map[string]int{}
+		for _, entry := range allLedger {
+			if entry.OwnerID == ownerID {
+				counts[dns.RecordKey(entry.Record)]++
+			}
+		}
+		for _, record := range desired {
+			counts[dns.RecordKey(record)]--
+		}
+		ledgerChanged := false
+		for _, count := range counts {
+			ledgerChanged = ledgerChanged || count != 0
+		}
+		if len(add) == 0 && len(remove) == 0 && !ledgerChanged && !allowUnowned {
+			return map[string]any{"add": 0, "remove": 0, "requires_approval": false, "existing_records": managedRecordViews(existing, allLedger, ownerID), "desired_records": recordViews(desired)}, nil
+		}
 		if err := provider.Apply(ctx, zone, add, remove); err != nil {
 			return nil, err
 		}
+		// External mutation succeeded. Do not abandon its ownership commit merely
+		// because the provider used the remainder of the request deadline.
+		commitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		s = c.Store.WithContext(commitCtx)
 		if allowUnowned {
 			transferred := append(append(append([]libdns.Record{}, desired...), add...), remove...)
-			if err := c.Store.TransferZoneLedgerOwnership(zone, ownerID, transferred); err != nil {
+			if err := s.TransferZoneLedgerOwnership(zone, ownerID, transferred); err != nil {
 				return nil, err
 			}
 		}
-		if err := c.Store.ReplaceLedger(p.ID, zone, ownerID, desired); err != nil {
+		if err := s.ReplaceLedger(p.ID, zone, ownerID, desired); err != nil {
 			return nil, err
 		}
 		if assignment, err := c.managedZone(zone); err == nil && assignment.ProviderID == providerID {
-			_ = c.Store.SetJSON("zone_last_sync:"+assignment.ID, time.Now().Unix())
+			_ = s.SetJSON("zone_last_sync:"+assignment.ID, time.Now().Unix())
 		}
-		_ = c.Store.Audit("dns.reconcile:"+ownerID, "control")
+		_ = s.Audit("dns.reconcile:"+ownerID, "control")
 		if allowUnowned {
-			_ = c.Store.Audit("dns.explicit-overwrite:"+ownerID, "administrator")
+			_ = s.Audit("dns.explicit-overwrite:"+ownerID, "administrator")
 		}
 	}
 	return map[string]any{"add": len(add), "remove": len(remove), "requires_approval": false, "existing_records": managedRecordViews(existing, allLedger, ownerID), "desired_records": recordViews(desired)}, nil

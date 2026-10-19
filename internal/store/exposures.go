@@ -192,6 +192,9 @@ func (s *Store) syncApplicationExposures(tx *transaction, a ApplicationRecord) e
 	return nil
 }
 func (s *Store) Exposures() ([]ExposureRecord, error) {
+	if s.reads != nil {
+		return readCached(s, "exposures", func(b *Store) ([]ExposureRecord, error) { return b.Exposures() })
+	}
 	rows, err := s.db.Query(`SELECT id,application_id,hostname,active FROM exposures ORDER BY hostname`)
 	if err != nil {
 		return nil, err
