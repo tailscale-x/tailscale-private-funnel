@@ -2,16 +2,17 @@ package deploymentcli
 
 import (
 	"fmt"
-	funnel "github.com/tailscale-x/tailscale-private-funnel/api/kubernetes/v1alpha1"
 	"os"
 	"path/filepath"
 	"testing"
+
+	funnel "github.com/tailscale-x/tailscale-private-funnel/api/kubernetes/v1alpha1"
 )
 
 func TestNewCRReferencesBootstrapWithoutCredentials(t *testing.T) {
 	for _, kind := range []string{"controls", "gateways", "loadbalancers"} {
 		o := newCR(kind, "site", Flags{Version: "dev-test", Namespace: "funnel-system", Tailnet: "example.ts.net"})
-		if crSpec(o).BootstrapSecretRef.Name != "site-bootstrap" || crSpec(o).Image != "ghcr.io/tailscale-x/tailscale-private-funnel:dev-test" {
+		if crSpec(o).KeyIssuerRef.Name != "" || crSpec(o).Image != "ghcr.io/tailscale-x/tailscale-private-funnel:dev-test" {
 			t.Fatal(o)
 		}
 		if g, ok := o.(*funnel.FunnelGateway); ok && g.Spec.GatewayClass != "tailscale-private-funnel-site" {

@@ -2,9 +2,10 @@ package app
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"fmt"
 	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tsconnection"
 
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 
@@ -12,24 +13,17 @@ import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/kube"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
-	"tailscale.com/tsnet"
 )
 
-func runKubernetesGateway(ctx context.Context, o Options, s *tsnet.Server) error {
-	path := filepath.Join(o.DataDir, "cluster-id")
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		id, e := store.NewResourceID()
-		if e != nil {
-			return e
-		}
-		data = []byte(id)
-		err = os.WriteFile(path, data, 0600)
+func runKubernetesGateway(ctx context.Context, o Options, s tsconnection.Connection) error {
+	if o.ComponentID == "" {
+		return fmt.Errorf("logical Kubernetes gateway ID required")
 	}
-	if err != nil {
-		return err
+	routingID := o.RoutingID
+	if routingID == "" {
+		routingID = o.ComponentID
 	}
+	data := []byte(routingID)
 	if o.GatewayClass == "" {
 		o.GatewayClass = "tailscale-private-funnel"
 	}
@@ -39,7 +33,7 @@ func runKubernetesGateway(ctx context.Context, o Options, s *tsnet.Server) error
 	if o.ProbeListen == "" {
 		o.ProbeListen = ":9090"
 	}
-	session := gateway.Session{Resolver: gateway.RPCResolver{BaseURL: o.ManagementURL, NodeID: loadBalancerNodeID(o.DataDir), ControlKey: o.ControlKey, Client: tsnetHTTPClient(s)}, Listeners: gateway.NewListenerManager(s), Agent: report.Agent{NodeID: loadBalancerNodeID(o.DataDir), ManagementURL: o.ManagementURL, DataDir: o.DataDir, HTTPClient: tsnetHTTPClient(s)}}
+	session := gateway.Session{Resolver: gateway.RPCResolver{BaseURL: o.ManagementURL, NodeID: loadBalancerNodeID(o.DataDir), Client: tsnetHTTPClient(s)}, Listeners: gateway.NewListenerManager(s), Agent: report.Agent{NodeID: loadBalancerNodeID(o.DataDir), ManagementURL: o.ManagementURL, DataDir: o.DataDir, HTTPClient: tsnetHTTPClient(s)}}
 	defer session.Listeners.Close()
 	return kube.Run(ctx, o.Kubeconfig, o.ProbeListen, kube.Options{GatewayClass: o.GatewayClass, IngressClass: o.IngressClass, Namespaces: o.WatchNamespaces, ControllerName: o.ControllerName, ClusterID: string(data)}, func(ctx context.Context, result kube.Result) (kube.Publication, error) {
 		snapshot := nodeconfig.KubernetesSnapshot{ClusterID: string(data), Hosts: result.Hosts, Errors: result.Problems, ExpiresAt: time.Now().Add(5 * time.Minute).Unix()}

@@ -5,12 +5,13 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	kyaml "k8s.io/apimachinery/pkg/util/yaml"
 	"os"
 	"path/filepath"
-	"sigs.k8s.io/yaml"
 	"sort"
 	"strings"
+
+	kyaml "k8s.io/apimachinery/pkg/util/yaml"
+	"sigs.k8s.io/yaml"
 )
 
 func main() {

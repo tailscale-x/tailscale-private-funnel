@@ -83,8 +83,8 @@ jobs:
           FUNNEL_TEST_CONTROL_TLS_MODE: disable
           FUNNEL_TEST_RPC_POSTGRES_URL: postgres://postgres:contract-password@localhost:5432/postgres
         run: |
-          go test ./internal/store ./internal/app -run 'TestDatabaseContract|TestPostgres|Test.*Transfer' -count=1
-          go test ./internal/web -run 'TestPostgres|TestRPCMetadataRole|TestRPCProviderRename|TestRPCPolicyLifecycle|TestRPCNodeReport|TestRPCEnrollment|TestRPCDNSApproval' -count=1
+          go test ./internal/store ./internal/app -run 'TestDatabaseContract|TestPostgres' -count=1
+          go test ./internal/web -run 'TestPostgres|TestRPCMetadataRole|TestRPCProviderRename|TestRPCPolicyLifecycle|TestRPCNodeReport|TestRoleRegistrationAndManagementSeparation|TestRPCDNSApproval' -count=1
 
   binaries:
     needs: [test, postgres]
@@ -245,5 +245,4 @@ jobs:
           files: |
             dist/*
             docs/screenshots/*.png
-            docs/architecture-security.png
             docs/architecture.svg

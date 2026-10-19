@@ -2,11 +2,12 @@ package kube
 
 import (
 	"context"
+	"net/netip"
+
 	core "k8s.io/api/core/v1"
 	discovery "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"net/netip"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 

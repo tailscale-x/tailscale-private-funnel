@@ -3,12 +3,13 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"github.com/docker/docker/api/types/container"
-	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/docker/docker/api/types/container"
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 )
 
 // Inventory is independent of backend inspection, networking and Service APIs.

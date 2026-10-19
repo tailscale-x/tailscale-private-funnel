@@ -23,10 +23,10 @@ const _ = connect.IsAtLeastVersion1_13_0
 const (
 	// NodeServiceName is the fully-qualified name of the NodeService service.
 	NodeServiceName = "funnel.v1.NodeService"
-	// EnrollmentServiceName is the fully-qualified name of the EnrollmentService service.
-	EnrollmentServiceName = "funnel.v1.EnrollmentService"
 	// BrokerServiceName is the fully-qualified name of the BrokerService service.
 	BrokerServiceName = "funnel.v1.BrokerService"
+	// WorkloadBootstrapServiceName is the fully-qualified name of the WorkloadBootstrapService service.
+	WorkloadBootstrapServiceName = "funnel.v1.WorkloadBootstrapService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -37,6 +37,9 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// NodeServiceRegisterComponentProcedure is the fully-qualified name of the NodeService's
+	// RegisterComponent RPC.
+	NodeServiceRegisterComponentProcedure = "/funnel.v1.NodeService/RegisterComponent"
 	// NodeServiceGetConfigProcedure is the fully-qualified name of the NodeService's GetConfig RPC.
 	NodeServiceGetConfigProcedure = "/funnel.v1.NodeService/GetConfig"
 	// NodeServiceResolveApplicationProcedure is the fully-qualified name of the NodeService's
@@ -61,20 +64,11 @@ const (
 	// NodeServiceSubmitPublicEndpointProcedure is the fully-qualified name of the NodeService's
 	// SubmitPublicEndpoint RPC.
 	NodeServiceSubmitPublicEndpointProcedure = "/funnel.v1.NodeService/SubmitPublicEndpoint"
-	// NodeServiceEnrollForwarderProcedure is the fully-qualified name of the NodeService's
-	// EnrollForwarder RPC.
-	NodeServiceEnrollForwarderProcedure = "/funnel.v1.NodeService/EnrollForwarder"
 	// NodeServiceListForwardersProcedure is the fully-qualified name of the NodeService's
 	// ListForwarders RPC.
 	NodeServiceListForwardersProcedure = "/funnel.v1.NodeService/ListForwarders"
-	// NodeServiceBindForwarderProcedure is the fully-qualified name of the NodeService's BindForwarder
-	// RPC.
-	NodeServiceBindForwarderProcedure = "/funnel.v1.NodeService/BindForwarder"
 	// NodeServiceShutdownProcedure is the fully-qualified name of the NodeService's Shutdown RPC.
 	NodeServiceShutdownProcedure = "/funnel.v1.NodeService/Shutdown"
-	// EnrollmentServiceBindSigningKeyProcedure is the fully-qualified name of the EnrollmentService's
-	// BindSigningKey RPC.
-	EnrollmentServiceBindSigningKeyProcedure = "/funnel.v1.EnrollmentService/BindSigningKey"
 	// BrokerServiceOpenSessionProcedure is the fully-qualified name of the BrokerService's OpenSession
 	// RPC.
 	BrokerServiceOpenSessionProcedure = "/funnel.v1.BrokerService/OpenSession"
@@ -83,32 +77,32 @@ const (
 	// BrokerServiceRenewLeaseProcedure is the fully-qualified name of the BrokerService's RenewLease
 	// RPC.
 	BrokerServiceRenewLeaseProcedure = "/funnel.v1.BrokerService/RenewLease"
-	// BrokerServiceWriteStateProcedure is the fully-qualified name of the BrokerService's WriteState
-	// RPC.
-	BrokerServiceWriteStateProcedure = "/funnel.v1.BrokerService/WriteState"
 	// BrokerServiceReleaseLeaseProcedure is the fully-qualified name of the BrokerService's
 	// ReleaseLease RPC.
 	BrokerServiceReleaseLeaseProcedure = "/funnel.v1.BrokerService/ReleaseLease"
+	// WorkloadBootstrapServiceIssueKeyProcedure is the fully-qualified name of the
+	// WorkloadBootstrapService's IssueKey RPC.
+	WorkloadBootstrapServiceIssueKeyProcedure = "/funnel.v1.WorkloadBootstrapService/IssueKey"
 )
 
 // NodeServiceClient is a client for the funnel.v1.NodeService service.
 type NodeServiceClient interface {
-	GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.SignedEnvelope], error)
-	ResolveApplication(context.Context, *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.SignedEnvelope], error)
+	// Role-authorized registration. Identity and role come only from WhoIs.
+	RegisterComponent(context.Context, *connect.Request[v1.RegisterComponentRequest]) (*connect.Response[v1.RegisteredComponent], error)
+	GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.ConfigurationPayload], error)
+	ResolveApplication(context.Context, *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.ConfigurationPayload], error)
 	Acknowledge(context.Context, *connect.Request[v1.ConfigAck]) (*connect.Response[v1.Empty], error)
 	// Persist liveness without waiting for endpoint discovery or external APIs.
 	ReportHealth(context.Context, *connect.Request[v1.NodeHealth]) (*connect.Response[v1.Empty], error)
 	// Accept authenticated desired state durably. Success acknowledges storage,
 	// not completed DNS or Service publication; bounded control workers reconcile it.
-	SubmitReport(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
+	SubmitReport(context.Context, *connect.Request[v1.ExposureReport]) (*connect.Response[v1.Empty], error)
 	// Complete Docker declarations, including stopped containers. No external API work.
-	SubmitDockerInventory(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
-	SubmitPeers(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
-	SubmitKubernetes(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
-	SubmitPublicEndpoint(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
-	EnrollForwarder(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.ForwarderEnrollment], error)
+	SubmitDockerInventory(context.Context, *connect.Request[v1.DockerInventoryPayload]) (*connect.Response[v1.Empty], error)
+	SubmitPeers(context.Context, *connect.Request[v1.PeerSnapshot]) (*connect.Response[v1.Empty], error)
+	SubmitKubernetes(context.Context, *connect.Request[v1.KubernetesPayload]) (*connect.Response[v1.Empty], error)
+	SubmitPublicEndpoint(context.Context, *connect.Request[v1.PublicEndpointPayload]) (*connect.Response[v1.Empty], error)
 	ListForwarders(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Nodes], error)
-	BindForwarder(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
 	Shutdown(context.Context, *connect.Request[v1.ShutdownRequest]) (*connect.Response[v1.TestResult], error)
 }
 
@@ -123,13 +117,19 @@ func NewNodeServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 	baseURL = strings.TrimRight(baseURL, "/")
 	nodeServiceMethods := v1.File_funnel_v1_runtime_proto.Services().ByName("NodeService").Methods()
 	return &nodeServiceClient{
-		getConfig: connect.NewClient[v1.Empty, v1.SignedEnvelope](
+		registerComponent: connect.NewClient[v1.RegisterComponentRequest, v1.RegisteredComponent](
+			httpClient,
+			baseURL+NodeServiceRegisterComponentProcedure,
+			connect.WithSchema(nodeServiceMethods.ByName("RegisterComponent")),
+			connect.WithClientOptions(opts...),
+		),
+		getConfig: connect.NewClient[v1.Empty, v1.ConfigurationPayload](
 			httpClient,
 			baseURL+NodeServiceGetConfigProcedure,
 			connect.WithSchema(nodeServiceMethods.ByName("GetConfig")),
 			connect.WithClientOptions(opts...),
 		),
-		resolveApplication: connect.NewClient[v1.ResolveApplicationRequest, v1.SignedEnvelope](
+		resolveApplication: connect.NewClient[v1.ResolveApplicationRequest, v1.ConfigurationPayload](
 			httpClient,
 			baseURL+NodeServiceResolveApplicationProcedure,
 			connect.WithSchema(nodeServiceMethods.ByName("ResolveApplication")),
@@ -147,52 +147,40 @@ func NewNodeServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(nodeServiceMethods.ByName("ReportHealth")),
 			connect.WithClientOptions(opts...),
 		),
-		submitReport: connect.NewClient[v1.SignedEnvelope, v1.Empty](
+		submitReport: connect.NewClient[v1.ExposureReport, v1.Empty](
 			httpClient,
 			baseURL+NodeServiceSubmitReportProcedure,
 			connect.WithSchema(nodeServiceMethods.ByName("SubmitReport")),
 			connect.WithClientOptions(opts...),
 		),
-		submitDockerInventory: connect.NewClient[v1.SignedEnvelope, v1.Empty](
+		submitDockerInventory: connect.NewClient[v1.DockerInventoryPayload, v1.Empty](
 			httpClient,
 			baseURL+NodeServiceSubmitDockerInventoryProcedure,
 			connect.WithSchema(nodeServiceMethods.ByName("SubmitDockerInventory")),
 			connect.WithClientOptions(opts...),
 		),
-		submitPeers: connect.NewClient[v1.SignedEnvelope, v1.Empty](
+		submitPeers: connect.NewClient[v1.PeerSnapshot, v1.Empty](
 			httpClient,
 			baseURL+NodeServiceSubmitPeersProcedure,
 			connect.WithSchema(nodeServiceMethods.ByName("SubmitPeers")),
 			connect.WithClientOptions(opts...),
 		),
-		submitKubernetes: connect.NewClient[v1.SignedEnvelope, v1.Empty](
+		submitKubernetes: connect.NewClient[v1.KubernetesPayload, v1.Empty](
 			httpClient,
 			baseURL+NodeServiceSubmitKubernetesProcedure,
 			connect.WithSchema(nodeServiceMethods.ByName("SubmitKubernetes")),
 			connect.WithClientOptions(opts...),
 		),
-		submitPublicEndpoint: connect.NewClient[v1.SignedEnvelope, v1.Empty](
+		submitPublicEndpoint: connect.NewClient[v1.PublicEndpointPayload, v1.Empty](
 			httpClient,
 			baseURL+NodeServiceSubmitPublicEndpointProcedure,
 			connect.WithSchema(nodeServiceMethods.ByName("SubmitPublicEndpoint")),
-			connect.WithClientOptions(opts...),
-		),
-		enrollForwarder: connect.NewClient[v1.SignedEnvelope, v1.ForwarderEnrollment](
-			httpClient,
-			baseURL+NodeServiceEnrollForwarderProcedure,
-			connect.WithSchema(nodeServiceMethods.ByName("EnrollForwarder")),
 			connect.WithClientOptions(opts...),
 		),
 		listForwarders: connect.NewClient[v1.Empty, v1.Nodes](
 			httpClient,
 			baseURL+NodeServiceListForwardersProcedure,
 			connect.WithSchema(nodeServiceMethods.ByName("ListForwarders")),
-			connect.WithClientOptions(opts...),
-		),
-		bindForwarder: connect.NewClient[v1.SignedEnvelope, v1.Empty](
-			httpClient,
-			baseURL+NodeServiceBindForwarderProcedure,
-			connect.WithSchema(nodeServiceMethods.ByName("BindForwarder")),
 			connect.WithClientOptions(opts...),
 		),
 		shutdown: connect.NewClient[v1.ShutdownRequest, v1.TestResult](
@@ -206,28 +194,32 @@ func NewNodeServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 
 // nodeServiceClient implements NodeServiceClient.
 type nodeServiceClient struct {
-	getConfig             *connect.Client[v1.Empty, v1.SignedEnvelope]
-	resolveApplication    *connect.Client[v1.ResolveApplicationRequest, v1.SignedEnvelope]
+	registerComponent     *connect.Client[v1.RegisterComponentRequest, v1.RegisteredComponent]
+	getConfig             *connect.Client[v1.Empty, v1.ConfigurationPayload]
+	resolveApplication    *connect.Client[v1.ResolveApplicationRequest, v1.ConfigurationPayload]
 	acknowledge           *connect.Client[v1.ConfigAck, v1.Empty]
 	reportHealth          *connect.Client[v1.NodeHealth, v1.Empty]
-	submitReport          *connect.Client[v1.SignedEnvelope, v1.Empty]
-	submitDockerInventory *connect.Client[v1.SignedEnvelope, v1.Empty]
-	submitPeers           *connect.Client[v1.SignedEnvelope, v1.Empty]
-	submitKubernetes      *connect.Client[v1.SignedEnvelope, v1.Empty]
-	submitPublicEndpoint  *connect.Client[v1.SignedEnvelope, v1.Empty]
-	enrollForwarder       *connect.Client[v1.SignedEnvelope, v1.ForwarderEnrollment]
+	submitReport          *connect.Client[v1.ExposureReport, v1.Empty]
+	submitDockerInventory *connect.Client[v1.DockerInventoryPayload, v1.Empty]
+	submitPeers           *connect.Client[v1.PeerSnapshot, v1.Empty]
+	submitKubernetes      *connect.Client[v1.KubernetesPayload, v1.Empty]
+	submitPublicEndpoint  *connect.Client[v1.PublicEndpointPayload, v1.Empty]
 	listForwarders        *connect.Client[v1.Empty, v1.Nodes]
-	bindForwarder         *connect.Client[v1.SignedEnvelope, v1.Empty]
 	shutdown              *connect.Client[v1.ShutdownRequest, v1.TestResult]
 }
 
+// RegisterComponent calls funnel.v1.NodeService.RegisterComponent.
+func (c *nodeServiceClient) RegisterComponent(ctx context.Context, req *connect.Request[v1.RegisterComponentRequest]) (*connect.Response[v1.RegisteredComponent], error) {
+	return c.registerComponent.CallUnary(ctx, req)
+}
+
 // GetConfig calls funnel.v1.NodeService.GetConfig.
-func (c *nodeServiceClient) GetConfig(ctx context.Context, req *connect.Request[v1.Empty]) (*connect.Response[v1.SignedEnvelope], error) {
+func (c *nodeServiceClient) GetConfig(ctx context.Context, req *connect.Request[v1.Empty]) (*connect.Response[v1.ConfigurationPayload], error) {
 	return c.getConfig.CallUnary(ctx, req)
 }
 
 // ResolveApplication calls funnel.v1.NodeService.ResolveApplication.
-func (c *nodeServiceClient) ResolveApplication(ctx context.Context, req *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.SignedEnvelope], error) {
+func (c *nodeServiceClient) ResolveApplication(ctx context.Context, req *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.ConfigurationPayload], error) {
 	return c.resolveApplication.CallUnary(ctx, req)
 }
 
@@ -242,43 +234,33 @@ func (c *nodeServiceClient) ReportHealth(ctx context.Context, req *connect.Reque
 }
 
 // SubmitReport calls funnel.v1.NodeService.SubmitReport.
-func (c *nodeServiceClient) SubmitReport(ctx context.Context, req *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
+func (c *nodeServiceClient) SubmitReport(ctx context.Context, req *connect.Request[v1.ExposureReport]) (*connect.Response[v1.Empty], error) {
 	return c.submitReport.CallUnary(ctx, req)
 }
 
 // SubmitDockerInventory calls funnel.v1.NodeService.SubmitDockerInventory.
-func (c *nodeServiceClient) SubmitDockerInventory(ctx context.Context, req *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
+func (c *nodeServiceClient) SubmitDockerInventory(ctx context.Context, req *connect.Request[v1.DockerInventoryPayload]) (*connect.Response[v1.Empty], error) {
 	return c.submitDockerInventory.CallUnary(ctx, req)
 }
 
 // SubmitPeers calls funnel.v1.NodeService.SubmitPeers.
-func (c *nodeServiceClient) SubmitPeers(ctx context.Context, req *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
+func (c *nodeServiceClient) SubmitPeers(ctx context.Context, req *connect.Request[v1.PeerSnapshot]) (*connect.Response[v1.Empty], error) {
 	return c.submitPeers.CallUnary(ctx, req)
 }
 
 // SubmitKubernetes calls funnel.v1.NodeService.SubmitKubernetes.
-func (c *nodeServiceClient) SubmitKubernetes(ctx context.Context, req *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
+func (c *nodeServiceClient) SubmitKubernetes(ctx context.Context, req *connect.Request[v1.KubernetesPayload]) (*connect.Response[v1.Empty], error) {
 	return c.submitKubernetes.CallUnary(ctx, req)
 }
 
 // SubmitPublicEndpoint calls funnel.v1.NodeService.SubmitPublicEndpoint.
-func (c *nodeServiceClient) SubmitPublicEndpoint(ctx context.Context, req *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
+func (c *nodeServiceClient) SubmitPublicEndpoint(ctx context.Context, req *connect.Request[v1.PublicEndpointPayload]) (*connect.Response[v1.Empty], error) {
 	return c.submitPublicEndpoint.CallUnary(ctx, req)
-}
-
-// EnrollForwarder calls funnel.v1.NodeService.EnrollForwarder.
-func (c *nodeServiceClient) EnrollForwarder(ctx context.Context, req *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.ForwarderEnrollment], error) {
-	return c.enrollForwarder.CallUnary(ctx, req)
 }
 
 // ListForwarders calls funnel.v1.NodeService.ListForwarders.
 func (c *nodeServiceClient) ListForwarders(ctx context.Context, req *connect.Request[v1.Empty]) (*connect.Response[v1.Nodes], error) {
 	return c.listForwarders.CallUnary(ctx, req)
-}
-
-// BindForwarder calls funnel.v1.NodeService.BindForwarder.
-func (c *nodeServiceClient) BindForwarder(ctx context.Context, req *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
-	return c.bindForwarder.CallUnary(ctx, req)
 }
 
 // Shutdown calls funnel.v1.NodeService.Shutdown.
@@ -288,22 +270,22 @@ func (c *nodeServiceClient) Shutdown(ctx context.Context, req *connect.Request[v
 
 // NodeServiceHandler is an implementation of the funnel.v1.NodeService service.
 type NodeServiceHandler interface {
-	GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.SignedEnvelope], error)
-	ResolveApplication(context.Context, *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.SignedEnvelope], error)
+	// Role-authorized registration. Identity and role come only from WhoIs.
+	RegisterComponent(context.Context, *connect.Request[v1.RegisterComponentRequest]) (*connect.Response[v1.RegisteredComponent], error)
+	GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.ConfigurationPayload], error)
+	ResolveApplication(context.Context, *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.ConfigurationPayload], error)
 	Acknowledge(context.Context, *connect.Request[v1.ConfigAck]) (*connect.Response[v1.Empty], error)
 	// Persist liveness without waiting for endpoint discovery or external APIs.
 	ReportHealth(context.Context, *connect.Request[v1.NodeHealth]) (*connect.Response[v1.Empty], error)
 	// Accept authenticated desired state durably. Success acknowledges storage,
 	// not completed DNS or Service publication; bounded control workers reconcile it.
-	SubmitReport(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
+	SubmitReport(context.Context, *connect.Request[v1.ExposureReport]) (*connect.Response[v1.Empty], error)
 	// Complete Docker declarations, including stopped containers. No external API work.
-	SubmitDockerInventory(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
-	SubmitPeers(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
-	SubmitKubernetes(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
-	SubmitPublicEndpoint(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
-	EnrollForwarder(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.ForwarderEnrollment], error)
+	SubmitDockerInventory(context.Context, *connect.Request[v1.DockerInventoryPayload]) (*connect.Response[v1.Empty], error)
+	SubmitPeers(context.Context, *connect.Request[v1.PeerSnapshot]) (*connect.Response[v1.Empty], error)
+	SubmitKubernetes(context.Context, *connect.Request[v1.KubernetesPayload]) (*connect.Response[v1.Empty], error)
+	SubmitPublicEndpoint(context.Context, *connect.Request[v1.PublicEndpointPayload]) (*connect.Response[v1.Empty], error)
 	ListForwarders(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Nodes], error)
-	BindForwarder(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error)
 	Shutdown(context.Context, *connect.Request[v1.ShutdownRequest]) (*connect.Response[v1.TestResult], error)
 }
 
@@ -314,6 +296,12 @@ type NodeServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewNodeServiceHandler(svc NodeServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	nodeServiceMethods := v1.File_funnel_v1_runtime_proto.Services().ByName("NodeService").Methods()
+	nodeServiceRegisterComponentHandler := connect.NewUnaryHandler(
+		NodeServiceRegisterComponentProcedure,
+		svc.RegisterComponent,
+		connect.WithSchema(nodeServiceMethods.ByName("RegisterComponent")),
+		connect.WithHandlerOptions(opts...),
+	)
 	nodeServiceGetConfigHandler := connect.NewUnaryHandler(
 		NodeServiceGetConfigProcedure,
 		svc.GetConfig,
@@ -368,22 +356,10 @@ func NewNodeServiceHandler(svc NodeServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(nodeServiceMethods.ByName("SubmitPublicEndpoint")),
 		connect.WithHandlerOptions(opts...),
 	)
-	nodeServiceEnrollForwarderHandler := connect.NewUnaryHandler(
-		NodeServiceEnrollForwarderProcedure,
-		svc.EnrollForwarder,
-		connect.WithSchema(nodeServiceMethods.ByName("EnrollForwarder")),
-		connect.WithHandlerOptions(opts...),
-	)
 	nodeServiceListForwardersHandler := connect.NewUnaryHandler(
 		NodeServiceListForwardersProcedure,
 		svc.ListForwarders,
 		connect.WithSchema(nodeServiceMethods.ByName("ListForwarders")),
-		connect.WithHandlerOptions(opts...),
-	)
-	nodeServiceBindForwarderHandler := connect.NewUnaryHandler(
-		NodeServiceBindForwarderProcedure,
-		svc.BindForwarder,
-		connect.WithSchema(nodeServiceMethods.ByName("BindForwarder")),
 		connect.WithHandlerOptions(opts...),
 	)
 	nodeServiceShutdownHandler := connect.NewUnaryHandler(
@@ -394,6 +370,8 @@ func NewNodeServiceHandler(svc NodeServiceHandler, opts ...connect.HandlerOption
 	)
 	return "/funnel.v1.NodeService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case NodeServiceRegisterComponentProcedure:
+			nodeServiceRegisterComponentHandler.ServeHTTP(w, r)
 		case NodeServiceGetConfigProcedure:
 			nodeServiceGetConfigHandler.ServeHTTP(w, r)
 		case NodeServiceResolveApplicationProcedure:
@@ -412,12 +390,8 @@ func NewNodeServiceHandler(svc NodeServiceHandler, opts ...connect.HandlerOption
 			nodeServiceSubmitKubernetesHandler.ServeHTTP(w, r)
 		case NodeServiceSubmitPublicEndpointProcedure:
 			nodeServiceSubmitPublicEndpointHandler.ServeHTTP(w, r)
-		case NodeServiceEnrollForwarderProcedure:
-			nodeServiceEnrollForwarderHandler.ServeHTTP(w, r)
 		case NodeServiceListForwardersProcedure:
 			nodeServiceListForwardersHandler.ServeHTTP(w, r)
-		case NodeServiceBindForwarderProcedure:
-			nodeServiceBindForwarderHandler.ServeHTTP(w, r)
 		case NodeServiceShutdownProcedure:
 			nodeServiceShutdownHandler.ServeHTTP(w, r)
 		default:
@@ -429,11 +403,15 @@ func NewNodeServiceHandler(svc NodeServiceHandler, opts ...connect.HandlerOption
 // UnimplementedNodeServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedNodeServiceHandler struct{}
 
-func (UnimplementedNodeServiceHandler) GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.SignedEnvelope], error) {
+func (UnimplementedNodeServiceHandler) RegisterComponent(context.Context, *connect.Request[v1.RegisterComponentRequest]) (*connect.Response[v1.RegisteredComponent], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.RegisterComponent is not implemented"))
+}
+
+func (UnimplementedNodeServiceHandler) GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.ConfigurationPayload], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.GetConfig is not implemented"))
 }
 
-func (UnimplementedNodeServiceHandler) ResolveApplication(context.Context, *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.SignedEnvelope], error) {
+func (UnimplementedNodeServiceHandler) ResolveApplication(context.Context, *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.ConfigurationPayload], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.ResolveApplication is not implemented"))
 }
 
@@ -445,118 +423,39 @@ func (UnimplementedNodeServiceHandler) ReportHealth(context.Context, *connect.Re
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.ReportHealth is not implemented"))
 }
 
-func (UnimplementedNodeServiceHandler) SubmitReport(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedNodeServiceHandler) SubmitReport(context.Context, *connect.Request[v1.ExposureReport]) (*connect.Response[v1.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.SubmitReport is not implemented"))
 }
 
-func (UnimplementedNodeServiceHandler) SubmitDockerInventory(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedNodeServiceHandler) SubmitDockerInventory(context.Context, *connect.Request[v1.DockerInventoryPayload]) (*connect.Response[v1.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.SubmitDockerInventory is not implemented"))
 }
 
-func (UnimplementedNodeServiceHandler) SubmitPeers(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedNodeServiceHandler) SubmitPeers(context.Context, *connect.Request[v1.PeerSnapshot]) (*connect.Response[v1.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.SubmitPeers is not implemented"))
 }
 
-func (UnimplementedNodeServiceHandler) SubmitKubernetes(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedNodeServiceHandler) SubmitKubernetes(context.Context, *connect.Request[v1.KubernetesPayload]) (*connect.Response[v1.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.SubmitKubernetes is not implemented"))
 }
 
-func (UnimplementedNodeServiceHandler) SubmitPublicEndpoint(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedNodeServiceHandler) SubmitPublicEndpoint(context.Context, *connect.Request[v1.PublicEndpointPayload]) (*connect.Response[v1.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.SubmitPublicEndpoint is not implemented"))
-}
-
-func (UnimplementedNodeServiceHandler) EnrollForwarder(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.ForwarderEnrollment], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.EnrollForwarder is not implemented"))
 }
 
 func (UnimplementedNodeServiceHandler) ListForwarders(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Nodes], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.ListForwarders is not implemented"))
 }
 
-func (UnimplementedNodeServiceHandler) BindForwarder(context.Context, *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.BindForwarder is not implemented"))
-}
-
 func (UnimplementedNodeServiceHandler) Shutdown(context.Context, *connect.Request[v1.ShutdownRequest]) (*connect.Response[v1.TestResult], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.Shutdown is not implemented"))
-}
-
-// EnrollmentServiceClient is a client for the funnel.v1.EnrollmentService service.
-type EnrollmentServiceClient interface {
-	BindSigningKey(context.Context, *connect.Request[v1.BindSigningKeyRequest]) (*connect.Response[v1.Empty], error)
-}
-
-// NewEnrollmentServiceClient constructs a client for the funnel.v1.EnrollmentService service. By
-// default, it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses,
-// and sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the
-// connect.WithGRPC() or connect.WithGRPCWeb() options.
-//
-// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
-// http://api.acme.com or https://acme.com/grpc).
-func NewEnrollmentServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) EnrollmentServiceClient {
-	baseURL = strings.TrimRight(baseURL, "/")
-	enrollmentServiceMethods := v1.File_funnel_v1_runtime_proto.Services().ByName("EnrollmentService").Methods()
-	return &enrollmentServiceClient{
-		bindSigningKey: connect.NewClient[v1.BindSigningKeyRequest, v1.Empty](
-			httpClient,
-			baseURL+EnrollmentServiceBindSigningKeyProcedure,
-			connect.WithSchema(enrollmentServiceMethods.ByName("BindSigningKey")),
-			connect.WithClientOptions(opts...),
-		),
-	}
-}
-
-// enrollmentServiceClient implements EnrollmentServiceClient.
-type enrollmentServiceClient struct {
-	bindSigningKey *connect.Client[v1.BindSigningKeyRequest, v1.Empty]
-}
-
-// BindSigningKey calls funnel.v1.EnrollmentService.BindSigningKey.
-func (c *enrollmentServiceClient) BindSigningKey(ctx context.Context, req *connect.Request[v1.BindSigningKeyRequest]) (*connect.Response[v1.Empty], error) {
-	return c.bindSigningKey.CallUnary(ctx, req)
-}
-
-// EnrollmentServiceHandler is an implementation of the funnel.v1.EnrollmentService service.
-type EnrollmentServiceHandler interface {
-	BindSigningKey(context.Context, *connect.Request[v1.BindSigningKeyRequest]) (*connect.Response[v1.Empty], error)
-}
-
-// NewEnrollmentServiceHandler builds an HTTP handler from the service implementation. It returns
-// the path on which to mount the handler and the handler itself.
-//
-// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
-// and JSON codecs. They also support gzip compression.
-func NewEnrollmentServiceHandler(svc EnrollmentServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
-	enrollmentServiceMethods := v1.File_funnel_v1_runtime_proto.Services().ByName("EnrollmentService").Methods()
-	enrollmentServiceBindSigningKeyHandler := connect.NewUnaryHandler(
-		EnrollmentServiceBindSigningKeyProcedure,
-		svc.BindSigningKey,
-		connect.WithSchema(enrollmentServiceMethods.ByName("BindSigningKey")),
-		connect.WithHandlerOptions(opts...),
-	)
-	return "/funnel.v1.EnrollmentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case EnrollmentServiceBindSigningKeyProcedure:
-			enrollmentServiceBindSigningKeyHandler.ServeHTTP(w, r)
-		default:
-			http.NotFound(w, r)
-		}
-	})
-}
-
-// UnimplementedEnrollmentServiceHandler returns CodeUnimplemented from all methods.
-type UnimplementedEnrollmentServiceHandler struct{}
-
-func (UnimplementedEnrollmentServiceHandler) BindSigningKey(context.Context, *connect.Request[v1.BindSigningKeyRequest]) (*connect.Response[v1.Empty], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.EnrollmentService.BindSigningKey is not implemented"))
 }
 
 // BrokerServiceClient is a client for the funnel.v1.BrokerService service.
 type BrokerServiceClient interface {
 	OpenSession(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.BrokerSession], error)
-	GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.SignedEnvelope], error)
+	GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.ConfigurationPayload], error)
 	RenewLease(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Empty], error)
-	WriteState(context.Context, *connect.Request[v1.StateUpdate]) (*connect.Response[v1.Empty], error)
 	ReleaseLease(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Empty], error)
 }
 
@@ -577,7 +476,7 @@ func NewBrokerServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(brokerServiceMethods.ByName("OpenSession")),
 			connect.WithClientOptions(opts...),
 		),
-		getConfig: connect.NewClient[v1.Empty, v1.SignedEnvelope](
+		getConfig: connect.NewClient[v1.Empty, v1.ConfigurationPayload](
 			httpClient,
 			baseURL+BrokerServiceGetConfigProcedure,
 			connect.WithSchema(brokerServiceMethods.ByName("GetConfig")),
@@ -587,12 +486,6 @@ func NewBrokerServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			httpClient,
 			baseURL+BrokerServiceRenewLeaseProcedure,
 			connect.WithSchema(brokerServiceMethods.ByName("RenewLease")),
-			connect.WithClientOptions(opts...),
-		),
-		writeState: connect.NewClient[v1.StateUpdate, v1.Empty](
-			httpClient,
-			baseURL+BrokerServiceWriteStateProcedure,
-			connect.WithSchema(brokerServiceMethods.ByName("WriteState")),
 			connect.WithClientOptions(opts...),
 		),
 		releaseLease: connect.NewClient[v1.Empty, v1.Empty](
@@ -607,9 +500,8 @@ func NewBrokerServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 // brokerServiceClient implements BrokerServiceClient.
 type brokerServiceClient struct {
 	openSession  *connect.Client[v1.Empty, v1.BrokerSession]
-	getConfig    *connect.Client[v1.Empty, v1.SignedEnvelope]
+	getConfig    *connect.Client[v1.Empty, v1.ConfigurationPayload]
 	renewLease   *connect.Client[v1.Empty, v1.Empty]
-	writeState   *connect.Client[v1.StateUpdate, v1.Empty]
 	releaseLease *connect.Client[v1.Empty, v1.Empty]
 }
 
@@ -619,18 +511,13 @@ func (c *brokerServiceClient) OpenSession(ctx context.Context, req *connect.Requ
 }
 
 // GetConfig calls funnel.v1.BrokerService.GetConfig.
-func (c *brokerServiceClient) GetConfig(ctx context.Context, req *connect.Request[v1.Empty]) (*connect.Response[v1.SignedEnvelope], error) {
+func (c *brokerServiceClient) GetConfig(ctx context.Context, req *connect.Request[v1.Empty]) (*connect.Response[v1.ConfigurationPayload], error) {
 	return c.getConfig.CallUnary(ctx, req)
 }
 
 // RenewLease calls funnel.v1.BrokerService.RenewLease.
 func (c *brokerServiceClient) RenewLease(ctx context.Context, req *connect.Request[v1.Empty]) (*connect.Response[v1.Empty], error) {
 	return c.renewLease.CallUnary(ctx, req)
-}
-
-// WriteState calls funnel.v1.BrokerService.WriteState.
-func (c *brokerServiceClient) WriteState(ctx context.Context, req *connect.Request[v1.StateUpdate]) (*connect.Response[v1.Empty], error) {
-	return c.writeState.CallUnary(ctx, req)
 }
 
 // ReleaseLease calls funnel.v1.BrokerService.ReleaseLease.
@@ -641,9 +528,8 @@ func (c *brokerServiceClient) ReleaseLease(ctx context.Context, req *connect.Req
 // BrokerServiceHandler is an implementation of the funnel.v1.BrokerService service.
 type BrokerServiceHandler interface {
 	OpenSession(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.BrokerSession], error)
-	GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.SignedEnvelope], error)
+	GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.ConfigurationPayload], error)
 	RenewLease(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Empty], error)
-	WriteState(context.Context, *connect.Request[v1.StateUpdate]) (*connect.Response[v1.Empty], error)
 	ReleaseLease(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Empty], error)
 }
 
@@ -672,12 +558,6 @@ func NewBrokerServiceHandler(svc BrokerServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(brokerServiceMethods.ByName("RenewLease")),
 		connect.WithHandlerOptions(opts...),
 	)
-	brokerServiceWriteStateHandler := connect.NewUnaryHandler(
-		BrokerServiceWriteStateProcedure,
-		svc.WriteState,
-		connect.WithSchema(brokerServiceMethods.ByName("WriteState")),
-		connect.WithHandlerOptions(opts...),
-	)
 	brokerServiceReleaseLeaseHandler := connect.NewUnaryHandler(
 		BrokerServiceReleaseLeaseProcedure,
 		svc.ReleaseLease,
@@ -692,8 +572,6 @@ func NewBrokerServiceHandler(svc BrokerServiceHandler, opts ...connect.HandlerOp
 			brokerServiceGetConfigHandler.ServeHTTP(w, r)
 		case BrokerServiceRenewLeaseProcedure:
 			brokerServiceRenewLeaseHandler.ServeHTTP(w, r)
-		case BrokerServiceWriteStateProcedure:
-			brokerServiceWriteStateHandler.ServeHTTP(w, r)
 		case BrokerServiceReleaseLeaseProcedure:
 			brokerServiceReleaseLeaseHandler.ServeHTTP(w, r)
 		default:
@@ -709,7 +587,7 @@ func (UnimplementedBrokerServiceHandler) OpenSession(context.Context, *connect.R
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.BrokerService.OpenSession is not implemented"))
 }
 
-func (UnimplementedBrokerServiceHandler) GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.SignedEnvelope], error) {
+func (UnimplementedBrokerServiceHandler) GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.ConfigurationPayload], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.BrokerService.GetConfig is not implemented"))
 }
 
@@ -717,10 +595,77 @@ func (UnimplementedBrokerServiceHandler) RenewLease(context.Context, *connect.Re
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.BrokerService.RenewLease is not implemented"))
 }
 
-func (UnimplementedBrokerServiceHandler) WriteState(context.Context, *connect.Request[v1.StateUpdate]) (*connect.Response[v1.Empty], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.BrokerService.WriteState is not implemented"))
-}
-
 func (UnimplementedBrokerServiceHandler) ReleaseLease(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.BrokerService.ReleaseLease is not implemented"))
+}
+
+// WorkloadBootstrapServiceClient is a client for the funnel.v1.WorkloadBootstrapService service.
+type WorkloadBootstrapServiceClient interface {
+	IssueKey(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.WorkloadBootstrap], error)
+}
+
+// NewWorkloadBootstrapServiceClient constructs a client for the funnel.v1.WorkloadBootstrapService
+// service. By default, it uses the Connect protocol with the binary Protobuf Codec, asks for
+// gzipped responses, and sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply
+// the connect.WithGRPC() or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewWorkloadBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) WorkloadBootstrapServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	workloadBootstrapServiceMethods := v1.File_funnel_v1_runtime_proto.Services().ByName("WorkloadBootstrapService").Methods()
+	return &workloadBootstrapServiceClient{
+		issueKey: connect.NewClient[v1.Empty, v1.WorkloadBootstrap](
+			httpClient,
+			baseURL+WorkloadBootstrapServiceIssueKeyProcedure,
+			connect.WithSchema(workloadBootstrapServiceMethods.ByName("IssueKey")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// workloadBootstrapServiceClient implements WorkloadBootstrapServiceClient.
+type workloadBootstrapServiceClient struct {
+	issueKey *connect.Client[v1.Empty, v1.WorkloadBootstrap]
+}
+
+// IssueKey calls funnel.v1.WorkloadBootstrapService.IssueKey.
+func (c *workloadBootstrapServiceClient) IssueKey(ctx context.Context, req *connect.Request[v1.Empty]) (*connect.Response[v1.WorkloadBootstrap], error) {
+	return c.issueKey.CallUnary(ctx, req)
+}
+
+// WorkloadBootstrapServiceHandler is an implementation of the funnel.v1.WorkloadBootstrapService
+// service.
+type WorkloadBootstrapServiceHandler interface {
+	IssueKey(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.WorkloadBootstrap], error)
+}
+
+// NewWorkloadBootstrapServiceHandler builds an HTTP handler from the service implementation. It
+// returns the path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewWorkloadBootstrapServiceHandler(svc WorkloadBootstrapServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	workloadBootstrapServiceMethods := v1.File_funnel_v1_runtime_proto.Services().ByName("WorkloadBootstrapService").Methods()
+	workloadBootstrapServiceIssueKeyHandler := connect.NewUnaryHandler(
+		WorkloadBootstrapServiceIssueKeyProcedure,
+		svc.IssueKey,
+		connect.WithSchema(workloadBootstrapServiceMethods.ByName("IssueKey")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/funnel.v1.WorkloadBootstrapService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case WorkloadBootstrapServiceIssueKeyProcedure:
+			workloadBootstrapServiceIssueKeyHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedWorkloadBootstrapServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedWorkloadBootstrapServiceHandler struct{}
+
+func (UnimplementedWorkloadBootstrapServiceHandler) IssueKey(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.WorkloadBootstrap], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.WorkloadBootstrapService.IssueKey is not implemented"))
 }

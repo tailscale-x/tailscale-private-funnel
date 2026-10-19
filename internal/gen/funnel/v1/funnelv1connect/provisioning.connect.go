@@ -43,9 +43,9 @@ const (
 
 // DeploymentServiceClient is a client for the funnel.v1.DeploymentService service.
 type DeploymentServiceClient interface {
-	// Resolve deployment choices without creating enrollment or bootstrap keys.
+	// Resolve deployment choices without creating bootstrap keys.
 	Instructions(context.Context, *connect.Request[v1.DeploymentRequest]) (*connect.Response[v1.DeploymentInstructions], error)
-	// Create one-use enrollment and return credentials once, without server-side execution.
+	// Mint one-use Tailscale bootstrap credentials, without server-side execution.
 	Authorize(context.Context, *connect.Request[v1.DeploymentRequest]) (*connect.Response[v1.DeploymentInstructions], error)
 }
 
@@ -93,9 +93,9 @@ func (c *deploymentServiceClient) Authorize(ctx context.Context, req *connect.Re
 
 // DeploymentServiceHandler is an implementation of the funnel.v1.DeploymentService service.
 type DeploymentServiceHandler interface {
-	// Resolve deployment choices without creating enrollment or bootstrap keys.
+	// Resolve deployment choices without creating bootstrap keys.
 	Instructions(context.Context, *connect.Request[v1.DeploymentRequest]) (*connect.Response[v1.DeploymentInstructions], error)
-	// Create one-use enrollment and return credentials once, without server-side execution.
+	// Mint one-use Tailscale bootstrap credentials, without server-side execution.
 	Authorize(context.Context, *connect.Request[v1.DeploymentRequest]) (*connect.Response[v1.DeploymentInstructions], error)
 }
 

@@ -11,7 +11,6 @@ enum Permission {
   PERMISSION_OPERATOR = 2;
   PERMISSION_ADMIN = 3;
   PERMISSION_NODE = 4;
-  PERMISSION_ENROLLMENT = 5;
   PERMISSION_BROKER = 6;
 }
 extend google.protobuf.MethodOptions {
@@ -19,7 +18,7 @@ extend google.protobuf.MethodOptions {
   // Space-separated CLI path, excluding the executable and control prefix.
   string cli = 50002;
   bool sensitive = 50003;
-  // Fully qualified protobuf model carried in signed payload bytes.
+  // Fully qualified protobuf model carried by this method.
   string payload_type = 50004;
   // Record the operation outcome without logging request or secret values.
   bool audit = 50005;

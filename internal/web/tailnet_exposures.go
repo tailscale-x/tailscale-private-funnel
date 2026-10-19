@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tailscale-x/tailscale-private-funnel/internal/identity"
+
 	"connectrpc.com/connect"
 
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
@@ -149,7 +151,7 @@ func (c *Control) saveTailnetExposureOperation(ctx context.Context, id string, i
 	if e != nil {
 		return store.ApplicationRecord{}, rpcFailure(connect.CodeFailedPrecondition, errors.New(e.Error()))
 	}
-	service, e := client.CreateService(ctx, tailscale.Service{Name: app.ServiceName, DisplayName: host, Ports: []string{fmt.Sprintf("tcp:%d", app.ServicePort)}, Tags: []string{"tag:tailscale-private-funnel"}})
+	service, e := client.CreateService(ctx, tailscale.Service{Name: app.ServiceName, DisplayName: host, Ports: []string{fmt.Sprintf("tcp:%d", app.ServicePort)}, Tags: []string{identity.ServiceTag(c.installation(), false)}})
 	if e != nil {
 		return store.ApplicationRecord{}, rpcFailure(connect.CodeUnavailable, errors.New(e.Error()))
 	}

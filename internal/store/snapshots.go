@@ -5,17 +5,17 @@ import (
 	"time"
 )
 
-var ErrInvalidNodeSnapshot = errors.New("unknown, revoked or mismatched signing identity")
+var ErrInvalidNodeSnapshot = errors.New("unknown or inactive component")
 
 // AcceptNodeSnapshot shares the report nonce space without replacing exposures.
-func (s *Store) AcceptNodeSnapshot(nodeID, nonce, publicKey, setting string, payload []byte) error {
+func (s *Store) AcceptNodeSnapshot(nodeID, nonce, setting string, payload []byte) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	var valid int
-	if err = tx.QueryRow(`SELECT count(*) FROM nodes WHERE id=? AND revoked=0 AND node_key=? AND node_key<>''`, nodeID, publicKey).Scan(&valid); err != nil {
+	if err = tx.QueryRow(`SELECT count(*) FROM nodes WHERE id=? AND revoked=0`, nodeID).Scan(&valid); err != nil {
 		return err
 	}
 	if valid != 1 {

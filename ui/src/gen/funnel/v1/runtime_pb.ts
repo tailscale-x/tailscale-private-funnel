@@ -5,92 +5,18 @@
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import { file_buf_validate_validate } from "../../buf/validate/validate_pb";
-import type { EmptySchema, NodesSchema, PrefixRewrite, Probe, TestResultSchema } from "./management_pb";
+import type { EmptySchema, ExposureReportSchema, NodesSchema, PeerSnapshotSchema, PrefixRewrite, Probe, TestResultSchema } from "./management_pb";
 import { file_funnel_v1_management } from "./management_pb";
 import { file_funnel_v1_options } from "./options_pb";
+import type { DeploymentRequest } from "./provisioning_pb";
+import { file_funnel_v1_provisioning } from "./provisioning_pb";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file funnel/v1/runtime.proto.
  */
 export const file_funnel_v1_runtime: GenFile = /*@__PURE__*/
-  fileDesc("ChdmdW5uZWwvdjEvcnVudGltZS5wcm90bxIJZnVubmVsLnYxIowBCg5TaWduZWRFbnZlbG9wZRIPCgdub2RlX2lkGAEgASgJEhEKCXRpbWVzdGFtcBgCIAEoAxINCgVub25jZRgDIAEoCRISCgpwdWJsaWNfa2V5GAQgASgMEg8KB3BheWxvYWQYBSABKAwSEQoJc2lnbmF0dXJlGAYgASgMEg8KB3B1cnBvc2UYByABKAkiXwoVQmluZFNpZ25pbmdLZXlSZXF1ZXN0EhUKDWVucm9sbG1lbnRfaWQYASABKAkSEgoEY29kZRgCIAEoCUIE2LUYARIbCgpwdWJsaWNfa2V5GAMgASgMQge6SAR6AmggIpABChlSZXNvbHZlQXBwbGljYXRpb25SZXF1ZXN0EhMKC3BhdGhfcHJlZml4GAMgASgJEikKB3Jld3JpdGUYBCABKAsyGC5mdW5uZWwudjEuUHJlZml4UmV3cml0ZRIQCghob3N0bmFtZRgBIAEoCRIhCgxiYWNrZW5kX3BvcnQYAiABKA1CC7pICCoGGP//AyAAIjgKCUNvbmZpZ0FjaxIZCghyZXZpc2lvbhgBIAEoCUIHukgEcgIQARIQCghzZXJ2aWNlcxgCIAMoCSKgAgoKTm9kZUhlYWx0aBITCgtsYXN0X3JlcG9ydBgBIAEoAxIQCghyZXZpc2lvbhgCIAEoCRIRCglsaXN0ZW5lcnMYAyADKAkSEAoIYmFja2VuZHMYBCABKA0SEQoJcmVhY2hhYmxlGAUgASgNEh0KFWxvYWRiYWxhbmNlcl9ob3N0bmFtZRgGIAEoCRIOCgZvbmxpbmUYByABKAgSDgoGZXJyb3JzGAggAygJEhAKCG5vZGVfdWlkGAkgASgJEhEKCW5vZGVfbmFtZRgKIAEoCRIXCg9sb2NhbF9lbmRwb2ludHMYCyABKA0SGQoRd2l0aGRyYXdhbF9yZWFzb24YDCABKAkSGwoTYWR2ZXJ0aXNlZF9zZXJ2aWNlcxgNIAMoCSI+ChNGb3J3YXJkZXJFbnJvbGxtZW50Eg8KB25vZGVfaWQYASABKAkSFgoIYXV0aF9rZXkYAiABKAlCBNi1GAEiVAoaRm9yd2FyZGVyRW5yb2xsbWVudFBheWxvYWQSEAoIbm9kZV91aWQYASABKAkSEAoIaG9zdG5hbWUYAiABKAkSEgoKcHVibGljX2tleRgDIAEoCSInChdGb3J3YXJkZXJCaW5kaW5nUGF5bG9hZBIMCgRiaW5kGAEgASgIIogBChVQdWJsaWNFbmRwb2ludFBheWxvYWQSEQoJbmFtZXNwYWNlGAEgASgJEg8KB3NlcnZpY2UYAiABKAkSCwoDdWlkGAMgASgJEhMKC29ic2VydmVkX2F0GAQgASgDEikKB2luZ3Jlc3MYBSADKAsyGC5mdW5uZWwudjEuUHVibGljSW5ncmVzcyI+Cg1QdWJsaWNJbmdyZXNzEgoKAmlwGAEgASgJEhAKCGhvc3RuYW1lGAIgASgJEg8KB2lwX21vZGUYAyABKAkiOAoLU3RhdGVVcGRhdGUSGgoDa2V5GAEgASgJQg26SApyCDoGdHNuZXQuEg0KBXZhbHVlGAIgASgMIpUCCg1Ccm9rZXJTZXNzaW9uEhAKCG5vZGVfdWlkGAEgASgJEhEKCW5vZGVfbmFtZRgCIAEoCRIPCgdub2RlX2lkGAMgASgJEhYKCGF1dGhfa2V5GAQgASgJQgTYtRgBEhYKDm1hbmFnZW1lbnRfdXJsGAUgASgJEhMKC2NvbnRyb2xfa2V5GAYgASgJEhUKDWNvbnRyb2xsZXJfaWQYByABKAkSEAoIaWRlbnRpdHkYCCABKAwSMgoFc3RhdGUYCSADKAsyIy5mdW5uZWwudjEuQnJva2VyU2Vzc2lvbi5TdGF0ZUVudHJ5GiwKClN0YXRlRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgMOgI4ASLOAQoRS3ViZXJuZXRlc1BheWxvYWQSOAoGZXJyb3JzGAEgAygLMiguZnVubmVsLnYxLkt1YmVybmV0ZXNQYXlsb2FkLkVycm9yc0VudHJ5EhIKCmNsdXN0ZXJfaWQYAiABKAkSKAoFaG9zdHMYAyADKAsyGS5mdW5uZWwudjEuS3ViZXJuZXRlc0hvc3QSEgoKZXhwaXJlc19hdBgEIAEoAxotCgtFcnJvcnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIoYBCg5LdWJlcm5ldGVzSG9zdBIQCghob3N0bmFtZRgBIAEoCRIiCgVydWxlcxgCIAMoCzITLmZ1bm5lbC52MS5IVFRQUnVsZRIoCghiYWNrZW5kcxgDIAMoCzIWLmZ1bm5lbC52MS5IVFRQQmFja2VuZBIUCgxyZXNvdXJjZV9pZHMYBCADKAkiVAoLUG9kRW5kcG9pbnQSDwoHYWRkcmVzcxgBIAEoCRIPCgdwb2RfdWlkGAIgASgJEhEKCW5vZGVfbmFtZRgDIAEoCRIQCghub2RlX3VpZBgEIAEoCSKbAQoLSFRUUEJhY2tlbmQSKQoJZW5kcG9pbnRzGAEgAygLMhYuZnVubmVsLnYxLlBvZEVuZHBvaW50EgsKA2tleRgCIAEoCRIUCgxzZXJ2aWNlX25hbWUYAyABKAkSDwoHc2VydmljZRgEIAEoCRIMCgRwb3J0GAUgASgNEg8KB2FkZHJlc3MYBiABKAkSDgoGd2VpZ2h0GAcgASgFIvoBCglIVFRQTWF0Y2gSDAoEcGF0aBgBIAEoCRINCgVleGFjdBgCIAEoCBIOCgZtZXRob2QYAyABKAkSMgoHaGVhZGVycxgEIAMoCzIhLmZ1bm5lbC52MS5IVFRQTWF0Y2guSGVhZGVyc0VudHJ5Ei4KBXF1ZXJ5GAUgAygLMh8uZnVubmVsLnYxLkhUVFBNYXRjaC5RdWVyeUVudHJ5Gi4KDEhlYWRlcnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBGiwKClF1ZXJ5RW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASLUAQoMSGVhZGVyRmlsdGVyEi0KA3NldBgBIAMoCzIgLmZ1bm5lbC52MS5IZWFkZXJGaWx0ZXIuU2V0RW50cnkSLQoDYWRkGAIgAygLMiAuZnVubmVsLnYxLkhlYWRlckZpbHRlci5BZGRFbnRyeRIOCgZyZW1vdmUYAyADKAkaKgoIU2V0RW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ARoqCghBZGRFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIkoKDEhUVFBSZWRpcmVjdBIOCgZzY2hlbWUYASABKAkSDAoEaG9zdBgCIAEoCRIMCgRwb3J0GAMgASgNEg4KBnN0YXR1cxgEIAEoBSKbAwoISFRUUFJ1bGUSKQoHcmV3cml0ZRgLIAEoCzIYLmZ1bm5lbC52MS5QcmVmaXhSZXdyaXRlEh8KF2JhY2tlbmRfcmVxdWVzdF90aW1lb3V0GAEgASgJEiUKB21hdGNoZXMYAiADKAsyFC5mdW5uZWwudjEuSFRUUE1hdGNoEigKCGJhY2tlbmRzGAMgAygLMhYuZnVubmVsLnYxLkhUVFBCYWNrZW5kEjAKD3JlcXVlc3RfaGVhZGVycxgEIAEoCzIXLmZ1bm5lbC52MS5IZWFkZXJGaWx0ZXISMQoQcmVzcG9uc2VfaGVhZGVycxgFIAEoCzIXLmZ1bm5lbC52MS5IZWFkZXJGaWx0ZXISKQoIcmVkaXJlY3QYBiABKAsyFy5mdW5uZWwudjEuSFRUUFJlZGlyZWN0EhcKD3JlcXVlc3RfdGltZW91dBgHIAEoCRIXCg9iYWNrZW5kX3RpbWVvdXQYCCABKAkSHgoWbWF4X3JlcXVlc3RfYm9keV9ieXRlcxgJIAEoAxIQCghwcmlvcml0eRgKIAEoBSKPAwoSUnVudGltZUFwcGxpY2F0aW9uEicKCmh0dHBfcnVsZXMYASADKAsyEy5mdW5uZWwudjEuSFRUUFJ1bGUSLQoNaHR0cF9iYWNrZW5kcxgCIAMoCzIWLmZ1bm5lbC52MS5IVFRQQmFja2VuZBIMCgRuYW1lGAMgASgJEhYKDmJhY2tlbmRfc291cmNlGAQgASgJEhkKEWJhY2tlbmRfZGV2aWNlX2lkGAUgASgJEhkKEWJhY2tlbmRfYWRkcmVzc2VzGAYgAygJEgoKAmlkGAcgASgJEhQKDHNlcnZpY2VfbmFtZRgIIAEoCRIUCgxzZXJ2aWNlX2ZxZG4YCSABKAkSFAoMc2VydmljZV9wb3J0GAogASgNEhQKDGJhY2tlbmRfcG9ydBgLIAEoDRIYChBwdWJsaWNfaG9zdG5hbWVzGAwgAygJEh0KFWFsbG93ZWRfZ2F0ZXdheV9ub2RlcxgNIAMoCRIXCg9wb2xpY3lfcmV2aXNpb24YDiABKAMSDwoHZW5hYmxlZBgPIAEoCCJgCglIVFRQUm91dGUSIgoFcnVsZXMYASADKAsyEy5mdW5uZWwudjEuSFRUUFJ1bGUSEAoIaG9zdG5hbWUYAiABKAkSDwoHc2VydmljZRgDIAEoCRIMCgRwb3J0GAQgASgNIpoCChRDb25maWd1cmF0aW9uUGF5bG9hZBIbChNwdWJsaXNoZWRfYWRkcmVzc2VzGAEgAygJEhsKE3B1Ymxpc2hlZF9ob3N0bmFtZXMYAiADKAkSJAoGcm91dGVzGAMgAygLMhQuZnVubmVsLnYxLkhUVFBSb3V0ZRIgCgZwcm9iZXMYBCADKAsyEC5mdW5uZWwudjEuUHJvYmUSDwoHbm9kZV9pZBgFIAEoCRIQCghyZXZpc2lvbhgGIAEoCRIzCgxhcHBsaWNhdGlvbnMYByADKAsyHS5mdW5uZWwudjEuUnVudGltZUFwcGxpY2F0aW9uEhUKDWxhYmVsX2FsaWFzZXMYCCADKAkSEQoJaXNzdWVkX2F0GAkgASgDIiIKD1NodXRkb3duUmVxdWVzdBIPCgdjb25maXJtGAEgASgIIpIBChZEb2NrZXJJbnZlbnRvcnlQYXlsb2FkEhkKCHJldmlzaW9uGAEgASgDQge6SAQiAiAAEhAKCGNvbXBsZXRlGAIgASgIEjcKCmNvbnRhaW5lcnMYAyADKAsyIy5mdW5uZWwudjEuRG9ja2VySW52ZW50b3J5Q29udGFpbmVyEhIKCmxhYmVsX2tleXMYBCADKAkipwEKGERvY2tlckludmVudG9yeUNvbnRhaW5lchIKCgJpZBgBIAEoCRIPCgdydW5uaW5nGAIgASgIEj8KBmxhYmVscxgDIAMoCzIvLmZ1bm5lbC52MS5Eb2NrZXJJbnZlbnRvcnlDb250YWluZXIuTGFiZWxzRW50cnkaLQoLTGFiZWxzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ATLTCQoLTm9kZVNlcnZpY2USYAoJR2V0Q29uZmlnEhAuZnVubmVsLnYxLkVtcHR5GhkuZnVubmVsLnYxLlNpZ25lZEVudmVsb3BlIiaItRgEorUYHmZ1bm5lbC52MS5Db25maWd1cmF0aW9uUGF5bG9hZBJ9ChJSZXNvbHZlQXBwbGljYXRpb24SJC5mdW5uZWwudjEuUmVzb2x2ZUFwcGxpY2F0aW9uUmVxdWVzdBoZLmZ1bm5lbC52MS5TaWduZWRFbnZlbG9wZSImiLUYBKK1GB5mdW5uZWwudjEuQ29uZmlndXJhdGlvblBheWxvYWQSOwoLQWNrbm93bGVkZ2USFC5mdW5uZWwudjEuQ29uZmlnQWNrGhAuZnVubmVsLnYxLkVtcHR5IgSItRgEEj0KDFJlcG9ydEhlYWx0aBIVLmZ1bm5lbC52MS5Ob2RlSGVhbHRoGhAuZnVubmVsLnYxLkVtcHR5IgSItRgEEl0KDFN1Ym1pdFJlcG9ydBIZLmZ1bm5lbC52MS5TaWduZWRFbnZlbG9wZRoQLmZ1bm5lbC52MS5FbXB0eSIgiLUYBKK1GBhmdW5uZWwudjEuRXhwb3N1cmVSZXBvcnQSbgoVU3VibWl0RG9ja2VySW52ZW50b3J5EhkuZnVubmVsLnYxLlNpZ25lZEVudmVsb3BlGhAuZnVubmVsLnYxLkVtcHR5IiiItRgEorUYIGZ1bm5lbC52MS5Eb2NrZXJJbnZlbnRvcnlQYXlsb2FkEloKC1N1Ym1pdFBlZXJzEhkuZnVubmVsLnYxLlNpZ25lZEVudmVsb3BlGhAuZnVubmVsLnYxLkVtcHR5Ih6ItRgEorUYFmZ1bm5lbC52MS5QZWVyU25hcHNob3QSZAoQU3VibWl0S3ViZXJuZXRlcxIZLmZ1bm5lbC52MS5TaWduZWRFbnZlbG9wZRoQLmZ1bm5lbC52MS5FbXB0eSIjiLUYBKK1GBtmdW5uZWwudjEuS3ViZXJuZXRlc1BheWxvYWQSbAoUU3VibWl0UHVibGljRW5kcG9pbnQSGS5mdW5uZWwudjEuU2lnbmVkRW52ZWxvcGUaEC5mdW5uZWwudjEuRW1wdHkiJ4i1GASitRgfZnVubmVsLnYxLlB1YmxpY0VuZHBvaW50UGF5bG9hZBJ+Cg9FbnJvbGxGb3J3YXJkZXISGS5mdW5uZWwudjEuU2lnbmVkRW52ZWxvcGUaHi5mdW5uZWwudjEuRm9yd2FyZGVyRW5yb2xsbWVudCIwiLUYBJi1GAGitRgkZnVubmVsLnYxLkZvcndhcmRlckVucm9sbG1lbnRQYXlsb2FkEjoKDkxpc3RGb3J3YXJkZXJzEhAuZnVubmVsLnYxLkVtcHR5GhAuZnVubmVsLnYxLk5vZGVzIgSItRgEEmcKDUJpbmRGb3J3YXJkZXISGS5mdW5uZWwudjEuU2lnbmVkRW52ZWxvcGUaEC5mdW5uZWwudjEuRW1wdHkiKYi1GAWitRghZnVubmVsLnYxLkZvcndhcmRlckJpbmRpbmdQYXlsb2FkEkMKCFNodXRkb3duEhouZnVubmVsLnYxLlNodXRkb3duUmVxdWVzdBoVLmZ1bm5lbC52MS5UZXN0UmVzdWx0IgSItRgEMmMKEUVucm9sbG1lbnRTZXJ2aWNlEk4KDkJpbmRTaWduaW5nS2V5EiAuZnVubmVsLnYxLkJpbmRTaWduaW5nS2V5UmVxdWVzdBoQLmZ1bm5lbC52MS5FbXB0eSIIiLUYBZi1GAEy6gIKDUJyb2tlclNlcnZpY2USQwoLT3BlblNlc3Npb24SEC5mdW5uZWwudjEuRW1wdHkaGC5mdW5uZWwudjEuQnJva2VyU2Vzc2lvbiIIiLUYBpi1GAESYAoJR2V0Q29uZmlnEhAuZnVubmVsLnYxLkVtcHR5GhkuZnVubmVsLnYxLlNpZ25lZEVudmVsb3BlIiaItRgGorUYHmZ1bm5lbC52MS5Db25maWd1cmF0aW9uUGF5bG9hZBI2CgpSZW5ld0xlYXNlEhAuZnVubmVsLnYxLkVtcHR5GhAuZnVubmVsLnYxLkVtcHR5IgSItRgGEkAKCldyaXRlU3RhdGUSFi5mdW5uZWwudjEuU3RhdGVVcGRhdGUaEC5mdW5uZWwudjEuRW1wdHkiCIi1GAaYtRgBEjgKDFJlbGVhc2VMZWFzZRIQLmZ1bm5lbC52MS5FbXB0eRoQLmZ1bm5lbC52MS5FbXB0eSIEiLUYBkJRWk9naXRodWIuY29tL3RhaWxzY2FsZS14L3RhaWxzY2FsZS1wcml2YXRlLWZ1bm5lbC9pbnRlcm5hbC9nZW4vZnVubmVsL3YxO2Z1bm5lbHYxYgZwcm90bzM", [file_buf_validate_validate, file_funnel_v1_management, file_funnel_v1_options]);
-
-/**
- * SignedEnvelope carries exact signed bytes. Decode only after verification.
- *
- * @generated from message funnel.v1.SignedEnvelope
- */
-export type SignedEnvelope = Message<"funnel.v1.SignedEnvelope"> & {
-  /**
-   * @generated from field: string node_id = 1;
-   */
-  nodeId: string;
-
-  /**
-   * @generated from field: int64 timestamp = 2;
-   */
-  timestamp: bigint;
-
-  /**
-   * @generated from field: string nonce = 3;
-   */
-  nonce: string;
-
-  /**
-   * @generated from field: bytes public_key = 4;
-   */
-  publicKey: Uint8Array;
-
-  /**
-   * @generated from field: bytes payload = 5;
-   */
-  payload: Uint8Array;
-
-  /**
-   * @generated from field: bytes signature = 6;
-   */
-  signature: Uint8Array;
-
-  /**
-   * @generated from field: string purpose = 7;
-   */
-  purpose: string;
-};
-
-/**
- * Describes the message funnel.v1.SignedEnvelope.
- * Use `create(SignedEnvelopeSchema)` to create a new message.
- */
-export const SignedEnvelopeSchema: GenMessage<SignedEnvelope> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 0);
-
-/**
- * @generated from message funnel.v1.BindSigningKeyRequest
- */
-export type BindSigningKeyRequest = Message<"funnel.v1.BindSigningKeyRequest"> & {
-  /**
-   * @generated from field: string enrollment_id = 1;
-   */
-  enrollmentId: string;
-
-  /**
-   * @generated from field: string code = 2;
-   */
-  code: string;
-
-  /**
-   * @generated from field: bytes public_key = 3;
-   */
-  publicKey: Uint8Array;
-};
-
-/**
- * Describes the message funnel.v1.BindSigningKeyRequest.
- * Use `create(BindSigningKeyRequestSchema)` to create a new message.
- */
-export const BindSigningKeyRequestSchema: GenMessage<BindSigningKeyRequest> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 1);
+  fileDesc("ChdmdW5uZWwvdjEvcnVudGltZS5wcm90bxIJZnVubmVsLnYxIpABChlSZXNvbHZlQXBwbGljYXRpb25SZXF1ZXN0EhMKC3BhdGhfcHJlZml4GAMgASgJEikKB3Jld3JpdGUYBCABKAsyGC5mdW5uZWwudjEuUHJlZml4UmV3cml0ZRIQCghob3N0bmFtZRgBIAEoCRIhCgxiYWNrZW5kX3BvcnQYAiABKA1CC7pICCoGGP//AyAAIjgKCUNvbmZpZ0FjaxIZCghyZXZpc2lvbhgBIAEoCUIHukgEcgIQARIQCghzZXJ2aWNlcxgCIAMoCSKgAgoKTm9kZUhlYWx0aBITCgtsYXN0X3JlcG9ydBgBIAEoAxIQCghyZXZpc2lvbhgCIAEoCRIRCglsaXN0ZW5lcnMYAyADKAkSEAoIYmFja2VuZHMYBCABKA0SEQoJcmVhY2hhYmxlGAUgASgNEh0KFWxvYWRiYWxhbmNlcl9ob3N0bmFtZRgGIAEoCRIOCgZvbmxpbmUYByABKAgSDgoGZXJyb3JzGAggAygJEhAKCG5vZGVfdWlkGAkgASgJEhEKCW5vZGVfbmFtZRgKIAEoCRIXCg9sb2NhbF9lbmRwb2ludHMYCyABKA0SGQoRd2l0aGRyYXdhbF9yZWFzb24YDCABKAkSGwoTYWR2ZXJ0aXNlZF9zZXJ2aWNlcxgNIAMoCSKIAQoVUHVibGljRW5kcG9pbnRQYXlsb2FkEhEKCW5hbWVzcGFjZRgBIAEoCRIPCgdzZXJ2aWNlGAIgASgJEgsKA3VpZBgDIAEoCRITCgtvYnNlcnZlZF9hdBgEIAEoAxIpCgdpbmdyZXNzGAUgAygLMhguZnVubmVsLnYxLlB1YmxpY0luZ3Jlc3MiPgoNUHVibGljSW5ncmVzcxIKCgJpcBgBIAEoCRIQCghob3N0bmFtZRgCIAEoCRIPCgdpcF9tb2RlGAMgASgJInQKDUJyb2tlclNlc3Npb24SEAoIbm9kZV91aWQYASABKAkSEQoJbm9kZV9uYW1lGAIgASgJEg8KB25vZGVfaWQYAyABKAkSFgoObWFuYWdlbWVudF91cmwYBSABKAkSFQoNY29udHJvbGxlcl9pZBgHIAEoCSLOAQoRS3ViZXJuZXRlc1BheWxvYWQSOAoGZXJyb3JzGAEgAygLMiguZnVubmVsLnYxLkt1YmVybmV0ZXNQYXlsb2FkLkVycm9yc0VudHJ5EhIKCmNsdXN0ZXJfaWQYAiABKAkSKAoFaG9zdHMYAyADKAsyGS5mdW5uZWwudjEuS3ViZXJuZXRlc0hvc3QSEgoKZXhwaXJlc19hdBgEIAEoAxotCgtFcnJvcnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIoYBCg5LdWJlcm5ldGVzSG9zdBIQCghob3N0bmFtZRgBIAEoCRIiCgVydWxlcxgCIAMoCzITLmZ1bm5lbC52MS5IVFRQUnVsZRIoCghiYWNrZW5kcxgDIAMoCzIWLmZ1bm5lbC52MS5IVFRQQmFja2VuZBIUCgxyZXNvdXJjZV9pZHMYBCADKAkiVAoLUG9kRW5kcG9pbnQSDwoHYWRkcmVzcxgBIAEoCRIPCgdwb2RfdWlkGAIgASgJEhEKCW5vZGVfbmFtZRgDIAEoCRIQCghub2RlX3VpZBgEIAEoCSKbAQoLSFRUUEJhY2tlbmQSKQoJZW5kcG9pbnRzGAEgAygLMhYuZnVubmVsLnYxLlBvZEVuZHBvaW50EgsKA2tleRgCIAEoCRIUCgxzZXJ2aWNlX25hbWUYAyABKAkSDwoHc2VydmljZRgEIAEoCRIMCgRwb3J0GAUgASgNEg8KB2FkZHJlc3MYBiABKAkSDgoGd2VpZ2h0GAcgASgFIvoBCglIVFRQTWF0Y2gSDAoEcGF0aBgBIAEoCRINCgVleGFjdBgCIAEoCBIOCgZtZXRob2QYAyABKAkSMgoHaGVhZGVycxgEIAMoCzIhLmZ1bm5lbC52MS5IVFRQTWF0Y2guSGVhZGVyc0VudHJ5Ei4KBXF1ZXJ5GAUgAygLMh8uZnVubmVsLnYxLkhUVFBNYXRjaC5RdWVyeUVudHJ5Gi4KDEhlYWRlcnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBGiwKClF1ZXJ5RW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASLUAQoMSGVhZGVyRmlsdGVyEi0KA3NldBgBIAMoCzIgLmZ1bm5lbC52MS5IZWFkZXJGaWx0ZXIuU2V0RW50cnkSLQoDYWRkGAIgAygLMiAuZnVubmVsLnYxLkhlYWRlckZpbHRlci5BZGRFbnRyeRIOCgZyZW1vdmUYAyADKAkaKgoIU2V0RW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ARoqCghBZGRFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIkoKDEhUVFBSZWRpcmVjdBIOCgZzY2hlbWUYASABKAkSDAoEaG9zdBgCIAEoCRIMCgRwb3J0GAMgASgNEg4KBnN0YXR1cxgEIAEoBSKbAwoISFRUUFJ1bGUSKQoHcmV3cml0ZRgLIAEoCzIYLmZ1bm5lbC52MS5QcmVmaXhSZXdyaXRlEh8KF2JhY2tlbmRfcmVxdWVzdF90aW1lb3V0GAEgASgJEiUKB21hdGNoZXMYAiADKAsyFC5mdW5uZWwudjEuSFRUUE1hdGNoEigKCGJhY2tlbmRzGAMgAygLMhYuZnVubmVsLnYxLkhUVFBCYWNrZW5kEjAKD3JlcXVlc3RfaGVhZGVycxgEIAEoCzIXLmZ1bm5lbC52MS5IZWFkZXJGaWx0ZXISMQoQcmVzcG9uc2VfaGVhZGVycxgFIAEoCzIXLmZ1bm5lbC52MS5IZWFkZXJGaWx0ZXISKQoIcmVkaXJlY3QYBiABKAsyFy5mdW5uZWwudjEuSFRUUFJlZGlyZWN0EhcKD3JlcXVlc3RfdGltZW91dBgHIAEoCRIXCg9iYWNrZW5kX3RpbWVvdXQYCCABKAkSHgoWbWF4X3JlcXVlc3RfYm9keV9ieXRlcxgJIAEoAxIQCghwcmlvcml0eRgKIAEoBSKPAwoSUnVudGltZUFwcGxpY2F0aW9uEicKCmh0dHBfcnVsZXMYASADKAsyEy5mdW5uZWwudjEuSFRUUFJ1bGUSLQoNaHR0cF9iYWNrZW5kcxgCIAMoCzIWLmZ1bm5lbC52MS5IVFRQQmFja2VuZBIMCgRuYW1lGAMgASgJEhYKDmJhY2tlbmRfc291cmNlGAQgASgJEhkKEWJhY2tlbmRfZGV2aWNlX2lkGAUgASgJEhkKEWJhY2tlbmRfYWRkcmVzc2VzGAYgAygJEgoKAmlkGAcgASgJEhQKDHNlcnZpY2VfbmFtZRgIIAEoCRIUCgxzZXJ2aWNlX2ZxZG4YCSABKAkSFAoMc2VydmljZV9wb3J0GAogASgNEhQKDGJhY2tlbmRfcG9ydBgLIAEoDRIYChBwdWJsaWNfaG9zdG5hbWVzGAwgAygJEh0KFWFsbG93ZWRfZ2F0ZXdheV9ub2RlcxgNIAMoCRIXCg9wb2xpY3lfcmV2aXNpb24YDiABKAMSDwoHZW5hYmxlZBgPIAEoCCJgCglIVFRQUm91dGUSIgoFcnVsZXMYASADKAsyEy5mdW5uZWwudjEuSFRUUFJ1bGUSEAoIaG9zdG5hbWUYAiABKAkSDwoHc2VydmljZRgDIAEoCRIMCgRwb3J0GAQgASgNIpoCChRDb25maWd1cmF0aW9uUGF5bG9hZBIbChNwdWJsaXNoZWRfYWRkcmVzc2VzGAEgAygJEhsKE3B1Ymxpc2hlZF9ob3N0bmFtZXMYAiADKAkSJAoGcm91dGVzGAMgAygLMhQuZnVubmVsLnYxLkhUVFBSb3V0ZRIgCgZwcm9iZXMYBCADKAsyEC5mdW5uZWwudjEuUHJvYmUSDwoHbm9kZV9pZBgFIAEoCRIQCghyZXZpc2lvbhgGIAEoCRIzCgxhcHBsaWNhdGlvbnMYByADKAsyHS5mdW5uZWwudjEuUnVudGltZUFwcGxpY2F0aW9uEhUKDWxhYmVsX2FsaWFzZXMYCCADKAkSEQoJaXNzdWVkX2F0GAkgASgDIiEKD1NodXRkb3duUmVxdWVzdBIOCgZyZW1vdmUYASABKAgikgEKFkRvY2tlckludmVudG9yeVBheWxvYWQSGQoIcmV2aXNpb24YASABKANCB7pIBCICIAASEAoIY29tcGxldGUYAiABKAgSNwoKY29udGFpbmVycxgDIAMoCzIjLmZ1bm5lbC52MS5Eb2NrZXJJbnZlbnRvcnlDb250YWluZXISEgoKbGFiZWxfa2V5cxgEIAMoCSKnAQoYRG9ja2VySW52ZW50b3J5Q29udGFpbmVyEgoKAmlkGAEgASgJEg8KB3J1bm5pbmcYAiABKAgSPwoGbGFiZWxzGAMgAygLMi8uZnVubmVsLnYxLkRvY2tlckludmVudG9yeUNvbnRhaW5lci5MYWJlbHNFbnRyeRotCgtMYWJlbHNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIpwBChhSZWdpc3RlckNvbXBvbmVudFJlcXVlc3QSFAoMY29tcG9uZW50X2lkGAEgASgJEhMKC2luc3RhbmNlX2lkGAIgASgJEjAKCmRlcGxveW1lbnQYAyABKAsyHC5mdW5uZWwudjEuRGVwbG95bWVudFJlcXVlc3QSEQoJcGFyZW50X2lkGAQgASgJEhAKCG5vZGVfdWlkGAUgASgJInwKE1JlZ2lzdGVyZWRDb21wb25lbnQSFAoMY29tcG9uZW50X2lkGAEgASgJEhMKC2luc3RhbmNlX2lkGAIgASgJEhEKCWRldmljZV9pZBgDIAEoCRISCgpnZW5lcmF0aW9uGAQgASgDEhMKC2xlYXNlX3VudGlsGAUgASgDIsYBChFXb3JrbG9hZEJvb3RzdHJhcBIWCghhdXRoX2tleRgBIAEoCUIE2LUYARIUCgxjb21wb25lbnRfaWQYAiABKAkSEQoJcGFyZW50X2lkGAMgASgJEhMKC2luc3RhbmNlX2lkGAQgASgJEhQKDGluc3RhbGxhdGlvbhgFIAEoCRIMCgRtb2RlGAYgASgJEhAKCG5vZGVfdWlkGAcgASgJEhEKCW5vZGVfbmFtZRgIIAEoCRISCgpleHBpcmVzX2F0GAkgASgDMucICgtOb2RlU2VydmljZRJeChFSZWdpc3RlckNvbXBvbmVudBIjLmZ1bm5lbC52MS5SZWdpc3RlckNvbXBvbmVudFJlcXVlc3QaHi5mdW5uZWwudjEuUmVnaXN0ZXJlZENvbXBvbmVudCIEiLUYBBJmCglHZXRDb25maWcSEC5mdW5uZWwudjEuRW1wdHkaHy5mdW5uZWwudjEuQ29uZmlndXJhdGlvblBheWxvYWQiJoi1GASitRgeZnVubmVsLnYxLkNvbmZpZ3VyYXRpb25QYXlsb2FkEoMBChJSZXNvbHZlQXBwbGljYXRpb24SJC5mdW5uZWwudjEuUmVzb2x2ZUFwcGxpY2F0aW9uUmVxdWVzdBofLmZ1bm5lbC52MS5Db25maWd1cmF0aW9uUGF5bG9hZCImiLUYBKK1GB5mdW5uZWwudjEuQ29uZmlndXJhdGlvblBheWxvYWQSOwoLQWNrbm93bGVkZ2USFC5mdW5uZWwudjEuQ29uZmlnQWNrGhAuZnVubmVsLnYxLkVtcHR5IgSItRgEEj0KDFJlcG9ydEhlYWx0aBIVLmZ1bm5lbC52MS5Ob2RlSGVhbHRoGhAuZnVubmVsLnYxLkVtcHR5IgSItRgEEl0KDFN1Ym1pdFJlcG9ydBIZLmZ1bm5lbC52MS5FeHBvc3VyZVJlcG9ydBoQLmZ1bm5lbC52MS5FbXB0eSIgiLUYBKK1GBhmdW5uZWwudjEuRXhwb3N1cmVSZXBvcnQSdgoVU3VibWl0RG9ja2VySW52ZW50b3J5EiEuZnVubmVsLnYxLkRvY2tlckludmVudG9yeVBheWxvYWQaEC5mdW5uZWwudjEuRW1wdHkiKIi1GASitRggZnVubmVsLnYxLkRvY2tlckludmVudG9yeVBheWxvYWQSWAoLU3VibWl0UGVlcnMSFy5mdW5uZWwudjEuUGVlclNuYXBzaG90GhAuZnVubmVsLnYxLkVtcHR5Ih6ItRgEorUYFmZ1bm5lbC52MS5QZWVyU25hcHNob3QSZwoQU3VibWl0S3ViZXJuZXRlcxIcLmZ1bm5lbC52MS5LdWJlcm5ldGVzUGF5bG9hZBoQLmZ1bm5lbC52MS5FbXB0eSIjiLUYBKK1GBtmdW5uZWwudjEuS3ViZXJuZXRlc1BheWxvYWQScwoUU3VibWl0UHVibGljRW5kcG9pbnQSIC5mdW5uZWwudjEuUHVibGljRW5kcG9pbnRQYXlsb2FkGhAuZnVubmVsLnYxLkVtcHR5IieItRgEorUYH2Z1bm5lbC52MS5QdWJsaWNFbmRwb2ludFBheWxvYWQSOgoOTGlzdEZvcndhcmRlcnMSEC5mdW5uZWwudjEuRW1wdHkaEC5mdW5uZWwudjEuTm9kZXMiBIi1GAQSQwoIU2h1dGRvd24SGi5mdW5uZWwudjEuU2h1dGRvd25SZXF1ZXN0GhUuZnVubmVsLnYxLlRlc3RSZXN1bHQiBIi1GAQyrgIKDUJyb2tlclNlcnZpY2USQwoLT3BlblNlc3Npb24SEC5mdW5uZWwudjEuRW1wdHkaGC5mdW5uZWwudjEuQnJva2VyU2Vzc2lvbiIIiLUYBpi1GAESZgoJR2V0Q29uZmlnEhAuZnVubmVsLnYxLkVtcHR5Gh8uZnVubmVsLnYxLkNvbmZpZ3VyYXRpb25QYXlsb2FkIiaItRgGorUYHmZ1bm5lbC52MS5Db25maWd1cmF0aW9uUGF5bG9hZBI2CgpSZW5ld0xlYXNlEhAuZnVubmVsLnYxLkVtcHR5GhAuZnVubmVsLnYxLkVtcHR5IgSItRgGEjgKDFJlbGVhc2VMZWFzZRIQLmZ1bm5lbC52MS5FbXB0eRoQLmZ1bm5lbC52MS5FbXB0eSIEiLUYBjJgChhXb3JrbG9hZEJvb3RzdHJhcFNlcnZpY2USRAoISXNzdWVLZXkSEC5mdW5uZWwudjEuRW1wdHkaHC5mdW5uZWwudjEuV29ya2xvYWRCb290c3RyYXAiCIi1GAaYtRgBQlFaT2dpdGh1Yi5jb20vdGFpbHNjYWxlLXgvdGFpbHNjYWxlLXByaXZhdGUtZnVubmVsL2ludGVybmFsL2dlbi9mdW5uZWwvdjE7ZnVubmVsdjFiBnByb3RvMw", [file_buf_validate_validate, file_funnel_v1_management, file_funnel_v1_options, file_funnel_v1_provisioning]);
 
 /**
  * @generated from message funnel.v1.ResolveApplicationRequest
@@ -122,7 +48,7 @@ export type ResolveApplicationRequest = Message<"funnel.v1.ResolveApplicationReq
  * Use `create(ResolveApplicationRequestSchema)` to create a new message.
  */
 export const ResolveApplicationRequestSchema: GenMessage<ResolveApplicationRequest> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 2);
+  messageDesc(file_funnel_v1_runtime, 0);
 
 /**
  * @generated from message funnel.v1.ConfigAck
@@ -144,7 +70,7 @@ export type ConfigAck = Message<"funnel.v1.ConfigAck"> & {
  * Use `create(ConfigAckSchema)` to create a new message.
  */
 export const ConfigAckSchema: GenMessage<ConfigAck> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 3);
+  messageDesc(file_funnel_v1_runtime, 1);
 
 /**
  * @generated from message funnel.v1.NodeHealth
@@ -221,73 +147,7 @@ export type NodeHealth = Message<"funnel.v1.NodeHealth"> & {
  * Use `create(NodeHealthSchema)` to create a new message.
  */
 export const NodeHealthSchema: GenMessage<NodeHealth> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 4);
-
-/**
- * @generated from message funnel.v1.ForwarderEnrollment
- */
-export type ForwarderEnrollment = Message<"funnel.v1.ForwarderEnrollment"> & {
-  /**
-   * @generated from field: string node_id = 1;
-   */
-  nodeId: string;
-
-  /**
-   * @generated from field: string auth_key = 2;
-   */
-  authKey: string;
-};
-
-/**
- * Describes the message funnel.v1.ForwarderEnrollment.
- * Use `create(ForwarderEnrollmentSchema)` to create a new message.
- */
-export const ForwarderEnrollmentSchema: GenMessage<ForwarderEnrollment> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 5);
-
-/**
- * @generated from message funnel.v1.ForwarderEnrollmentPayload
- */
-export type ForwarderEnrollmentPayload = Message<"funnel.v1.ForwarderEnrollmentPayload"> & {
-  /**
-   * @generated from field: string node_uid = 1;
-   */
-  nodeUid: string;
-
-  /**
-   * @generated from field: string hostname = 2;
-   */
-  hostname: string;
-
-  /**
-   * @generated from field: string public_key = 3;
-   */
-  publicKey: string;
-};
-
-/**
- * Describes the message funnel.v1.ForwarderEnrollmentPayload.
- * Use `create(ForwarderEnrollmentPayloadSchema)` to create a new message.
- */
-export const ForwarderEnrollmentPayloadSchema: GenMessage<ForwarderEnrollmentPayload> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 6);
-
-/**
- * @generated from message funnel.v1.ForwarderBindingPayload
- */
-export type ForwarderBindingPayload = Message<"funnel.v1.ForwarderBindingPayload"> & {
-  /**
-   * @generated from field: bool bind = 1;
-   */
-  bind: boolean;
-};
-
-/**
- * Describes the message funnel.v1.ForwarderBindingPayload.
- * Use `create(ForwarderBindingPayloadSchema)` to create a new message.
- */
-export const ForwarderBindingPayloadSchema: GenMessage<ForwarderBindingPayload> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 7);
+  messageDesc(file_funnel_v1_runtime, 2);
 
 /**
  * @generated from message funnel.v1.PublicEndpointPayload
@@ -324,7 +184,7 @@ export type PublicEndpointPayload = Message<"funnel.v1.PublicEndpointPayload"> &
  * Use `create(PublicEndpointPayloadSchema)` to create a new message.
  */
 export const PublicEndpointPayloadSchema: GenMessage<PublicEndpointPayload> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 8);
+  messageDesc(file_funnel_v1_runtime, 3);
 
 /**
  * @generated from message funnel.v1.PublicIngress
@@ -351,29 +211,7 @@ export type PublicIngress = Message<"funnel.v1.PublicIngress"> & {
  * Use `create(PublicIngressSchema)` to create a new message.
  */
 export const PublicIngressSchema: GenMessage<PublicIngress> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 9);
-
-/**
- * @generated from message funnel.v1.StateUpdate
- */
-export type StateUpdate = Message<"funnel.v1.StateUpdate"> & {
-  /**
-   * @generated from field: string key = 1;
-   */
-  key: string;
-
-  /**
-   * @generated from field: bytes value = 2;
-   */
-  value: Uint8Array;
-};
-
-/**
- * Describes the message funnel.v1.StateUpdate.
- * Use `create(StateUpdateSchema)` to create a new message.
- */
-export const StateUpdateSchema: GenMessage<StateUpdate> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 10);
+  messageDesc(file_funnel_v1_runtime, 4);
 
 /**
  * @generated from message funnel.v1.BrokerSession
@@ -395,34 +233,14 @@ export type BrokerSession = Message<"funnel.v1.BrokerSession"> & {
   nodeId: string;
 
   /**
-   * @generated from field: string auth_key = 4;
-   */
-  authKey: string;
-
-  /**
    * @generated from field: string management_url = 5;
    */
   managementUrl: string;
 
   /**
-   * @generated from field: string control_key = 6;
-   */
-  controlKey: string;
-
-  /**
    * @generated from field: string controller_id = 7;
    */
   controllerId: string;
-
-  /**
-   * @generated from field: bytes identity = 8;
-   */
-  identity: Uint8Array;
-
-  /**
-   * @generated from field: map<string, bytes> state = 9;
-   */
-  state: { [key: string]: Uint8Array };
 };
 
 /**
@@ -430,7 +248,7 @@ export type BrokerSession = Message<"funnel.v1.BrokerSession"> & {
  * Use `create(BrokerSessionSchema)` to create a new message.
  */
 export const BrokerSessionSchema: GenMessage<BrokerSession> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 11);
+  messageDesc(file_funnel_v1_runtime, 5);
 
 /**
  * @generated from message funnel.v1.KubernetesPayload
@@ -462,7 +280,7 @@ export type KubernetesPayload = Message<"funnel.v1.KubernetesPayload"> & {
  * Use `create(KubernetesPayloadSchema)` to create a new message.
  */
 export const KubernetesPayloadSchema: GenMessage<KubernetesPayload> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 12);
+  messageDesc(file_funnel_v1_runtime, 6);
 
 /**
  * @generated from message funnel.v1.KubernetesHost
@@ -494,7 +312,7 @@ export type KubernetesHost = Message<"funnel.v1.KubernetesHost"> & {
  * Use `create(KubernetesHostSchema)` to create a new message.
  */
 export const KubernetesHostSchema: GenMessage<KubernetesHost> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 13);
+  messageDesc(file_funnel_v1_runtime, 7);
 
 /**
  * @generated from message funnel.v1.PodEndpoint
@@ -526,7 +344,7 @@ export type PodEndpoint = Message<"funnel.v1.PodEndpoint"> & {
  * Use `create(PodEndpointSchema)` to create a new message.
  */
 export const PodEndpointSchema: GenMessage<PodEndpoint> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 14);
+  messageDesc(file_funnel_v1_runtime, 8);
 
 /**
  * @generated from message funnel.v1.HTTPBackend
@@ -573,7 +391,7 @@ export type HTTPBackend = Message<"funnel.v1.HTTPBackend"> & {
  * Use `create(HTTPBackendSchema)` to create a new message.
  */
 export const HTTPBackendSchema: GenMessage<HTTPBackend> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 15);
+  messageDesc(file_funnel_v1_runtime, 9);
 
 /**
  * @generated from message funnel.v1.HTTPMatch
@@ -610,7 +428,7 @@ export type HTTPMatch = Message<"funnel.v1.HTTPMatch"> & {
  * Use `create(HTTPMatchSchema)` to create a new message.
  */
 export const HTTPMatchSchema: GenMessage<HTTPMatch> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 16);
+  messageDesc(file_funnel_v1_runtime, 10);
 
 /**
  * @generated from message funnel.v1.HeaderFilter
@@ -637,7 +455,7 @@ export type HeaderFilter = Message<"funnel.v1.HeaderFilter"> & {
  * Use `create(HeaderFilterSchema)` to create a new message.
  */
 export const HeaderFilterSchema: GenMessage<HeaderFilter> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 17);
+  messageDesc(file_funnel_v1_runtime, 11);
 
 /**
  * @generated from message funnel.v1.HTTPRedirect
@@ -669,7 +487,7 @@ export type HTTPRedirect = Message<"funnel.v1.HTTPRedirect"> & {
  * Use `create(HTTPRedirectSchema)` to create a new message.
  */
 export const HTTPRedirectSchema: GenMessage<HTTPRedirect> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 18);
+  messageDesc(file_funnel_v1_runtime, 12);
 
 /**
  * @generated from message funnel.v1.HTTPRule
@@ -736,7 +554,7 @@ export type HTTPRule = Message<"funnel.v1.HTTPRule"> & {
  * Use `create(HTTPRuleSchema)` to create a new message.
  */
 export const HTTPRuleSchema: GenMessage<HTTPRule> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 19);
+  messageDesc(file_funnel_v1_runtime, 13);
 
 /**
  * @generated from message funnel.v1.RuntimeApplication
@@ -823,7 +641,7 @@ export type RuntimeApplication = Message<"funnel.v1.RuntimeApplication"> & {
  * Use `create(RuntimeApplicationSchema)` to create a new message.
  */
 export const RuntimeApplicationSchema: GenMessage<RuntimeApplication> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 20);
+  messageDesc(file_funnel_v1_runtime, 14);
 
 /**
  * @generated from message funnel.v1.HTTPRoute
@@ -855,7 +673,7 @@ export type HTTPRoute = Message<"funnel.v1.HTTPRoute"> & {
  * Use `create(HTTPRouteSchema)` to create a new message.
  */
 export const HTTPRouteSchema: GenMessage<HTTPRoute> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 21);
+  messageDesc(file_funnel_v1_runtime, 15);
 
 /**
  * @generated from message funnel.v1.ConfigurationPayload
@@ -912,7 +730,7 @@ export type ConfigurationPayload = Message<"funnel.v1.ConfigurationPayload"> & {
  * Use `create(ConfigurationPayloadSchema)` to create a new message.
  */
 export const ConfigurationPayloadSchema: GenMessage<ConfigurationPayload> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 22);
+  messageDesc(file_funnel_v1_runtime, 16);
 
 /**
  * Shutdown first withdraws owned state; confirm acknowledges receipt before device deletion.
@@ -921,9 +739,9 @@ export const ConfigurationPayloadSchema: GenMessage<ConfigurationPayload> = /*@_
  */
 export type ShutdownRequest = Message<"funnel.v1.ShutdownRequest"> & {
   /**
-   * @generated from field: bool confirm = 1;
+   * @generated from field: bool remove = 1;
    */
-  confirm: boolean;
+  remove: boolean;
 };
 
 /**
@@ -931,7 +749,7 @@ export type ShutdownRequest = Message<"funnel.v1.ShutdownRequest"> & {
  * Use `create(ShutdownRequestSchema)` to create a new message.
  */
 export const ShutdownRequestSchema: GenMessage<ShutdownRequest> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 23);
+  messageDesc(file_funnel_v1_runtime, 17);
 
 /**
  * Only complete, successfully parsed scans may retire registrations.
@@ -965,7 +783,7 @@ export type DockerInventoryPayload = Message<"funnel.v1.DockerInventoryPayload">
  * Use `create(DockerInventoryPayloadSchema)` to create a new message.
  */
 export const DockerInventoryPayloadSchema: GenMessage<DockerInventoryPayload> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 24);
+  messageDesc(file_funnel_v1_runtime, 18);
 
 /**
  * @generated from message funnel.v1.DockerInventoryContainer
@@ -992,19 +810,160 @@ export type DockerInventoryContainer = Message<"funnel.v1.DockerInventoryContain
  * Use `create(DockerInventoryContainerSchema)` to create a new message.
  */
 export const DockerInventoryContainerSchema: GenMessage<DockerInventoryContainer> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 25);
+  messageDesc(file_funnel_v1_runtime, 19);
+
+/**
+ * @generated from message funnel.v1.RegisterComponentRequest
+ */
+export type RegisterComponentRequest = Message<"funnel.v1.RegisterComponentRequest"> & {
+  /**
+   * @generated from field: string component_id = 1;
+   */
+  componentId: string;
+
+  /**
+   * @generated from field: string instance_id = 2;
+   */
+  instanceId: string;
+
+  /**
+   * @generated from field: funnel.v1.DeploymentRequest deployment = 3;
+   */
+  deployment?: DeploymentRequest | undefined;
+
+  /**
+   * @generated from field: string parent_id = 4;
+   */
+  parentId: string;
+
+  /**
+   * @generated from field: string node_uid = 5;
+   */
+  nodeUid: string;
+};
+
+/**
+ * Describes the message funnel.v1.RegisterComponentRequest.
+ * Use `create(RegisterComponentRequestSchema)` to create a new message.
+ */
+export const RegisterComponentRequestSchema: GenMessage<RegisterComponentRequest> = /*@__PURE__*/
+  messageDesc(file_funnel_v1_runtime, 20);
+
+/**
+ * @generated from message funnel.v1.RegisteredComponent
+ */
+export type RegisteredComponent = Message<"funnel.v1.RegisteredComponent"> & {
+  /**
+   * @generated from field: string component_id = 1;
+   */
+  componentId: string;
+
+  /**
+   * @generated from field: string instance_id = 2;
+   */
+  instanceId: string;
+
+  /**
+   * @generated from field: string device_id = 3;
+   */
+  deviceId: string;
+
+  /**
+   * @generated from field: int64 generation = 4;
+   */
+  generation: bigint;
+
+  /**
+   * @generated from field: int64 lease_until = 5;
+   */
+  leaseUntil: bigint;
+};
+
+/**
+ * Describes the message funnel.v1.RegisteredComponent.
+ * Use `create(RegisteredComponentSchema)` to create a new message.
+ */
+export const RegisteredComponentSchema: GenMessage<RegisteredComponent> = /*@__PURE__*/
+  messageDesc(file_funnel_v1_runtime, 21);
+
+/**
+ * @generated from message funnel.v1.WorkloadBootstrap
+ */
+export type WorkloadBootstrap = Message<"funnel.v1.WorkloadBootstrap"> & {
+  /**
+   * @generated from field: string auth_key = 1;
+   */
+  authKey: string;
+
+  /**
+   * @generated from field: string component_id = 2;
+   */
+  componentId: string;
+
+  /**
+   * @generated from field: string parent_id = 3;
+   */
+  parentId: string;
+
+  /**
+   * @generated from field: string instance_id = 4;
+   */
+  instanceId: string;
+
+  /**
+   * @generated from field: string installation = 5;
+   */
+  installation: string;
+
+  /**
+   * @generated from field: string mode = 6;
+   */
+  mode: string;
+
+  /**
+   * @generated from field: string node_uid = 7;
+   */
+  nodeUid: string;
+
+  /**
+   * @generated from field: string node_name = 8;
+   */
+  nodeName: string;
+
+  /**
+   * @generated from field: int64 expires_at = 9;
+   */
+  expiresAt: bigint;
+};
+
+/**
+ * Describes the message funnel.v1.WorkloadBootstrap.
+ * Use `create(WorkloadBootstrapSchema)` to create a new message.
+ */
+export const WorkloadBootstrapSchema: GenMessage<WorkloadBootstrap> = /*@__PURE__*/
+  messageDesc(file_funnel_v1_runtime, 22);
 
 /**
  * @generated from service funnel.v1.NodeService
  */
 export const NodeService: GenService<{
   /**
+   * Role-authorized registration. Identity and role come only from WhoIs.
+   *
+   * @generated from rpc funnel.v1.NodeService.RegisterComponent
+   */
+  registerComponent: {
+    methodKind: "unary";
+    input: typeof RegisterComponentRequestSchema;
+    output: typeof RegisteredComponentSchema;
+  },
+  /**
    * @generated from rpc funnel.v1.NodeService.GetConfig
    */
   getConfig: {
     methodKind: "unary";
     input: typeof EmptySchema;
-    output: typeof SignedEnvelopeSchema;
+    output: typeof ConfigurationPayloadSchema;
   },
   /**
    * @generated from rpc funnel.v1.NodeService.ResolveApplication
@@ -1012,7 +971,7 @@ export const NodeService: GenService<{
   resolveApplication: {
     methodKind: "unary";
     input: typeof ResolveApplicationRequestSchema;
-    output: typeof SignedEnvelopeSchema;
+    output: typeof ConfigurationPayloadSchema;
   },
   /**
    * @generated from rpc funnel.v1.NodeService.Acknowledge
@@ -1040,7 +999,7 @@ export const NodeService: GenService<{
    */
   submitReport: {
     methodKind: "unary";
-    input: typeof SignedEnvelopeSchema;
+    input: typeof ExposureReportSchema;
     output: typeof EmptySchema;
   },
   /**
@@ -1050,7 +1009,7 @@ export const NodeService: GenService<{
    */
   submitDockerInventory: {
     methodKind: "unary";
-    input: typeof SignedEnvelopeSchema;
+    input: typeof DockerInventoryPayloadSchema;
     output: typeof EmptySchema;
   },
   /**
@@ -1058,7 +1017,7 @@ export const NodeService: GenService<{
    */
   submitPeers: {
     methodKind: "unary";
-    input: typeof SignedEnvelopeSchema;
+    input: typeof PeerSnapshotSchema;
     output: typeof EmptySchema;
   },
   /**
@@ -1066,7 +1025,7 @@ export const NodeService: GenService<{
    */
   submitKubernetes: {
     methodKind: "unary";
-    input: typeof SignedEnvelopeSchema;
+    input: typeof KubernetesPayloadSchema;
     output: typeof EmptySchema;
   },
   /**
@@ -1074,16 +1033,8 @@ export const NodeService: GenService<{
    */
   submitPublicEndpoint: {
     methodKind: "unary";
-    input: typeof SignedEnvelopeSchema;
+    input: typeof PublicEndpointPayloadSchema;
     output: typeof EmptySchema;
-  },
-  /**
-   * @generated from rpc funnel.v1.NodeService.EnrollForwarder
-   */
-  enrollForwarder: {
-    methodKind: "unary";
-    input: typeof SignedEnvelopeSchema;
-    output: typeof ForwarderEnrollmentSchema;
   },
   /**
    * @generated from rpc funnel.v1.NodeService.ListForwarders
@@ -1092,14 +1043,6 @@ export const NodeService: GenService<{
     methodKind: "unary";
     input: typeof EmptySchema;
     output: typeof NodesSchema;
-  },
-  /**
-   * @generated from rpc funnel.v1.NodeService.BindForwarder
-   */
-  bindForwarder: {
-    methodKind: "unary";
-    input: typeof SignedEnvelopeSchema;
-    output: typeof EmptySchema;
   },
   /**
    * @generated from rpc funnel.v1.NodeService.Shutdown
@@ -1111,21 +1054,6 @@ export const NodeService: GenService<{
   },
 }> = /*@__PURE__*/
   serviceDesc(file_funnel_v1_runtime, 0);
-
-/**
- * @generated from service funnel.v1.EnrollmentService
- */
-export const EnrollmentService: GenService<{
-  /**
-   * @generated from rpc funnel.v1.EnrollmentService.BindSigningKey
-   */
-  bindSigningKey: {
-    methodKind: "unary";
-    input: typeof BindSigningKeyRequestSchema;
-    output: typeof EmptySchema;
-  },
-}> = /*@__PURE__*/
-  serviceDesc(file_funnel_v1_runtime, 1);
 
 /**
  * BrokerService is served only by the installation's HTTPS broker, not control.
@@ -1147,7 +1075,7 @@ export const BrokerService: GenService<{
   getConfig: {
     methodKind: "unary";
     input: typeof EmptySchema;
-    output: typeof SignedEnvelopeSchema;
+    output: typeof ConfigurationPayloadSchema;
   },
   /**
    * @generated from rpc funnel.v1.BrokerService.RenewLease
@@ -1158,20 +1086,29 @@ export const BrokerService: GenService<{
     output: typeof EmptySchema;
   },
   /**
-   * @generated from rpc funnel.v1.BrokerService.WriteState
-   */
-  writeState: {
-    methodKind: "unary";
-    input: typeof StateUpdateSchema;
-    output: typeof EmptySchema;
-  },
-  /**
    * @generated from rpc funnel.v1.BrokerService.ReleaseLease
    */
   releaseLease: {
     methodKind: "unary";
     input: typeof EmptySchema;
     output: typeof EmptySchema;
+  },
+}> = /*@__PURE__*/
+  serviceDesc(file_funnel_v1_runtime, 1);
+
+/**
+ * WorkloadBootstrapService is served by the cluster operator over authenticated TLS.
+ *
+ * @generated from service funnel.v1.WorkloadBootstrapService
+ */
+export const WorkloadBootstrapService: GenService<{
+  /**
+   * @generated from rpc funnel.v1.WorkloadBootstrapService.IssueKey
+   */
+  issueKey: {
+    methodKind: "unary";
+    input: typeof EmptySchema;
+    output: typeof WorkloadBootstrapSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_funnel_v1_runtime, 2);

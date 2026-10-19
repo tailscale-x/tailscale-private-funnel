@@ -3,11 +3,8 @@ package kubebroker
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -27,17 +24,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type Enrollment struct{ NodeID, AuthKey string }
 type Broker struct {
-	Kube                                                                                    client.Client
-	Tokens                                                                                  kubernetes.Interface
-	Namespace, Installation, DaemonSet, ServiceAccount, Audience, ManagementURL, ControlKey string
-	Configuration                                                                           func(context.Context) (report.Envelope, error)
-	ControllerID                                                                            string
-	Enroll                                                                                  func(context.Context, string, string, string) (Enrollment, error)
-	Allowed                                                                                 func(context.Context, string) (bool, error)
-	Ready                                                                                   func() bool
-	Now                                                                                     func() time.Time
+	Kube                                                                        client.Client
+	Tokens                                                                      kubernetes.Interface
+	Namespace, Installation, DaemonSet, ServiceAccount, Audience, ManagementURL string
+	Configuration                                                               func(context.Context) (report.Snapshot, error)
+	ControllerID                                                                string
+	Ready                                                                       func() bool
+	Now                                                                         func() time.Time
 }
 type caller struct {
 	pod  core.Pod
@@ -76,7 +70,7 @@ func (b *Broker) authenticate(ctx context.Context, authorization, procedure stri
 	if e = b.Kube.Get(ctx, types.NamespacedName{Namespace: b.Namespace, Name: names[0]}, &out.pod); e != nil {
 		return out, e
 	}
-	if string(out.pod.UID) != uids[0] || (out.pod.DeletionTimestamp != nil && procedure != funnelv1connect.BrokerServiceReleaseLeaseProcedure && procedure != funnelv1connect.BrokerServiceWriteStateProcedure) || out.pod.Spec.ServiceAccountName != b.ServiceAccount || out.pod.Spec.NodeName == "" {
+	if string(out.pod.UID) != uids[0] || (out.pod.DeletionTimestamp != nil && procedure != funnelv1connect.BrokerServiceReleaseLeaseProcedure) || out.pod.Spec.ServiceAccountName != b.ServiceAccount || out.pod.Spec.NodeName == "" {
 		return out, fmt.Errorf("invalid pod binding")
 	}
 	var ds apps.DaemonSet
@@ -116,10 +110,10 @@ func (b *Broker) lease(ctx context.Context, c caller, acquire bool) error {
 		}
 		expired := l.Spec.RenewTime == nil || l.Spec.RenewTime.Add(60*time.Second).Before(b.now())
 		if current != holder && (!acquire || !expired) {
-			return fmt.Errorf("identity lease is held by another pod")
+			return fmt.Errorf("assignment lease is held by another pod")
 		}
 		if !acquire && expired {
-			return fmt.Errorf("identity lease expired; rejoin required")
+			return fmt.Errorf("assignment lease expired; reacquisition required")
 		}
 		l.Spec.HolderIdentity = &holder
 		l.Spec.RenewTime = &now
@@ -131,56 +125,10 @@ func (b *Broker) session(ctx context.Context, c caller) (*v1.BrokerSession, erro
 	if e := b.lease(ctx, c, true); e != nil {
 		return nil, connect.NewError(connect.CodeAborted, errors.New(e.Error()))
 	}
-	var s core.Secret
-	e := b.Kube.Get(ctx, types.NamespacedName{Namespace: b.Namespace, Name: c.key}, &s)
-	if apierrors.IsNotFound(e) {
-		pub, priv, err := report.GenerateKey()
-		if err != nil {
-			return nil, connect.NewError(connect.CodeUnavailable, errors.New("identity generation failed"))
-		}
-		identity, _ := json.Marshal(map[string]string{"public": base64.RawStdEncoding.EncodeToString(pub), "private": base64.RawStdEncoding.EncodeToString(priv)})
-		s = core.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: b.Namespace, Name: c.key, Labels: map[string]string{"app.kubernetes.io/instance": b.Installation}}, Data: map[string][]byte{"identity": identity, "node-uid": []byte(c.node.UID)}}
-		if uid := os.Getenv("FUNNEL_OWNER_UID"); uid != "" {
-			s.Labels["tailscale-private-funnel.io/owner-uid"] = uid
-		}
-		if e = b.Kube.Create(ctx, &s); e != nil {
-			return nil, connect.NewError(connect.CodeUnavailable, errors.New("identity reservation failed"))
-		}
-	} else if e != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, errors.New("state unavailable"))
-	}
-	if string(s.Data["node-uid"]) != string(c.node.UID) || len(s.Data["identity"]) == 0 {
-		return nil, connect.NewError(connect.CodeAborted, errors.New("corrupt identity state"))
-	}
-	out := &v1.BrokerSession{ControllerId: b.ControllerID, NodeUid: string(c.node.UID), NodeName: c.node.Name, NodeId: string(s.Data["node-id"]), ManagementUrl: b.ManagementURL, ControlKey: b.ControlKey, Identity: s.Data["identity"], State: map[string][]byte{}}
-	for k, v := range s.Data {
-		if strings.HasPrefix(k, "tsnet.") {
-			out.State[k] = v
-		}
-	}
-	if len(out.State) == 0 {
-		var identity struct {
-			Public string `json:"public"`
-		}
-		if json.Unmarshal(out.Identity, &identity) != nil || identity.Public == "" {
-			return nil, connect.NewError(connect.CodeAborted, errors.New("corrupt signing identity"))
-		}
-		hostname := fmt.Sprintf("%s-%x", b.Installation, sha256.Sum256([]byte(c.node.UID)))
-		if len(hostname) > 63 {
-			hostname = hostname[:63]
-		}
-		enrollment, e := b.Enroll(ctx, string(c.node.UID), hostname, identity.Public)
-		if e != nil {
-			return nil, connect.NewError(connect.CodeUnavailable, errors.New(e.Error()))
-		}
-		out.AuthKey = enrollment.AuthKey
-		out.NodeId = enrollment.NodeID
-		s.Data["node-id"] = []byte(out.NodeId)
-		if e = b.Kube.Update(ctx, &s); e != nil {
-			return nil, connect.NewError(connect.CodeUnavailable, errors.New("binding persistence failed"))
-		}
-	} else if out.NodeId == "" {
-		return nil, connect.NewError(connect.CodeAborted, errors.New("corrupt enrollment binding"))
-	}
-	return out, nil
+	sum := sha256.Sum256([]byte(b.ControllerID + ":" + string(c.node.UID)))
+	return &v1.BrokerSession{ControllerId: b.ControllerID, NodeUid: string(c.node.UID), NodeName: c.node.Name, NodeId: fmt.Sprintf("forwarder-%x", sum[:16]), ManagementUrl: b.ManagementURL}, nil
+}
+
+func ownedRuntimeLabels() map[string]string {
+	return map[string]string{"app.kubernetes.io/part-of": "tailscale-private-funnel"}
 }

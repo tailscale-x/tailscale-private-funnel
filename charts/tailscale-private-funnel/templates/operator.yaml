@@ -38,13 +38,45 @@ spec:
             {{- range uniq .Values.managedNamespaces }}
             - --managed-namespace={{ . }}
             {{- end }}
+          env:
+            - name: POD_NAMESPACE
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
-          ports: [{name: health, containerPort: 9090}]
+          ports: [{name: health, containerPort: 9090}, {name: bootstrap, containerPort: 9444}]
           readinessProbe: {httpGet: {path: /readyz, port: health}}
           livenessProbe: {httpGet: {path: /healthz, port: health}}
           resources: {{ toYaml .Values.resources | nindent 12 }}
           volumeMounts: [{name: tmp, mountPath: /tmp}]
       volumes: [{name: tmp, emptyDir: {}}]
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tailscale-private-funnel-k8s-operator-bootstrap
+spec:
+  selector: {app.kubernetes.io/name: tailscale-private-funnel-k8s-operator}
+  ports: [{name: bootstrap, port: 9444, targetPort: bootstrap}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tailscale-private-funnel-operator-tls
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [tailscale-private-funnel-operator-bootstrap-tls]
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tailscale-private-funnel-operator-tls
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: tailscale-private-funnel-operator-tls}
+subjects: [{kind: ServiceAccount, name: tailscale-private-funnel-k8s-operator, namespace: {{ .Release.Namespace }}}]

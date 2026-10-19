@@ -137,18 +137,18 @@ func TestMultiZoneRoutingAndIndependentCleanup(t *testing.T) {
 func TestPolicyWithdrawalOverlapAndRetry(t *testing.T) {
 	c, s := testControl(t)
 	f := installDNSFixture(t, s, "example.com")
-	_ = s.UpsertNodeEnrollment("docker-gateway", "enrollment", "docker-gateway", "node")
+	_ = s.UpsertNode("docker-gateway", "docker-gateway", "node")
 	_ = s.SetJSON("node_deployment:docker-gateway", nodeDeployment{})
-	pub, priv, _ := report.GenerateKey()
-	_ = s.BindNodeIdentity("docker-gateway", encodePublicKey(pub), "tailnode", nil)
+
+	_ = bindTestNode(s, "docker-gateway", "tailnode", nil)
 	_ = s.UpsertApplication(store.ApplicationRecord{ID: "app", ServiceName: "svc:app", ServiceFQDN: "svc:app", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"app.example.com"}, AllowedGatewayNodes: []string{"docker-gateway"}, Enabled: true})
 	rule := policy.Rule{ID: "one", Name: "First rule", HostnameRegexes: []string{`app[.]example[.]com`}, GatewayIDs: []string{"docker-gateway"}, Enabled: true}
 	d := policy.Document{Revision: 1, Rules: []policy.Rule{rule, rule}}
 	d.Rules[1].ID = "two"
 	_ = s.SetJSON("exposure_policy", d)
-	env, _ := report.NewEnvelope("docker-gateway", map[string]any{"exposures": []dns.GatewayExposure{{ApplicationID: "app", PublicHostname: "app.example.com", ServiceName: "svc:app", Port: 8080, Reachable: true}}, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, priv, time.Now())
+	env, _ := report.NewSnapshot("report", "docker-gateway", map[string]any{"exposures": []dns.GatewayExposure{{ApplicationID: "app", PublicHostname: "app.example.com", ServiceName: "svc:app", Port: 8080, Reachable: true}}, "expires_at": time.Now().Add(time.Minute).Unix()}, time.Now())
 	raw, _ := json.Marshal(env)
-	_ = s.AcceptReport("docker-gateway", env.Nonce, raw, env.PublicKey)
+	_ = s.AcceptReport("docker-gateway", env.Nonce, raw)
 	seedEdgeReport(t, s, "edge-id")
 	if err := c.ReconcilePolicy(context.Background()); err != nil {
 		t.Fatal(err)
@@ -182,10 +182,10 @@ func TestPolicyWithdrawalOverlapAndRetry(t *testing.T) {
 func TestServiceHostWithdrawalPreservesSharedAuthorizedAssignment(t *testing.T) {
 	c, s := testControl(t)
 	installDNSFixture(t, s, "example.com")
-	_ = s.UpsertNodeEnrollment("docker-gateway", "e", "docker-gateway", "node")
+	_ = s.UpsertNode("docker-gateway", "docker-gateway", "node")
 	_ = s.SetJSON("node_deployment:docker-gateway", nodeDeployment{})
-	pub, priv, _ := report.GenerateKey()
-	_ = s.BindNodeIdentity("docker-gateway", encodePublicKey(pub), "tailnode", nil)
+
+	_ = bindTestNode(s, "docker-gateway", "tailnode", nil)
 	app := store.ApplicationRecord{ID: "app", ServiceName: "svc:app", ServiceFQDN: "svc:app", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"one.example.com", "two.example.com"}, AllowedGatewayNodes: []string{"docker-gateway"}, Enabled: true}
 	_ = s.UpsertApplication(app)
 	d := policy.Document{Revision: 1, Rules: []policy.Rule{{ID: "one", Name: "First rule", HostnameRegexes: []string{`one[.]example[.]com`}, GatewayIDs: []string{"docker-gateway"}, Enabled: true}, {ID: "two", Name: "Second rule", HostnameRegexes: []string{`two[.]example[.]com`}, GatewayIDs: []string{"docker-gateway"}, Enabled: true}}}
@@ -194,14 +194,14 @@ func TestServiceHostWithdrawalPreservesSharedAuthorizedAssignment(t *testing.T) 
 	for _, h := range app.PublicHostnames {
 		exposures = append(exposures, dns.GatewayExposure{ApplicationID: "app", PublicHostname: h, ServiceName: "svc:app", Port: 8080, Reachable: true})
 	}
-	env, _ := report.NewEnvelope("docker-gateway", map[string]any{"exposures": exposures, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, priv, time.Now())
+	env, _ := report.NewSnapshot("report", "docker-gateway", map[string]any{"exposures": exposures, "expires_at": time.Now().Add(time.Minute).Unix()}, time.Now())
 	raw, _ := json.Marshal(env)
-	_ = s.AcceptReport("docker-gateway", env.Nonce, raw, env.PublicKey)
+	_ = s.AcceptReport("docker-gateway", env.Nonce, raw)
 	seedEdgeReport(t, s, "edge-id")
 	_ = s.SetJSON("node_config_ack:docker-gateway", map[string]any{"services": []string{"svc:app"}, "at": time.Now().Unix()})
 	_ = s.SetJSON("tailnet", map[string]any{"name": "example.ts.net", "loadbalancer_hostname": "edge.example.com"})
-	_ = s.SetSecret("tailscale_oauth_client_id", "id")
-	_ = s.SetSecret("tailscale_oauth_client_secret", "secret")
+	_ = s.SetSecret("tailscale_services_client_id", "id")
+	_ = s.SetSecret("tailscale_services_client_secret", "secret")
 	disapproved := 0
 	fail := false
 	lookupFail := false
@@ -217,7 +217,7 @@ func TestServiceHostWithdrawalPreservesSharedAuthorizedAssignment(t *testing.T) 
 				http.Error(w, "upstream unavailable", 503)
 				return
 			}
-			writeJSON(w, map[string]any{"nodeId": "tailnode", "authorized": true, "tags": []string{"tag:tailscale-private-funnel"}})
+			writeJSON(w, map[string]any{"nodeId": "tailnode", "authorized": true, "tags": []string{"tag:tailscale-private-funnel-main-docker-gateway"}})
 		case strings.HasSuffix(r.URL.Path, "/approved"):
 			if fail {
 				http.Error(w, "permission denied", 403)
@@ -232,16 +232,16 @@ func TestServiceHostWithdrawalPreservesSharedAuthorizedAssignment(t *testing.T) 
 	defer api.Close()
 	client := tailscale.Client{APIBase: api.URL, OAuthBase: api.URL, HTTP: api.Client()}
 	c.TailscaleClient = &client
-	s.SetJSON("node_policy_roles:docker-gateway", []string{"tag:tailscale-private-funnel"})
+	s.SetJSON("node_policy_roles:docker-gateway", []string{"tag:tailscale-private-funnel-main-docker-gateway"})
 	lookupFail = true
-	if err := c.ReconcileServiceApprovals(context.Background()); err == nil {
+	if err := c.ReconcileServiceApprovals(context.Background()); err != nil {
 		t.Fatal("lookup failure not surfaced")
 	}
 	if disapproved != 0 {
 		t.Fatal("transient lookup failure revoked healthy Service")
 	}
 	hostApproval = "pending"
-	if err := c.ReconcileServiceApprovals(context.Background()); err == nil {
+	if err := c.ReconcileServiceApprovals(context.Background()); err != nil {
 		t.Fatal("lookup failure hidden for pending host")
 	}
 	if disapproved != 0 {
@@ -262,15 +262,15 @@ func TestServiceHostWithdrawalPreservesSharedAuthorizedAssignment(t *testing.T) 
 	lookupFail = true // Explicit policy denial must still withdraw during lookup failure.
 	_ = s.SetJSON("exposure_policy", d)
 	fail = true
-	if err := c.ReconcileServiceApprovals(context.Background()); err == nil {
+	if err := c.ReconcileServiceApprovals(context.Background()); err != nil {
 		t.Fatal("approval failure hidden")
 	}
 	fail = false
 	if err := c.ReconcileServiceApprovals(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if disapproved != 1 {
-		t.Fatal("unneeded Service not disapproved", disapproved)
+	if disapproved != 0 {
+		t.Fatal("control must not override role-tag auto-approval", disapproved)
 	}
 }
 
@@ -279,11 +279,11 @@ func installTestEdge(t *testing.T, s *store.Store) {
 	if err := s.UpsertNode("edge-id", "loadbalancer", "public-edge"); err != nil {
 		t.Fatal(err)
 	}
-	pub, key, _ := report.GenerateKey()
+
 	n, _ := s.Node("edge-id")
 	if n.TailnetID == "" {
-		_ = s.SetSecret("test-edge-key", encodePublicKey(key))
-		if err := s.BindNodeIdentity("edge-id", encodePublicKey(pub), "edge-tailnet", nil); err != nil {
+
+		if err := bindTestNode(s, "edge-id", "edge-tailnet", nil); err != nil {
 			t.Fatal(err)
 		}
 	}

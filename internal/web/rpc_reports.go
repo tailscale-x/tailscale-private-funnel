@@ -31,7 +31,7 @@ func (s *managementRPC) ListReports(ctx context.Context, _ *connect.Request[v1.E
 		if err != nil {
 			return nil, rpcFailure(connect.CodeInternal, err)
 		}
-		var envelope report.Envelope
+		var envelope report.Snapshot
 		if err = json.Unmarshal([]byte(snapshots[id]), &envelope); err != nil {
 			return nil, rpcFailure(connect.CodeInternal, err)
 		}

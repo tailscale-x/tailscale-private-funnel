@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 )
@@ -27,7 +26,6 @@ func (c *Control) cleanupRevokedNode(ctx context.Context, n store.NodeRecord) er
 func (c *Control) cleanupRevokedNodeLocked(ctx context.Context, n store.NodeRecord) error {
 	var state nodeCleanupState
 	_ = c.Store.GetJSON("node_cleanup:"+n.ID, &state)
-	deleteDevice := !state.AwaitingAck && state.DeleteAfter <= time.Now().Unix()
 
 	if !n.Revoked {
 		return fmt.Errorf("node must be revoked before cleanup")
@@ -67,70 +65,18 @@ func (c *Control) cleanupRevokedNodeLocked(ctx context.Context, n store.NodeReco
 	_ = c.Store.RevokeBackends(n.ID)
 	_ = c.Store.DeleteReport(n.ID)
 	failures := []string{}
-	ts, err := c.tailscaleRuntimeClient()
-	if err != nil {
-		failures = append(failures, err.Error())
-	} else {
-		apps, e := c.Store.Applications()
-		if e != nil {
-			return e
-		}
-		services := map[string]bool{}
-		for _, a := range apps {
-			if len(a.AllowedGatewayNodes) > 0 && !contains(a.AllowedGatewayNodes, n.ID) && !contains(a.AllowedGatewayNodes, n.ParentID) {
-				continue
-			}
-			services[a.ServiceName] = true
-			for _, b := range a.HTTPBackends {
-				services[b.ServiceName] = true
-			}
-		}
-		for service := range services {
-			if !strings.HasPrefix(service, "svc:") {
-				continue
-			}
-			hosts, e := ts.ListServiceHosts(ctx, service)
-			if e != nil {
-				if !strings.Contains(e.Error(), "HTTP 404") {
-					failures = append(failures, e.Error())
-				}
-				continue
-			}
-			for _, h := range hosts {
-				if h.NodeID == n.TailnetID && (h.ApprovalLevel == "approved:auto" || h.ApprovalLevel == "approved:manual") {
-					if _, e = ts.ApproveServiceDevice(ctx, service, n.TailnetID, false); e != nil {
-						failures = append(failures, e.Error())
-					}
-				}
-			}
-		}
 
-	}
 	if e := c.reconcileExposures(ctx); e != nil {
 		failures = append(failures, e.Error())
 	}
-	// Keep the caller's device usable for cleanup retries until DNS and Service cleanup succeeds.
-	if len(failures) == 0 && deleteDevice {
-		devices, e := ts.ListDevices(ctx)
-		if e != nil {
-			failures = append(failures, e.Error())
-		} else {
-			for _, d := range devices {
-				if d.NodeID == n.TailnetID {
-					if e = ts.DeleteDevice(ctx, d.ID); e != nil {
-						failures = append(failures, e.Error())
-					}
-				}
-			}
-		}
-	}
+
 	if len(failures) > 0 {
 		state.Pending = true
 		state.Errors = failures
 		_ = c.Store.SetJSON("node_cleanup:"+n.ID, state)
 		return fmt.Errorf("%s", strings.Join(failures, "; "))
 	}
-	state.Pending = !deleteDevice
+	state.Pending = false
 	state.Errors = nil
 	state.OperationalComplete = true
 	_ = c.Store.SetJSON("node_cleanup:"+n.ID, state)

@@ -14,15 +14,13 @@
 
 </div>
 
-Local Funnel keeps management private to your tailnet while making selected HTTP
-services reachable through a public HTTPS load balancer. The control plane owns policy,
-enrollment, signed gateway reports, and every DNS mutation.
+Local Funnel keeps management private and exposes policy-authorized HTTP services
+through a public Caddy edge. Control owns every DNS mutation and the exact ownership
+ledger. Runtime authentication comes from verified Tailscale device-role tags.
 
-```text
-tailscale-private-funnel native controls|gateways|loadbalancers ...
-tailscale-private-funnel k8s operator|controls|gateways|loadbalancers ...
-tailscale-private-funnel manage ...
-```
+**Runtime model:** verified Tailscale roles replace Funnel enrollment and component
+signatures. Older enrollment-based runtimes are not compatible. Use matching
+artifact versions for the generator, control, native services and Kubernetes operator.
 
 ## See the console
 
@@ -35,7 +33,7 @@ review policy, and apply only the DNS records this installation owns.
 
 | Gateway setup instructions | Ownership preview |
 | --- | --- |
-| ![Enrollment](docs/screenshots/control-enrollment-connect.png) | ![Operations](docs/screenshots/control-operations-connect.png) |
+| ![Gateway setup](docs/screenshots/control-enrollment-connect.png) | ![Operations](docs/screenshots/control-operations-connect.png) |
 
 The dashboard makes the security boundary visible: the control plane owns policy and
 DNS, the load balancer is the only public edge, and specialized gateways report only the
@@ -46,248 +44,163 @@ HTTP path routing supports Kubernetes PathPrefix and named Docker route labels, 
 
 Runtime reports are accepted independently of external DNS and Tailscale API work, so API stalls do not consume healthy nodes' report leases. See [report acceptance and reconciliation](docs/report-reconciliation.md).
 
-Docker container/label removal automatically retires registrations after a complete signed scan, allowing authorized Kubernetes reclamation without changing DNS ownership. See [registration lifecycle](docs/docker-registration-lifecycle.md).
+Docker container/label removal automatically retires registrations after a complete authenticated scan, allowing authorized Kubernetes reclamation without changing DNS ownership. See [registration lifecycle](docs/docker-registration-lifecycle.md).
 
-## Architecture
+
+## Network and authority
 
 ```mermaid
 flowchart LR
-    Public[Public HTTPS] --> LB[Caddy load balancers]
-    LB --> TS[Tailscale application Services]
-    TS --> Docker[Docker gateway]
-    TS --> Tailnet[Tailnet gateway]
-    TS --> K8s[Kubernetes gateway]
-    Docker --> Relay[Isolated TCP relays]
-    Relay --> Containers[Application networks]
-    Tailnet --> Machines[Authorized tailnet machines]
-    K8s --> Forwarders[Node-local forwarder DaemonSet]
-    Forwarders --> Pods[Ready same-node Pods]
-    Control[Private control plane] -. Policy and signed configuration .-> LB
-    Control -. Enrollment and approval .-> TS
-    Control -. Owned DNS only .-> DNS[DNS providers]
+  Browser[Public client] -->|HTTPS| LB[Caddy load balancer]
+  LB -->|Encrypted application Service TCP| Docker[Docker gateway]
+  LB -->|Encrypted application Service TCP| Tailnet[Tailnet gateway]
+  LB -->|Encrypted application Service TCP| K8s[Node-local Kubernetes forwarders]
+  Docker -->|Direct container IP and port| Container[Approved Docker backend]
+  Tailnet -->|Explicit tailnet grant| Machine[Selected backend machine]
+  K8s -->|Ready same-node endpoint only| Pod[Application Pod]
+  Runtime[Installation role-tagged runtimes] -->|WhoIs-authenticated control Service| Control[Private control]
+  Humans[Authorized Owner/Admin] --> Control
+  Control -->|Exact owned records only| DNS[DNS provider]
 ```
 
-The public edge is separate from backend discovery. Gateways use independent persistent
-identities inside your shared-tag Tailscale policy; the application never edits ACLs.
-Docker relays have no credentials or socket. The Kubernetes controller/broker manages identity Secrets only in its installation
-namespace. Forwarders have no Kubernetes API permissions. Neither needs Docker, TUN,
-or host networking.
+| Boundary | Enforcement |
+|---|---|
+| Installation | Five exact device-role tags and two separate Service tags per installation; no generated cross-installation grants |
+| Human administration | Verified WhoIs plus separate human-role authorization; runtime tags never confer management permission |
+| Runtime registration | Exact installation/role check; logical IDs are selectors, not secrets; bounded instance leases prevent competing writers |
+| Exposure | Default-deny hostname policy, backend identity/reachability checks, fresh reports and load-balancer acknowledgment |
+| Docker | Native supervisor holds Docker access; approved network/IP validation and direct forwarding; no relay, published host port, or additional HTTP proxy |
+| Kubernetes | Pod-bound TLS key issuance; disposable network identities; forwarders have no Kubernetes API permissions and select only local ready endpoints |
+| Host reuse | Borrowed daemon is never joined, retagged, renamed, logged out, or deleted; scoped Service ownership and ETags preserve unrelated configuration |
+| DNS | Internal exact-owner ledger; unmanaged overwrites require explicit preview-bound approval; no TXT markers |
 
-## How it works
+Devices sharing one installation role share its authority. Role tags are not a
+per-process sandbox. Existing broad tailnet allows can weaken isolation: generated
+policy cannot override earlier allows. Additional Tailnet backend access is an
+explicit administrator-managed grant. Funnel never edits ACL policy.
 
-1. **Control joins the tailnet.** Run `native controls create` once; the service keeps its tsnet identity and serves the management UI on a private address.
-2. **Policy and enrollment are created in the UI.** Administrators configure public load balancers, specialized gateways, hostname rules, and provider zones. Generated commands contain the exact release and paths to run.
-3. **The load balancer terminates HTTPS.** Load balancer mode runs Caddy with the process's persistent tsnet transport. All backend types are reached through private Tailscale Services and their selected gateway.
-4. **Gateways discover HTTP services.** Docker labels, tailnet-machine selection, and Kubernetes routing resources produce policy-authorized assignments and signed, expiring reports.
-5. **Control distributes exposures and reconciles owned DNS.** The provider adapter creates owned A records for each exposure’s eligible load balancers, and removes only records in this installation's ledger. Unowned records need explicit overwrite approval.
+See [role, credential and transport details](docs/TAILSCALE-ROLES.md).
 
-## Quick start
+## Start control
 
-Quick start only boots the control node. After the management UI is available,
-use **Load balancers** or **Gateways → Add gateway** to generate complete
-provisioning instructions. Enrollment begins when the CLI command runs. Those commands are generated from the selected policy,
-release, hostname, tags, and storage paths; they are intentionally not
-duplicated in this README.
-
-### Spawn the control node
-
-Create a Tailscale OAuth client with `auth_keys`, `devices:core`, `services`,
-and **`users:read`**. Use `tag:tailscale-private-funnel` for device and Service
-permissions. The read-only `users:read` scope lets control verify Tailscale
-Owner/Admin roles for web UI access; it does not allow changing users or roles.
-Store the client ID and secret in the protected files used below.
-
-Release workflows publish ready-to-run binaries for Linux amd64, Linux arm64,
-and macOS arm64. Use matching v3 binary, image, and operator chart versions.
-The UI generates additional gateway and load-balancer instructions after control
-starts; only control bootstrap needs local OAuth credential files.
-
-Native deployments are system-level Linux services. Configuration is under
-`/etc/tailscale-private-funnel/native`; owned identity/data directories are under
-`/var/lib/tailscale-private-funnel/native`. Use explicit paths when needed.
-Stop preserves identity and data; delete revokes access and removes owned state.
-Open the private control URL, configure DNS providers and policy, then generate
-node commands in the UI.
-
-The control-only quick start is one command:
+Download a matching binary from the [release artifacts](https://github.com/tailscale-x/tailscale-private-funnel/releases)
+or build the development checkout locally. Start with:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/tailscale-x/tailscale-private-funnel/v3.2.4/scripts/control.sh | sh -s -- --version v3.2.4 --tailnet example.ts.net --oauth-client-id-file ./ts-client-id --oauth-client-secret-file ./ts-client-secret
+tailscale-private-funnel native controls create main --installation main \
+  --tailnet YOUR_TAILNET --version VERSION \
+  --oauth-client-id-file /etc/funnel/installation-issuer-id \
+  --oauth-client-secret-file /etc/funnel/installation-issuer-secret \
+  --services-client-id-file /etc/funnel/services-id \
+  --services-client-secret-file /etc/funnel/services-secret \
+  --users-client-id-file /etc/funnel/users-id \
+  --users-client-secret-file /etc/funnel/users-secret --output script > control.sh
+sh control.sh
 ```
 
-The helper downloads the release binary and verifies its checksum. Use
-`--name` and `--hostname` to select the native control deployment handle and node
-hostname. It leaves gateway and load-balancer provisioning to the web UI.
+`create` generates an installer; it does not deploy. Credential file paths belong
+on the execution machine. Use separate protected clients: installation-wide `auth_keys`,
+`services` plus `devices:core:read` tagged with the installation control role
+(which owns both Service tags), and `users:read`. The key issuer itself needs
+only `auth_keys` and the installation issuer tag. The setup URL uses
+`svc:tailscale-private-funnel-<installation>-control`'s MagicDNS FQDN, so disposable
+control device addresses are not client configuration.
 
-The unified CLI separates deployment infrastructure from installation management:
+Open the private UI to configure providers, discovered zones, hostname policy,
+and gateway/load-balancer instructions. Generated commands come from shared Go
+renderers. The UI never receives kubeconfigs or SSH credentials.
 
-```sh
-tailscale-private-funnel native controls create main \
-  --version VERSION --tailnet example.ts.net \
-  --oauth-client-id-file ./ts-client-id \
-  --oauth-client-secret-file ./ts-client-secret --wait --output script > install-control.sh
-sh install-control.sh
+[Installer workflow](docs/INSTALLER-WORKFLOW.md) · [Kubernetes](docs/KUBERNETES.md) ·
+[PostgreSQL / CloudNativePG / Argo CD](docs/POSTGRESQL.md)
+
+## Deployment choices
+
+| Component | Native | Kubernetes | Durable state |
+|---|---|---|---|
+| Control | Embedded or existing-host Tailscale | Embedded ephemeral | Database and matching encryption material |
+| Load balancer | Embedded or existing-host Tailscale | Embedded ephemeral | Caddy certificates |
+| Docker gateway | Embedded or existing-host Tailscale | — | Native embedded identity and local inventory revision |
+| Tailnet gateway | Embedded or existing-host Tailscale | — | Native embedded identity and local settings |
+| Kubernetes gateway | — | Agent and forwarder DaemonSet, embedded ephemeral | Logical configuration remains in control |
+
+Control currently requires embedded Tailscale. Native load balancers, Docker
+gateways, and Tailnet gateways may reuse a connected host daemon. Tailscale 1.102.2
+rejects PROXY v2 with Unix targets, so host-reused control is rejected before host
+configuration changes rather than accepting unverified caller metadata.
+
+Native embedded is the default and survives restarts. Host reuse carries no join
+secret and requires a connected, suitably tagged daemon with LocalAPI permissions.
+Kubernetes obtains fresh single-use ephemeral keys per verified Pod; it has no
+identity Secrets or identity restoration. Native stop preserves state; disable/delete
+withdraws owned Funnel resources. Remove role tags/devices in Tailscale to revoke
+role authority.
+
+## Routing
+
+| Source | HTTP routing |
+|---|---|
+| Docker | Whole-host `tailscale-private-funnel.expose`; named routes support segment-boundary path prefixes and optional prefix replacement |
+| Tailnet | UI-selected stable backend device and HTTP port through an authorized gateway |
+| Kubernetes | GatewayClass/Gateway/HTTPRoute, ReferenceGrant and Ingress; supported exact/prefix paths, header/query/method matches, weighted backends, modifiers, redirects and prefix rewrite |
+
+Caddy alone terminates public TLS and performs matching/rewriting. Gateways forward
+raw TCP. Original Host, sanitized trusted forwarding headers, request bodies,
+streaming, SSE and WebSockets retain the existing behavior. Rewrite does not change
+response bodies, Location headers, or cookie paths; configure the application's
+public base path where required. This is not full Gateway API conformance.
+
+Removing a Docker container or forwarding label retires its routes only after a
+complete authoritative inventory. Stopped containers, failed discovery, unreachable
+backends and report expiry do not release hostname ownership. Shared routes keep
+DNS while another authorized assignment remains.
+
+## DNS providers
+
+| Vendor | Runtime adapter | Domain discovery | Credential storage |
+|---|---|---|---|
+| Cloudflare | Supported | Paginated zone discovery | Encrypted, including account ID |
+| GoDaddy | Supported | Paginated domains | Encrypted |
+| Route 53 | Supported | Public hosted zones and configured restriction | Encrypted |
+| Other catalog providers | Metadata only | Unavailable until intentionally linked | No active adapter |
+
+One DNS provider can manage multiple vendor-discovered zones. Adding a zone does
+not register a domain or change nameservers. Display names are editable; immutable
+IDs bind references. DNS-only public A/CNAME records belong to the internal ledger.
+No outside-owner record is deleted or overwritten without explicit approval.
+
+## CLI and API
+
+```text
+tailscale-private-funnel native controls|gateways|loadbalancers ...
+tailscale-private-funnel k8s operator|controls|gateways|loadbalancers ...
+tailscale-private-funnel manage ...
 ```
 
-See [installer generation and execution](docs/INSTALLER-WORKFLOW.md) for native
-and Kubernetes bootstrap, connectivity requirements, and credential handling.
+Native lifecycle operations execute locally. Kubernetes operations require an
+explicit context. Public `create` only renders an installer; no SSH or cluster
+connection is made by the generator. `--output json`, non-mutating `--dry-run`,
+target-side `--wait`, and destructive `--yes` are supported. There are no public
+join, enrollment, approval, transfer/import, or compatibility commands.
 
-## Security and ownership
+The private `/llms.txt`, `/docs/cli.md`, `/docs/api.md` and OpenAPI reference are
+generated from protobuf/Cobra metadata and live control settings. Agents can manage
+Funnel through the same Tailscale-authorized CLI without opening a browser.
 
-Local Funnel is designed so a compromise of one application container does not become
-control-plane access, a second Tailscale identity, or access to the rest of the
-tailnet. Every Local Funnel node and Service uses the dedicated
-`tag:tailscale-private-funnel` identity boundary. Your static Tailscale grants define access within that boundary. Funnel never changes
-existing grants; additional access to other machines must be authorized by you.
-
-| Boundary | Protection |
-| --- | --- |
-| Tailscale boundary | Bootstrap and application Services use `tag:tailscale-private-funnel`. Existing Tailscale policy defines its access boundary. Additional Tailnet gateway tags and grants for selected remote backends are assigned externally; the application never modifies ACLs. |
-| Management | The UI is reachable only through the dedicated tailnet path. Every request is authorized from Tailscale `WhoIs`; administrator, operator, and viewer roles are explicit. |
-| Enrollment | OAuth credentials stay in control. Generated bootstrap keys are short-lived, one-use, preauthorized, and never written to node state or systemd units. |
-| Gateway identity | One persistent tsnet identity owns the node's Services. Reports are Ed25519 signed, nonce checked, freshness limited, and bound to that enrolled identity. |
-| Docker reachability | The docker-gateway supervisor is the only process with Docker socket access. It attaches credential-free relay containers to selected user-defined application networks and publishes only loopback relay ports. Relays have no Docker socket or Tailscale state. |
-| Service access | Control approves the exact Service/device pair and sends only policy-filtered configuration to the selected gateway. Policy-authorized labels automatically provision application Services; denied labels remain stopped. |
-| Public edge | Caddy terminates public TLS at the load balancer and dials the approved private Service over the load balancer's persistent tsnet transport. Backends are never published directly. |
-| DNS | The internal ledger is authoritative. The control plane changes or deletes only records owned by its exact ledger owner. Unowned records require an explicit preview approval before overwrite. |
-
-The DNS provider does not need to trust a user-supplied TXT marker for safety. The
-provider account, encrypted control database, ownership ledger, and explicit approval
-flow form the authorization boundary. No DNS-side TXT ownership markers are created.
-
-## Providers and releases
-
-Provider support is shown in the control UI with capability and test status. Provider
-credentials are encrypted at rest and are used only by the control service's adapter.
-They are never rendered into pages or generated enrollment commands.
-
-| Provider | Runtime adapter | Record support | Status |
-| --- | --- | --- | --- |
-| Cloudflare | Available | A, CNAME | Supported; primary provider |
-| GoDaddy | Available | A, CNAME | Supported |
-| Amazon Route 53 | Available | A, CNAME | Supported |
-| Other pinned libdns providers | Metadata only | Catalog-dependent | Visible as unavailable until an adapter is linked |
-
-Image tags are immutable release inputs. Replace `vX.Y.Z` below with a published
-release tag. To roll back, use `native … update` or `k8s … update` with the prior pinned
-version. Restore matching control data and identity backups if the schema changed:
-
-The Docker image is a thin distroless wrapper around the matching release
-binary. CI builds each target once, then packages that artifact for the native
-image architecture.
-
-```sh
-docker pull ghcr.io/tailscale-x/tailscale-private-funnel:vX.Y.Z
-docker run --rm ghcr.io/tailscale-x/tailscale-private-funnel:vX.Y.Z version
-```
-
-See the [latest release](https://github.com/tailscale-x/tailscale-private-funnel/releases),
-[private-funnel operations guide](PRIVATE_FUNNEL.md), and [architecture diagram](docs/architecture.svg).
-
-## Development
+## Development and verification
 
 ```sh
 npm ci --prefix ui
-npm run build --prefix ui
 scripts/generate-rpc.sh
+scripts/generate-operator.sh
+npm run build --prefix ui
 go test ./...
 go test -tags caddy ./...
 go vet ./...
-mkdir -p dist
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags caddy -trimpath -o dist/tailscale-private-funnel-linux-amd64 ./cmd/tailscale-private-funnel
-docker build --file Dockerfile --tag private-funnel:dev .
+git diff --check
 ```
 
-Builds, screenshots, checksums, and multi-architecture images are published by
-the tag workflow. The VPS only pulls those prebuilt artifacts.
-
-### Policy-controlled Docker discovery
-
-Configure an exposure policy once, then add `tailscale-private-funnel.expose=5173:app.example.com:http` to a container. Control validates the enrolled docker-gateway identity, hostname policy, managed zone, and hostname/port conflicts before creating its application and Tailscale Service. Applications are an operational inventory, not a second approval step. DNS ownership and explicit overwrite rules still apply.
-
-The default administrator selector is `autogroup:owner`, verified through a server-side Users API lookup (`users:read` OAuth scope); no individual user allowlist is required. Other account roles require an explicit selector grant. Tagged nodes do not inherit human account roles. Other principals use configured viewer/operator/admin selectors or application capabilities.
-
-### Expose an existing tailnet machine
-
-Use **Expose a tailnet machine** in the control UI: choose a Tailnet gateway and backend,
-enter an HTTP port and public hostname, test connectivity from that gateway, then save. Additional
-backend access is granted externally through Tailscale tags and policy; this app
-never broadens ACLs. Machines are selected by stable device identity, and a visible
-peer still needs to pass the gateway-side port test. Control creates an application
-Tailscale Service; ingress traffic goes through the selected Tailnet gateway.
-[Workflow details](PRIVATE_FUNNEL.md#tailnet-gateway).
-
-### Editable names, stable references
-
-DNS provider, node, enrollment, application, and rule names are display labels.
-Renaming them does not change credentials, Tailscale identities, Service names,
-DNS domains, or record ownership. Selectors submit immutable IDs and show context
-to distinguish duplicate names. Renaming a resource does not modify its operational hostname.
-
-## Gateway provisioning
-
-Open **Gateways → Add gateway** in the control UI. Choose Docker, Tailnet or Kubernetes
-and follow the generated, type-specific installation instructions. Kubernetes uses the [cluster operator](docs/KUBERNETES.md) and component CRs;
-Docker and Tailnet gateways use native systemd services. Control automatically assigns
-load balancers—there are no gateway-side load-balancer IDs.
-
-See [operations and supported
-Kubernetes routing](PRIVATE_FUNNEL.md) for the feature matrix, annotations, persistence,
-and rollback instructions. See the [v3.2.4 release notes](docs/releases/v3.2.4.md) for reconciliation fixes and current artifacts, and the [v3.1.0 release notes](docs/releases/v3.1.0.md) for the original v3 breaking changes.
-
-### Kubernetes deployment
-
-Install the [Kubernetes operator](docs/KUBERNETES.md) once per cluster with the
-OCI Helm chart. Create controls, load balancers and gateways as typed CRs with
-installers generated by `k8s … create --context CLUSTER --output script`, executed
-on a machine with cluster access. Each installation has one namespace.
-Control/load balancers use Recreate Deployments and Secret-backed identities;
-PVCs hold SQLite and certificates; PostgreSQL control uses an external database without a control PVC. Gateways use a broker and node-local forwarder
-DaemonSet. Forwarders have no Kubernetes API permissions.
-
-## Agent and CLI management
-
-v3.0.0 introduces the generated Connect interface, executable provisioning, and
-Kubernetes operator. It replaces the v2 command surface without compatibility aliases.
-
-The browser and CLI use generated Connect contracts. Infrastructure commands are
-separate from installation management:
-
-| Namespace | Purpose |
-|---|---|
-| `native controls/gateways/loadbalancers` | Generate installers; inspect/update/delete local services; start/stop/restart/logs |
-| `native/k8s … create` | Generate an authorized installer; execute the output on the target |
-| `k8s operator` | Generate operator installers; inspect/update/remove the cluster operator |
-| `k8s controls/gateways/loadbalancers` | Manage component CRs with explicit context |
-| `manage` | Authorized providers, zones, policies, enrollment, nodes, exposures, settings and access |
-
-```sh
-tailscale-private-funnel manage whoami --control-url http://CONTROL:8080
-tailscale-private-funnel native gateways create site-tailnet \
-  --type tailnet --control-url http://CONTROL:8080 --version VERSION \
-  --output script | ssh ubuntu@TARGET 'sh -s'
-```
-
-UI **Generate instructions** actions are read-only. Enrollment begins when the
-CLI create runs on an authorized machine; installation begins only when its output is executed. The browser never uploads kubeconfigs or executes deployment.
-Use `--output json`, `--dry-run`, `--wait`, and explicit `--yes` for deletion.
-Control hosts dynamic `/llms.txt` with matching binary downloads, checksum/install
-guidance, the configured control URL, and executable CLI examples. Generated CLI
-help is at `/docs/cli.md`; `/docs` provides interactive API documentation. See [API and CLI architecture](docs/API.md).
-
-### Maintenance continuity
-
-Kubernetes forwarders preserve already-authorized traffic during short control updates within the five-minute
-configuration window. New enrollment still requires control. Invalid signatures,
-revocation, lost ownership leases and expired configuration fail closed.
-See [Kubernetes update behavior](docs/KUBERNETES.md#control-updates-and-bounded-forwarding-continuity).
-
-Release validation and limitations: [control-update acceptance](docs/qa-control-update-continuity.md).
-
-### PostgreSQL and GitOps
-
-Control supports SQLite by default and fresh PostgreSQL installations using an existing database. Kubernetes PostgreSQL controls need no SQLite PVC; identity and encryption keys remain in a durable Secret. See [CloudNativePG and Argo CD setup](docs/POSTGRESQL.md).
-
-### Move control without losing identity
-
-Use [`transfer-remote`](docs/CONTROL_TRANSFER.md) to stop and fence the old control, save a private installer with `--out`, and move its identity and DNS ownership to native or Kubernetes, using SQLite or PostgreSQL. Execute the installer on the destination after export.
+Run PostgreSQL contracts against disposable PostgreSQL 16/18 databases and operator
+contracts with the pinned envtest binaries. Real role-tag policy, Service auto-approval,
+host-daemon source preservation, public TLS and Pod replacement require explicit
+integration acceptance; local unit tests do not prove a live rollout. Build locally
+or in CI. No deployment or publication accompanies this refactor.

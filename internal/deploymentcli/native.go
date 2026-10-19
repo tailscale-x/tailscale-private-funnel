@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"net/http"
+
 	"github.com/spf13/cobra"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/app"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
@@ -17,10 +19,11 @@ import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/manage"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/native"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/provision"
-	"net/http"
 )
 
 type Flags struct {
+	UsersSecret, UsersID, UsersSecretFile                                                                                                                                                                                                                                                     string
+	Connection, Socket, KeyIssuerSecret, ServicesSecret, ServicesID, ServicesSecretFile                                                                                                                                                                                                       string
 	Database, DatabaseURLFile, DatabaseCAFile, DatabaseTLSMode, DatabaseSecret, DatabaseSecretKey, DatabaseCASecret, DatabaseCASecretKey                                                                                                                                                      string
 	StorageClass, StorageSize, PlacementFile, ForwarderPlacementFile, Installation, ConfigFile, Type, Output, Version, DisplayName, Hostname, ControlURL, Namespace, Context, Kubeconfig, Tailnet, StateDir, DataDir, OAuthID, OAuthSecret, PublicHostname, Email, GatewayClass, IngressClass string
 	Wait, DryRun, Yes                                                                                                                                                                                                                                                                         bool
@@ -61,6 +64,24 @@ func common(c *cobra.Command, f *Flags, version string) {
 	c.Flags().StringVar(&f.ControlURL, "control-url", "", "Funnel control URL")
 }
 func creation(c *cobra.Command, f *Flags, kind string, kube bool) {
+	c.Flags().StringVar(&f.Installation, "installation", "main", "immutable installation trust boundary")
+	if kube {
+		c.Flags().StringVar(&f.KeyIssuerSecret, "key-issuer-secret", "", "existing installation auth_keys OAuth Secret (client_id/client_secret)")
+		if kind == "controls" {
+			c.Flags().StringVar(&f.UsersSecret, "users-secret", "", "existing separate users:read OAuth Secret")
+			c.Flags().StringVar(&f.ServicesSecret, "services-secret", "", "existing separate services OAuth Secret (client_id/client_secret)")
+		}
+	} else {
+		c.Flags().StringVar(&f.Connection, "tailscale", "embedded", "Tailscale connection: embedded or host")
+		c.Flags().StringVar(&f.Socket, "tailscale-socket", "", "existing host LocalAPI socket")
+		if kind == "controls" {
+			c.Flags().StringVar(&f.UsersID, "users-client-id-file", "", "protected users:read OAuth ID file")
+			c.Flags().StringVar(&f.UsersSecretFile, "users-client-secret-file", "", "protected users:read OAuth secret file")
+			c.Flags().StringVar(&f.ServicesID, "services-client-id-file", "", "protected Service-management OAuth client ID file")
+			c.Flags().StringVar(&f.ServicesSecretFile, "services-client-secret-file", "", "protected Service-management OAuth secret file")
+		}
+	}
+
 	if kube {
 		if kind == "controls" || kind == "loadbalancers" {
 			c.Flags().StringVar(&f.StorageClass, "storage-class", "", "PVC StorageClass; omit only when the cluster has a default")
@@ -70,7 +91,6 @@ func creation(c *cobra.Command, f *Flags, kind string, kube bool) {
 		if kind == "gateways" {
 			c.Flags().StringVar(&f.ForwarderPlacementFile, "forwarder-placement-file", "", "forwarder Pod placement JSON")
 		}
-		c.Flags().StringVar(&f.Installation, "installation", "main", "installation trust boundary")
 		c.Flags().StringToStringVar(&f.NodeSelector, "node-selector", nil, "component placement (gateway: forwarders); key=value pairs")
 	}
 	if kind == "gateways" && !kube {
@@ -90,8 +110,10 @@ func creation(c *cobra.Command, f *Flags, kind string, kube bool) {
 		}
 		c.Flags().StringArrayVar(&f.Administrators, "administrator", nil, "additional first-bootstrap administrator selector; default autogroup:owner remains")
 		c.Flags().StringVar(&f.Tailnet, "tailnet", "", "Tailscale tailnet name")
-		c.Flags().StringVar(&f.OAuthID, "oauth-client-id-file", "", "protected OAuth client ID file")
-		c.Flags().StringVar(&f.OAuthSecret, "oauth-client-secret-file", "", "protected OAuth client secret file")
+		if !kube {
+			c.Flags().StringVar(&f.OAuthID, "oauth-client-id-file", "", "protected OAuth client ID file")
+			c.Flags().StringVar(&f.OAuthSecret, "oauth-client-secret-file", "", "protected OAuth client secret file")
+		}
 	}
 	if kind == "loadbalancers" {
 		c.Flags().StringVar(&f.PublicHostname, "public-hostname", "", "public DNS hostname")
@@ -138,7 +160,7 @@ func request(kind, name string, f Flags, target string) (*v1.DeploymentRequest, 
 			database.CaSecretKey = f.DatabaseCASecretKey
 		}
 	}
-	return &v1.DeploymentRequest{Database: database, Mode: mode, Target: target, StorageClass: f.StorageClass, StorageSize: f.StorageSize, Administrators: f.Administrators, NodeSelector: f.NodeSelector, Installation: f.Installation, Wait: f.Wait, TimeoutSeconds: uint32(f.Timeout.Seconds()), ResourceName: name, Name: name, DisplayName: f.DisplayName, Hostname: f.Hostname, Version: f.Version, StateDir: f.StateDir, DataDir: f.DataDir, Tailnet: f.Tailnet, OauthClientIdFile: f.OAuthID, OauthClientSecretFile: f.OAuthSecret, PublicHostname: f.PublicHostname, CertificateEmail: f.Email, Namespace: f.Namespace, Context: f.Context, GatewayClass: f.GatewayClass, IngressClass: f.IngressClass, WatchNamespaces: f.WatchNamespaces, LabelKeys: f.LabelKeys, DenyNetworks: f.DenyNetworks}, nil
+	return &v1.DeploymentRequest{UsersSecret: f.UsersSecret, UsersClientIdFile: f.UsersID, UsersClientSecretFile: f.UsersSecretFile, KeyIssuerSecret: f.KeyIssuerSecret, ServicesSecret: f.ServicesSecret, ServicesClientIdFile: f.ServicesID, ServicesClientSecretFile: f.ServicesSecretFile, TailscaleConnection: f.Connection, TailscaleSocket: f.Socket, Database: database, Mode: mode, Target: target, StorageClass: f.StorageClass, StorageSize: f.StorageSize, Administrators: f.Administrators, NodeSelector: f.NodeSelector, Installation: f.Installation, Wait: f.Wait, TimeoutSeconds: uint32(f.Timeout.Seconds()), ResourceName: name, Name: name, DisplayName: f.DisplayName, Hostname: f.Hostname, Version: f.Version, StateDir: f.StateDir, DataDir: f.DataDir, Tailnet: f.Tailnet, OauthClientIdFile: f.OAuthID, OauthClientSecretFile: f.OAuthSecret, PublicHostname: f.PublicHostname, CertificateEmail: f.Email, Namespace: f.Namespace, Context: f.Context, GatewayClass: f.GatewayClass, IngressClass: f.IngressClass, WatchNamespaces: f.WatchNamespaces, LabelKeys: f.LabelKeys, DenyNetworks: f.DenyNetworks}, nil
 }
 func apiClient(url string) (funnelv1connect.DeploymentServiceClient, error) {
 	base, e := manage.ResolveURL(url)
@@ -260,10 +282,13 @@ func nativeCommands(version string, bootstrap *v1.DeploymentInstructions) *cobra
 						return e
 					}
 					if kind == "controls" {
-						if f.OAuthID == "" || f.OAuthSecret == "" || f.Tailnet == "" {
-							return errors.New("control creation requires --tailnet and protected OAuth files; create a tagged OAuth client with auth_keys, devices:core, services and users:read")
+						if f.Tailnet == "" || f.Connection != "host" && (f.OAuthID == "" || f.OAuthSecret == "") || f.ServicesID == "" || f.ServicesSecretFile == "" || f.UsersID == "" || f.UsersSecretFile == "" {
+							return errors.New("control creation requires --tailnet and protected OAuth files; use the shared installation auth_keys issuer and separate services credentials")
 						}
-						for _, path := range []string{f.OAuthID, f.OAuthSecret} {
+						for _, path := range []string{f.OAuthID, f.OAuthSecret, f.ServicesID, f.ServicesSecretFile, f.UsersID, f.UsersSecretFile} {
+							if path == "" {
+								continue
+							}
 							if _, e = privateFile(path); e != nil {
 								return e
 							}
@@ -279,10 +304,13 @@ func nativeCommands(version string, bootstrap *v1.DeploymentInstructions) *cobra
 					manager.Binary = executable
 					oauth := []string{}
 					if kind == "controls" {
-						if f.OAuthID == "" || f.OAuthSecret == "" {
+						if f.Connection != "host" && (f.OAuthID == "" || f.OAuthSecret == "") {
 							return errors.New("control creation requires protected OAuth credential files")
 						}
-						oauth = []string{"--oauth-client-id-file", f.OAuthID, "--oauth-client-secret-file", f.OAuthSecret}
+						if f.Connection != "host" {
+							oauth = []string{"--oauth-client-id-file", f.OAuthID, "--oauth-client-secret-file", f.OAuthSecret}
+						}
+						oauth = append(oauth, "--services-client-id-file", f.ServicesID, "--services-client-secret-file", f.ServicesSecretFile, "--users-client-id-file", f.UsersID, "--users-client-secret-file", f.UsersSecretFile)
 						for _, selector := range f.Administrators {
 							oauth = append(oauth, "--administrator", selector)
 						}

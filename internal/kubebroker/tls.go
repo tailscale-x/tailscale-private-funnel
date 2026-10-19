@@ -11,7 +11,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
-	"sync"
 	"time"
 
 	core "k8s.io/api/core/v1"
@@ -45,7 +44,7 @@ func issueLeaf(ca *x509.Certificate, key *ecdsa.PrivateKey, dns string) ([]byte,
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pk}), nil
 }
-func EnsureTLS(ctx context.Context, c client.Client, ns, name, dns string) (tls.Certificate, []byte, error) {
+func EnsureTLS(ctx context.Context, c client.Client, ns, name, dns string, ownerUID ...string) (tls.Certificate, []byte, error) {
 	var s core.Secret
 	e := c.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, &s)
 	if apierrors.IsNotFound(e) {
@@ -68,6 +67,9 @@ func EnsureTLS(ctx context.Context, c client.Client, ns, name, dns string) (tls.
 			return tls.Certificate{}, nil, err
 		}
 		s = core.Secret{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Labels: ownedRuntimeLabels()}, Data: map[string][]byte{"ca.crt": pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), "ca.key": pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pk}), "tls.crt": cert, "tls.key": leafKey}}
+		if len(ownerUID) > 0 {
+			s.Labels["tailscale-private-funnel.io/owner-uid"] = ownerUID[0]
+		}
 		e = c.Create(ctx, &s)
 		if apierrors.IsAlreadyExists(e) {
 			e = c.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, &s)
@@ -75,6 +77,9 @@ func EnsureTLS(ctx context.Context, c client.Client, ns, name, dns string) (tls.
 	}
 	if e != nil {
 		return tls.Certificate{}, nil, e
+	}
+	if len(ownerUID) > 0 && s.Labels["tailscale-private-funnel.io/owner-uid"] != ownerUID[0] {
+		return tls.Certificate{}, nil, fmt.Errorf("TLS Secret belongs to another owner")
 	}
 	pair, e := tls.X509KeyPair(s.Data["tls.crt"], s.Data["tls.key"])
 	if e != nil {
@@ -112,24 +117,4 @@ func EnsureTLS(ctx context.Context, c client.Client, ns, name, dns string) (tls.
 		pair, e = tls.X509KeyPair(s.Data["tls.crt"], s.Data["tls.key"])
 	}
 	return pair, s.Data["ca.crt"], e
-}
-func RotatingCertificate(c client.Client, ns, name, dns string, initial tls.Certificate) func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-	var mu sync.Mutex
-	last := time.Now()
-	current := initial
-	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		if time.Since(last) > time.Hour {
-			ctx, cancel := context.WithTimeout(hello.Context(), 5*time.Second)
-			defer cancel()
-			next, _, e := EnsureTLS(ctx, c, ns, name, dns)
-			if e != nil {
-				return nil, e
-			}
-			current = next
-			last = time.Now()
-		}
-		return &current, nil
-	}
 }

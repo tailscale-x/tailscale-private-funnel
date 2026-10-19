@@ -307,7 +307,7 @@ export function TailnetPage() {
             >
               <option value="">Select tailnet gateway</option>
               {nodes.data?.items
-                .filter((n) => n.mode === "tailnet-gateway" && !n.revoked)
+                .filter((n) => n.mode === "tailnet-gateway" && !n.disabled)
                 .map((n) => (
                   <option key={n.id} value={n.id}>
                     {n.name} · {n.hostname}

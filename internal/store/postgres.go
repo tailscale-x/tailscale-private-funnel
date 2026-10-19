@@ -195,10 +195,6 @@ func OpenConfigured(dataDir, databaseDir string, o DatabaseOptions) (*Store, err
 		return fail(err)
 	}
 	st := &Store{db: &database{DB: db, postgres: true}, key: key}
-	if err := st.checkTransferFence(); err != nil {
-		db.Close()
-		return nil, err
-	}
 	return st, nil
 }
 

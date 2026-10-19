@@ -34,7 +34,7 @@ spec:
             - gateway
             - serve
             - --namespace={{ .Release.Namespace }}
-            - --installation={{ .Release.Name }}
+            - --installation={{ .Values.installation }}
             - --agent-name={{ include "funnel.controllerName" . }}
             - --gateway-class={{ .Values.gatewayClass }}
             - --ingress-class={{ .Values.ingressClass }}
@@ -43,6 +43,8 @@ spec:
             - --watch-namespace={{ . }}
             {{- end }}
             {{- end }}
+          env:
+            {{- include "funnel.runtimeEnvironment" . | nindent 12 }}
           securityContext: &security
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -60,9 +62,15 @@ spec:
           volumeMounts:
             - {name: runtime, mountPath: /var/lib/tailscale-private-funnel}
             - {name: tmp, mountPath: /tmp}
+            - {name: operator-token, mountPath: /var/run/secrets/funnel-operator, readOnly: true}
+            - {name: operator-ca, mountPath: /etc/funnel-operator-ca, readOnly: true}
+            - {name: broker-tls, mountPath: /etc/funnel-broker-tls, readOnly: true}
       volumes:
         - name: runtime
-          emptyDir: {}
+          emptyDir: {medium: Memory}
+        - name: broker-tls
+          secret: {secretName: {{ .Release.Name }}-broker-tls, defaultMode: 0440}
+        {{- include "funnel.operatorBootstrapVolumes" . | nindent 8 }}
         - name: tmp
           emptyDir: {}
 ---

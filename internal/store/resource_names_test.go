@@ -2,7 +2,6 @@ package store
 
 import (
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -30,14 +29,14 @@ func oldNamesFixture(t *testing.T) (string, []byte, string) {
 	_ = s.SetJSON("exposure_policy", map[string]any{"rules": []any{map[string]any{"name": "Allow", "loadbalancer_hostnames": []string{"edge.example.com"}}}})
 	_ = s.SetJSON("provider_test:Cloudflare-dev", "Verified")
 	_ = s.SetJSON("pending", map[string]string{"provider_id": "Cloudflare-dev"})
-	pub, key, _ := report.GenerateKey()
-	_ = s.BindNodeIdentity("gateway-id", base64.RawStdEncoding.EncodeToString(pub), "tailnode", nil)
-	env, _ := report.NewEnvelope("gateway-id", map[string]any{"exposures": []any{map[string]any{"loadbalancer_hostname": "edge.example.com", "public_hostname": "app.example.com"}}, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, key, time.Now())
+
+	_ = bindTestNode(s, "gateway-id", "tailnode", nil)
+	env, _ := report.NewSnapshot("report", "gateway-id", map[string]any{"exposures": []any{map[string]any{"loadbalancer_hostname": "edge.example.com", "public_hostname": "app.example.com"}}, "expires_at": time.Now().Add(time.Minute).Unix()}, time.Now())
 	raw, _ := json.Marshal(env)
-	_ = s.AcceptReport("gateway-id", env.Nonce, raw, env.PublicKey)
+	_ = s.AcceptReport("gateway-id", env.Nonce, raw)
 	var cipher string
 	_ = s.db.QueryRow(`SELECT config FROM providers`).Scan(&cipher)
-	for _, q := range []string{`DROP INDEX managed_zones_id`, `ALTER TABLE managed_zones DROP COLUMN id`, `ALTER TABLE providers DROP COLUMN name`, `ALTER TABLE nodes DROP COLUMN name`, `ALTER TABLE enrollments DROP COLUMN name`, `ALTER TABLE applications DROP COLUMN name`, `ALTER TABLE reports DROP COLUMN snapshot`, `ALTER TABLE records DROP COLUMN zone_id`, `DELETE FROM schema_migrations WHERE version='009_resource_names'`} {
+	for _, q := range []string{`DROP INDEX managed_zones_id`, `ALTER TABLE managed_zones DROP COLUMN id`, `ALTER TABLE providers DROP COLUMN name`, `ALTER TABLE nodes DROP COLUMN name`, `ALTER TABLE applications DROP COLUMN name`, `ALTER TABLE reports DROP COLUMN snapshot`, `ALTER TABLE records DROP COLUMN zone_id`, `DELETE FROM schema_migrations WHERE version='009_resource_names'`} {
 		if _, err = s.db.Exec(q); err != nil {
 			t.Fatal(err)
 		}
@@ -84,9 +83,9 @@ func TestResourceNameMigrationPreservesIdentityAndOwnership(t *testing.T) {
 	if original != string(raw) {
 		t.Fatal("original signed report changed")
 	}
-	var envelope report.Envelope
+	var envelope report.Snapshot
 	_ = json.Unmarshal([]byte(original), &envelope)
-	if _, _, err = report.Verify(envelope, time.Now(), time.Minute); err != nil {
+	if err = envelope.Validate(time.Now(), time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	reports, _ := s.Reports()
@@ -169,7 +168,7 @@ func TestGatewayNameMigrationPreservesIdentity(t *testing.T) {
 	if err = s.UpsertNode("gateway-id", "docker-gateway", "host-gateway"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.db.Exec(`UPDATE nodes SET name='Old alias',tailnet_id='stable-device',node_key='signing-key' WHERE id='gateway-id'; DELETE FROM schema_migrations WHERE version='012_gateway_hostname_names'`); err != nil {
+	if _, err = s.db.Exec(`UPDATE nodes SET name='Old alias',tailnet_id='stable-device' WHERE id='gateway-id'; DELETE FROM schema_migrations WHERE version='012_gateway_hostname_names'`); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
@@ -179,7 +178,7 @@ func TestGatewayNameMigrationPreservesIdentity(t *testing.T) {
 	}
 	defer s.Close()
 	n, err := s.Node("gateway-id")
-	if err != nil || n.Name != "Old alias" || n.Hostname != "host-gateway" || n.TailnetID != "stable-device" || n.PublicKey != "signing-key" {
+	if err != nil || n.Name != "Old alias" || n.Hostname != "host-gateway" || n.TailnetID != "stable-device" {
 		t.Fatal(n, err)
 	}
 }

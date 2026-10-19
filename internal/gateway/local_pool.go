@@ -3,12 +3,13 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"net"
 	"net/netip"
 	"sort"
 	"sync/atomic"
 	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 )
 
 // LocalPool cannot select a remote-node endpoint, even during backend failures.

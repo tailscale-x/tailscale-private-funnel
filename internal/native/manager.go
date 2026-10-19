@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,25 +22,26 @@ import (
 )
 
 type Resource struct {
-	Database    store.DatabaseOptions `json:"database,omitempty"`
-	ID          string                `json:"id"`
-	Name        string                `json:"name"`
-	DisplayName string                `json:"display_name"`
-	Kind        string                `json:"kind"`
-	Mode        string                `json:"mode"`
-	Hostname    string                `json:"hostname"`
-	Version     string                `json:"version"`
-	StateDir    string                `json:"state_dir"`
-	DataDir     string                `json:"data_dir"`
-	Unit        string                `json:"unit"`
-	LastReport  int64                 `json:"last_report,omitempty"`
-	NodeID      string                `json:"node_id,omitempty"`
-	ControlURL  string                `json:"control_url,omitempty"`
-	SetupURL    string                `json:"setup_url,omitempty"`
-	Tailnet     string                `json:"tailnet,omitempty"`
-	Phase       string                `json:"phase"`
-	Diagnostics []string              `json:"diagnostics,omitempty"`
-	Runtime     json.RawMessage       `json:"runtime,omitempty"`
+	Installation, Connection, Socket string
+	Database                         store.DatabaseOptions `json:"database,omitempty"`
+	ID                               string                `json:"id"`
+	Name                             string                `json:"name"`
+	DisplayName                      string                `json:"display_name"`
+	Kind                             string                `json:"kind"`
+	Mode                             string                `json:"mode"`
+	Hostname                         string                `json:"hostname"`
+	Version                          string                `json:"version"`
+	StateDir                         string                `json:"state_dir"`
+	DataDir                          string                `json:"data_dir"`
+	Unit                             string                `json:"unit"`
+	LastReport                       int64                 `json:"last_report,omitempty"`
+	NodeID                           string                `json:"node_id,omitempty"`
+	ControlURL                       string                `json:"control_url,omitempty"`
+	SetupURL                         string                `json:"setup_url,omitempty"`
+	Tailnet                          string                `json:"tailnet,omitempty"`
+	Phase                            string                `json:"phase"`
+	Diagnostics                      []string              `json:"diagnostics,omitempty"`
+	Runtime                          json.RawMessage       `json:"runtime,omitempty"`
 }
 type Manager struct {
 	ConfigDir, StateRoot, BinaryRoot, UnitDir string
@@ -110,7 +110,7 @@ func (m *Manager) Get(ctx context.Context, kind, name string) (Resource, error) 
 		if b, e := os.ReadFile(filepath.Join(r.DataDir, "runtime-status.json")); e == nil && pidErr == nil && strings.TrimSpace(string(mainPID)) != "0" && strings.TrimSpace(string(mainPID)) == strings.TrimSpace(string(runtimePID)) {
 			r.Runtime = b
 		}
-	} else if r.Phase != "Cleanup pending" && r.Phase != "Failed" && r.Phase != "Transfer fenced" && r.Phase != "Transferred" {
+	} else if r.Phase != "Cleanup pending" && r.Phase != "Failed" {
 		r.Phase = "Stopped"
 	}
 	if b, e := os.ReadFile(filepath.Join(r.DataDir, "last-control-report")); e == nil {
@@ -133,7 +133,10 @@ func (m *Manager) Get(ctx context.Context, kind, name string) (Resource, error) 
 			IPs   []string `json:"ips"`
 		}
 		if json.Unmarshal(r.Runtime, &status) == nil && status.Ready && len(status.IPs) > 0 {
-			r.SetupURL = "http://" + net.JoinHostPort(status.IPs[0], "8080")
+			url, e := os.ReadFile(filepath.Join(r.DataDir, "management-url"))
+			if e == nil {
+				r.SetupURL = strings.TrimSpace(string(url))
+			}
 		}
 	} else {
 		r.SetupURL = ""
@@ -311,8 +314,10 @@ func (m *Manager) Create(ctx context.Context, r Resource, p *v1.DeploymentInstru
 			}
 		}
 	}
-	if p != nil && p.Credentials != nil {
-		r.NodeID = p.Credentials.EnrollmentId
+	if p != nil && p.Deployment != nil {
+		r.Installation = p.Deployment.Installation
+		r.Connection = p.Deployment.TailscaleConnection
+		r.Socket = p.Deployment.TailscaleSocket
 		r.ControlURL = p.ManagementUrl
 	}
 	if e := m.save(&r); e != nil {
@@ -329,7 +334,7 @@ func (m *Manager) Create(ctx context.Context, r Resource, p *v1.DeploymentInstru
 			return fail(e)
 		}
 	} else {
-		args := []string{"native", "runtime", r.Mode, "serve", "--bootstrap-only", "--hostname", r.Hostname, "--state-dir", r.StateDir, "--data-dir", r.DataDir}
+		args := []string{"native", "runtime", r.Mode, "serve", "--installation", r.Installation, "--tailscale", r.Connection, "--tailscale-socket", r.Socket, "--bootstrap-only", "--hostname", r.Hostname, "--state-dir", r.StateDir, "--data-dir", r.DataDir}
 		var input io.Reader
 		env := []string{}
 		if r.Mode == "control" {
@@ -337,7 +342,7 @@ func (m *Manager) Create(ctx context.Context, r Resource, p *v1.DeploymentInstru
 			args = append(args, databaseArgs(r.Database)...)
 			args = append(args, oauth...)
 		} else {
-			if p == nil || p.Credentials == nil || p.Credentials.ExpiresAt < time.Now().Unix() {
+			if p == nil || (p.Deployment.TailscaleConnection != "host" && (p.Credentials == nil || p.Credentials.ExpiresAt < time.Now().Unix())) {
 				return fail(errors.New("fresh bootstrap credentials required"))
 			}
 			args = append(args, "--bootstrap-stdin")
@@ -378,7 +383,7 @@ func (m *Manager) install(ctx context.Context, r *Resource) error {
 			return e
 		}
 	}
-	args := []string{dest, "native", "runtime", r.Mode, "serve", "--hostname", r.Hostname, "--state-dir", r.StateDir, "--data-dir", r.DataDir}
+	args := []string{dest, "native", "runtime", r.Mode, "serve", "--installation", r.Installation, "--tailscale", r.Connection, "--tailscale-socket", r.Socket, "--hostname", r.Hostname, "--state-dir", r.StateDir, "--data-dir", r.DataDir}
 	if r.Mode == "control" {
 		args = append(args, "--tailnet", r.Tailnet)
 		args = append(args, databaseArgs(r.Database)...)
@@ -390,6 +395,9 @@ func (m *Manager) install(ctx context.Context, r *Resource) error {
 		quoted[i] = strconv.Quote(strings.ReplaceAll(v, "%", "%%"))
 	}
 	privilege := "User=tailscale-private-funnel\nGroup=tailscale-private-funnel\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=read-only\nPrivateTmp=true\nProtectKernelTunables=true\nProtectKernelModules=true\nProtectControlGroups=true\nRestrictSUIDSGID=true\nReadWritePaths=" + strconv.Quote(r.StateDir) + " " + strconv.Quote(r.DataDir) + "\n"
+	if r.Connection == "host" {
+		privilege += "RuntimeDirectory=tailscale-private-funnel\nRuntimeDirectoryMode=0700\nRuntimeDirectoryPreserve=yes\n"
+	}
 	if r.Mode == "loadbalancer" {
 		privilege += "CapabilityBoundingSet=CAP_NET_BIND_SERVICE\nAmbientCapabilities=CAP_NET_BIND_SERVICE\n"
 	} else {
@@ -413,9 +421,6 @@ func (m *Manager) Service(ctx context.Context, kind, name, action string) (Resou
 	if e != nil {
 		return r, e
 	}
-	if r.Phase == "Transfer fenced" || r.Phase == "Transferred" {
-		return r, errors.New("control is fenced for transfer")
-	}
 	if r.Phase == "Cleanup pending" && action != "stop" {
 		return r, errors.New("deletion is pending; retry delete instead of starting the node")
 	}
@@ -436,9 +441,6 @@ func (m *Manager) Update(ctx context.Context, kind, name, version, display strin
 	r, e := m.Get(ctx, kind, name)
 	if e != nil {
 		return r, e
-	}
-	if r.Phase == "Transfer fenced" || r.Phase == "Transferred" {
-		return r, errors.New("control is fenced for transfer")
 	}
 	if r.Phase == "Cleanup pending" {
 		return r, errors.New("deletion is pending; retry delete")
@@ -462,9 +464,6 @@ func (m *Manager) Delete(ctx context.Context, kind, name string) error {
 	r, e := m.Get(ctx, kind, name)
 	if e != nil {
 		return e
-	}
-	if r.Phase == "Transfer fenced" || r.Phase == "Transferred" {
-		return errors.New("control is fenced for transfer; ordinary deletion would revoke the transferred identity")
 	}
 	for _, p := range []string{r.StateDir, r.DataDir} {
 		b, err := os.ReadFile(filepath.Join(p, ".funnel-native-resource"))
@@ -619,7 +618,7 @@ func (m *Manager) cleanupRuntime(ctx context.Context, r *Resource) error {
 	if _, e = m.run(ctx, "install", []string{"-o", "root", "-g", "root", "-m", "0555", source, binary}, nil, nil); e != nil {
 		return e
 	}
-	args := []string{"--user", "tailscale-private-funnel", "--", binary, "native", "runtime", r.Mode, "serve", "--cleanup-only", "--hostname", r.Hostname, "--state-dir", r.StateDir, "--data-dir", r.DataDir}
+	args := []string{"--user", "tailscale-private-funnel", "--", binary, "native", "runtime", r.Mode, "serve", "--installation", r.Installation, "--tailscale", r.Connection, "--tailscale-socket", r.Socket, "--cleanup-only", "--hostname", r.Hostname, "--state-dir", r.StateDir, "--data-dir", r.DataDir}
 	args = append(args, databaseArgs(r.Database)...)
 	if r.Mode != "control" {
 		args = append(args, "--config", filepath.Join(r.DataDir, "config.json"))

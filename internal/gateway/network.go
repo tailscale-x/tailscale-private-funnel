@@ -16,7 +16,7 @@ type Network struct {
 	CIDR        string
 }
 
-// ValidateNoOverlap rejects ambiguous multi-network topologies before a relay
+// ValidateNoOverlap rejects ambiguous multi-network topologies before a backend
 // is exposed. Overlapping user-defined CIDRs could otherwise send traffic to
 // an unintended backend network.
 func ValidateNoOverlap(networks []Network) error {

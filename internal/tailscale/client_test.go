@@ -95,3 +95,63 @@ func TestServiceLifecycleUsesExactAPIEndpoints(t *testing.T) {
 		t.Fatalf("missing device lookup in %#v", paths)
 	}
 }
+
+func TestSingleInstallationIssuerMintsOneRolePerKey(t *testing.T) {
+	issuerCalls, keyCalls := 0, 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/oauth/token" {
+			if err := r.ParseForm(); err != nil {
+				t.Fatal(err)
+			}
+			id, secret, ok := r.BasicAuth()
+			if !ok {
+				id = r.Form.Get("client_id")
+				secret = r.Form.Get("client_secret")
+			}
+			if id != "installation-issuer" || secret != "issuer-secret" {
+				t.Error("role-specific credential selected")
+			}
+			issuerCalls++
+			json.NewEncoder(w).Encode(map[string]string{"access_token": "issuer-token"})
+			return
+		}
+		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/keys") {
+			t.Errorf("unexpected API %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		var b struct {
+			Capabilities struct {
+				Devices struct {
+					Create struct {
+						Tags                               []string `json:"tags"`
+						Reusable, Ephemeral, Preauthorized bool
+					} `json:"create"`
+				} `json:"devices"`
+			} `json:"capabilities"`
+			Expiry int `json:"expirySeconds"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+			t.Fatal(err)
+		}
+		tags := b.Capabilities.Devices.Create.Tags
+		if len(tags) != 1 || tags[0] == "tag:tailscale-private-funnel-main-issuer" {
+			t.Error("issuer or multiple roles leaked into auth key", tags)
+		}
+		if b.Expiry != 900 || b.Capabilities.Devices.Create.Reusable || !b.Capabilities.Devices.Create.Preauthorized {
+			t.Error("unsafe key capabilities")
+		}
+		keyCalls++
+		json.NewEncoder(w).Encode(map[string]string{"key": "one-use-role-key"})
+	}))
+	defer srv.Close()
+	for _, role := range []string{"control", "loadbalancer", "docker-gateway", "tailnet-gateway", "k8s-gateway"} {
+		c := Client{HTTP: srv.Client(), ClientID: "installation-issuer", ClientSecret: "issuer-secret", Tailnet: "-", APIBase: srv.URL + "/api/v2", OAuthBase: srv.URL}
+		if _, err := c.CreateWorkloadAuthKey(context.Background(), role, "test", []string{"tag:tailscale-private-funnel-main-" + role}, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if issuerCalls != 5 || keyCalls != 5 {
+		t.Fatal("not all roles exercised", issuerCalls, keyCalls)
+	}
+}

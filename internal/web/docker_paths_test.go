@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"testing"
 	"time"
@@ -20,14 +19,14 @@ import (
 
 func TestDockerPathApplicationsAndSignedReports(t *testing.T) {
 	_, s := testControl(t)
-	c := enrollmentTestControl(t, s)
+	c := registrationTestControl(t, s)
 	fixture := installDNSFixture(t, s, "example.com")
 	fixture.records["example.com"] = []libdns.Record{libdns.RR{Name: "unrelated.example.com", Type: "A", Data: "203.0.113.99"}}
 	_ = s.SetJSON("tailnet", map[string]string{"name": "example.ts.net"})
 	_ = s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "Apps", HostnameRegexes: []string{`app[.]example[.]com`}, Enabled: true}}})
-	pub, key, _ := report.GenerateKey()
+
 	_ = s.UpsertNode("docker", "docker-gateway", "docker")
-	_ = s.BindNodeIdentity("docker", encodePublicKey(pub), "docker-device", nil)
+	_ = bindTestNode(s, "docker", "docker-device", nil)
 	_ = s.SetJSON("node_deployment:docker", nodeDeployment{})
 	client := nodeClient(t, c, Principal{NodeID: "docker-device", Tags: []string{"tag:tailscale-private-funnel"}, Tagged: true})
 	resolve := func(path string, port uint32, replacement *v1.PrefixRewrite) string {
@@ -36,7 +35,7 @@ func TestDockerPathApplicationsAndSignedReports(t *testing.T) {
 		if err != nil {
 			t.Fatal(path, err)
 		}
-		env, err := report.FromWire(response.Msg, "configuration")
+		env, err := report.NewSnapshot("configuration", response.Msg.NodeId, response.Msg, time.Unix(response.Msg.IssuedAt, 0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -101,7 +100,7 @@ func TestDockerPathApplicationsAndSignedReports(t *testing.T) {
 		{ApplicationId: admin, ServiceName: adminApp.ServiceName, ContainerId: "admin-container", PublicHostname: "app.example.com", BackendIp: "172.20.0.3", BackendHostname: "admin", Port: 9090, Protocol: "http", Reachable: true, PathPrefix: "/admin"},
 	}
 	send := func(exposures []*v1.ReportedExposure) error {
-		_, err := client.SubmitReport(t.Context(), connect.NewRequest(signedMessage(t, "report", "docker", &v1.ExposureReport{Exposures: exposures, ExpiresAt: time.Now().Add(time.Minute).Unix()}, key)))
+		_, err := client.SubmitReport(t.Context(), connect.NewRequest(typedMessage(&v1.ExposureReport{Exposures: exposures, ExpiresAt: time.Now().Add(time.Minute).Unix()})))
 		return err
 	}
 	if err := send(items); err != nil {
@@ -120,14 +119,12 @@ func TestDockerPathApplicationsAndSignedReports(t *testing.T) {
 	if ownerID == "" {
 		t.Fatal("missing stable hostname ownership")
 	}
-	edgeKeyRaw, _ := s.GetSecret("test-edge-key")
-	edgeKey, _ := base64.RawStdEncoding.DecodeString(edgeKeyRaw)
 	edge := nodeClient(t, c, Principal{NodeID: "edge-tailnet", Tagged: true, Tags: []string{"tag:tailscale-private-funnel"}})
 	edgeItems := []*v1.ReportedExposure{
 		{ApplicationId: api, ServiceName: apiApp.ServiceName, PublicHostname: "app.example.com", Port: 8080, Reachable: true},
 		{ApplicationId: admin, ServiceName: adminApp.ServiceName, PublicHostname: "app.example.com", Port: 9090, Reachable: true},
 	}
-	if _, err := edge.SubmitReport(t.Context(), connect.NewRequest(signedMessage(t, "report", "edge-id", &v1.ExposureReport{Exposures: edgeItems, ExpiresAt: time.Now().Add(time.Minute).Unix()}, edgeKey))); err != nil {
+	if _, err := edge.SubmitReport(t.Context(), connect.NewRequest(typedMessage(&v1.ExposureReport{Exposures: edgeItems, ExpiresAt: time.Now().Add(time.Minute).Unix()}))); err != nil {
 		t.Fatal(err)
 	}
 	// Report acceptance is local; the periodic worker owns DNS application.

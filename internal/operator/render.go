@@ -56,27 +56,24 @@ func component(o client.Object) (string, *funnel.ComponentSpec, *funnel.Componen
 	}
 	panic("unknown Funnel component")
 }
-func identityName(o client.Object) string {
-	mode, s, _ := component(o)
-	if s.IdentitySecretRef != nil {
-		return s.IdentitySecretRef.Name
+func materialName(o client.Object) string {
+	if c, ok := o.(*funnel.FunnelControl); ok && c.Spec.EncryptionSecretRef != nil {
+		return c.Spec.EncryptionSecretRef.Name
 	}
-	if mode == "k8s-gateway" {
-		return o.GetName() + "-agent-state"
-	}
-	return o.GetName() + "-identity"
+	return o.GetName() + "-material"
 }
+
 func labels(o client.Object) map[string]string {
 	return map[string]string{"tailscale-private-funnel.io/owner-uid": string(o.GetUID()), "app.kubernetes.io/part-of": "tailscale-private-funnel"}
 }
 func Render(o client.Object) ([]client.Object, error) {
 	mode, s, _ := component(o)
 	placement := placementValues(s.Placement)
-	bootstrap := o.GetName() + "-bootstrap"
-	if s.BootstrapSecretRef != nil {
-		bootstrap = s.BootstrapSecretRef.Name
+	logicalID := s.ComponentID
+	if logicalID == "" {
+		logicalID = string(o.GetUID())
 	}
-	values := map[string]any{"component": mode, "installation": s.Installation, "image": map[string]any{"reference": s.Image}, "bootstrap": map[string]any{"existingSecret": bootstrap}, "resources": s.Resources, "identity": map[string]any{"existingSecret": identityName(o)}, "persistence": map[string]any{"existingClaim": s.Storage.ExistingClaim, "size": s.Storage.Size, "storageClass": s.Storage.StorageClassName}}
+	values := map[string]any{"component": mode, "componentID": logicalID, "installation": s.Installation, "managementURL": s.ManagementURL, "hostname": s.Hostname, "image": map[string]any{"reference": s.Image}, "resources": s.Resources, "materialSecret": materialName(o), "persistence": map[string]any{"existingClaim": s.Storage.ExistingClaim, "size": s.Storage.Size, "storageClass": s.Storage.StorageClassName}}
 	if values["installation"] == "" {
 		values["installation"] = "main"
 	}
@@ -93,24 +90,26 @@ func Render(o client.Object) ([]client.Object, error) {
 			if pg == nil || pg.ConnectionSecretRef.Name == "" || pg.ConnectionSecretRef.Key == "" {
 				return nil, fmt.Errorf("PostgreSQL connection Secret and key are required")
 			}
-			if pg.ConnectionSecretRef.Name == identityName(o) || (pg.CASecretRef != nil && pg.CASecretRef.Name == identityName(o)) {
+			if pg.ConnectionSecretRef.Name == materialName(o) || (pg.CASecretRef != nil && pg.CASecretRef.Name == materialName(o)) {
 				return nil, fmt.Errorf("database credentials and identity must use different Secrets")
 			}
 		}
 		placement["hostname"] = s.Hostname
 		placement["tailnet"] = v.Spec.Tailnet
 		placement["database"] = v.Spec.Database
+		placement["servicesSecret"] = v.Spec.ServicesRef.Name
+		placement["usersSecret"] = v.Spec.UsersRef.Name
 		values["control"] = placement
 	case *funnel.FunnelLoadBalancer:
 		placement["service"] = map[string]any{"annotations": v.Spec.PublicService.Annotations, "loadBalancerClass": v.Spec.PublicService.LoadBalancerClass, "loadBalancerSourceRanges": v.Spec.PublicService.SourceRanges, "externalTrafficPolicy": v.Spec.PublicService.ExternalTrafficPolicy}
 		if v.Spec.PublicService.ExternalTrafficPolicy == "" {
 			placement["service"].(map[string]any)["externalTrafficPolicy"] = "Local"
 		}
+		placement["publicHostname"] = v.Spec.PublicHostname
+		placement["certificateEmail"] = v.Spec.CertificateEmail
 		values["loadbalancer"] = placement
 	case *funnel.FunnelGateway:
-		if s.IdentitySecretRef != nil {
-			return nil, fmt.Errorf("gateway identity Secret names are operator-managed")
-		}
+		values["routingID"] = v.Spec.RoutingID
 		values["controller"] = placement
 		values["gatewayClass"] = v.Spec.GatewayClass
 		values["ingressClass"] = v.Spec.IngressClass
@@ -170,7 +169,7 @@ func Render(o client.Object) ([]client.Object, error) {
 			if object.GetKind() == "GatewayClass" {
 				_ = unstructured.SetNestedMap(object.Object, map[string]any{"group": funnel.GroupVersion.Group, "kind": "FunnelGateway", "name": o.GetName(), "namespace": o.GetNamespace()}, "spec", "parametersRef")
 			}
-			// Propagate ownership into Pods and runtime-created identity Secrets.
+			// Propagate the CR ownership binding into workload Pods.
 			templatePath := []string{"spec", "template", "metadata", "labels"}
 			if object.GetKind() == "Deployment" || object.GetKind() == "DaemonSet" || object.GetKind() == "Job" {
 				podLabels, _, _ := unstructured.NestedStringMap(object.Object, templatePath...)
@@ -187,7 +186,7 @@ func Render(o client.Object) ([]client.Object, error) {
 					for i, item := range containers {
 						c := item.(map[string]any)
 						env, _ := c["env"].([]any)
-						c["env"] = append(env, map[string]any{"name": "FUNNEL_OWNER_UID", "value": string(o.GetUID())}, map[string]any{"name": "FUNNEL_RESOURCE_NAME", "value": o.GetName()}, map[string]any{"name": "FUNNEL_RESOURCE_NAMESPACE", "value": o.GetNamespace()}, map[string]any{"name": "FUNNEL_DEPLOYMENT_TARGET", "value": "kubernetes"})
+						c["env"] = append(env, map[string]any{"name": "FUNNEL_OWNER_UID", "value": string(o.GetUID())})
 						containers[i] = c
 					}
 					_ = unstructured.SetNestedSlice(object.Object, containers, "spec", "template", "spec", field)

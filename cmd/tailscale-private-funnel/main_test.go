@@ -2,16 +2,16 @@ package main
 
 import (
 	"bytes"
+	"strings"
+	"testing"
+
 	funnel "github.com/tailscale-x/tailscale-private-funnel/api/kubernetes/v1alpha1"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/gateway"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/operator"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/provision"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
-	"testing"
 )
 
 func TestPublicInventory(t *testing.T) {
@@ -29,7 +29,7 @@ func TestPublicInventory(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"whoami", "health", "providers", "zones", "policies", "enrollments", "nodes", "exposures", "applications", "reports", "services", "settings", "access"} {
+	for _, name := range []string{"whoami", "health", "providers", "zones", "policies", "nodes", "exposures", "applications", "reports", "services", "settings", "access"} {
 		c, _, e := NewRoot("dev-test").Find([]string{"manage", name})
 		if e != nil || c.Name() != name {
 			t.Fatal("missing management", name)
@@ -127,20 +127,5 @@ func TestGeneratedPublicCommandsParse(t *testing.T) {
 				t.Fatalf("invalid rendered command %v: %v", args, e)
 			}
 		}
-	}
-}
-
-func TestDockerExecProbeUsesTheHiddenRuntimeContract(t *testing.T) {
-	args := gateway.RelayCheckCommand("127.0.0.1:8080")
-	r := NewRoot("dev-test")
-	var out bytes.Buffer
-	r.SetOut(&out)
-	r.SetErr(&out)
-	r.SetArgs(append(args[1:], "--help"))
-	if e := r.Execute(); e != nil {
-		t.Fatalf("Docker exec probe no longer matches CLI: %v: %s", e, out.String())
-	}
-	if !strings.Contains(out.String(), "relay check") {
-		t.Fatal(out.String())
 	}
 }

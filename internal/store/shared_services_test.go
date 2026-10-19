@@ -1,11 +1,12 @@
 package store
 
 import (
-	"github.com/libdns/libdns"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/libdns/libdns"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 )
 
 func TestSharedServiceMigrationPreservesApplicationsAndOwnership(t *testing.T) {

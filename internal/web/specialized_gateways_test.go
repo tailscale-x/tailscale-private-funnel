@@ -19,18 +19,18 @@ import (
 func TestStaleGatewayPreservesPersistentIdentity(t *testing.T) {
 	c, s := testControl(t)
 	_ = s.UpsertNode("persistent", "tailnet-gateway", "persistent")
-	pub, key, _ := report.GenerateKey()
-	_ = s.BindNodeIdentity("persistent", encodePublicKey(pub), "stable-device", nil)
-	env, _ := report.NewEnvelope("persistent", map[string]any{"expires_at": time.Now().Add(time.Minute).Unix(), "exposures": []any{}}, pub, key, time.Now())
+
+	_ = bindTestNode(s, "persistent", "stable-device", nil)
+	env, _ := report.NewSnapshot("report", "persistent", map[string]any{"expires_at": time.Now().Add(time.Minute).Unix(), "exposures": []any{}}, time.Now())
 	raw, _ := json.Marshal(env)
-	if err := s.AcceptReport("persistent", env.Nonce, raw, env.PublicKey); err != nil {
+	if err := s.AcceptReport("persistent", env.Nonce, raw); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.CleanupStaleNodes(context.Background(), -time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	n, err := s.Node("persistent")
-	if err != nil || n.Revoked || n.TailnetID != "stable-device" || n.PublicKey != encodePublicKey(pub) {
+	if err != nil || n.Revoked || n.TailnetID != "stable-device" {
 		t.Fatal(n, err)
 	}
 }
@@ -56,8 +56,8 @@ func TestProgrammingWaitsForCurrentRouteAcknowledgment(t *testing.T) {
 func TestRevokedGatewayCleanupToleratesRemovedServices(t *testing.T) {
 	c, s := testControl(t)
 	_ = s.SetJSON("tailnet", map[string]string{"name": "example.ts.net"})
-	_ = s.SetSecret("tailscale_oauth_client_id", "test-id")
-	_ = s.SetSecret("tailscale_oauth_client_secret", "test-secret")
+	_ = s.SetSecret("tailscale_services_client_id", "test-id")
+	_ = s.SetSecret("tailscale_services_client_secret", "test-secret")
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/oauth/token") {
 			writeJSON(w, map[string]string{"access_token": "test-token"})

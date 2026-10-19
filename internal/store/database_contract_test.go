@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -130,38 +129,23 @@ func TestDatabaseContract(t *testing.T) {
 			if e != nil || len(kept) != 1 {
 				t.Fatal("ownership cleanup", kept, e)
 			}
-			enrollment, code, e := s.CreateEnrollment("docker-gateway", "gateway")
-			if e != nil {
+
+			if _, e = s.RegisterComponent(Registration{ComponentID: "gateway", InstanceID: "instance", DeviceID: "device", Installation: "main", Mode: "docker-gateway", Name: "Gateway", Hostname: "gateway", Connection: "embedded"}, time.Now()); e != nil {
 				t.Fatal(e)
 			}
-			var successes atomic.Int32
-			var wg sync.WaitGroup
-			for i := 0; i < 4; i++ {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					if s.BindEnrollment(enrollment.ID, code, "key", "device", "gateway", []string{"100.64.0.1"}) == nil {
-						successes.Add(1)
-					}
-				}()
-			}
-			wg.Wait()
-			if successes.Load() != 1 {
-				t.Fatal("one-use binding", successes.Load())
-			}
-			if e = s.AcceptReport(enrollment.ID, "nonce", []byte(`{"test":true}`), "key"); e != nil {
+			if e = s.AcceptReport("gateway", "nonce", []byte(`{"test":true}`)); e != nil {
 				t.Fatal(e)
 			}
-			if e = s.AcceptReport(enrollment.ID, "nonce", []byte(`{}`), "key"); e == nil {
+			if e = s.AcceptReport("gateway", "nonce", []byte(`{}`)); e == nil {
 				t.Fatal("replay accepted")
 			}
-			if e = s.AcceptReport("unknown", "x", []byte(`{}`), "key"); e == nil {
+			if e = s.AcceptReport("unknown", "x", []byte(`{}`)); e == nil {
 				t.Fatal("unknown report accepted")
 			}
-			if e = s.RevokeNode(enrollment.ID); e != nil {
+			if e = s.RevokeNode("gateway"); e != nil {
 				t.Fatal(e)
 			}
-			if e = s.AcceptReport(enrollment.ID, "new", []byte(`{}`), "key"); e == nil {
+			if e = s.AcceptReport("gateway", "new", []byte(`{}`)); e == nil {
 				t.Fatal("revoked report accepted")
 			}
 			if e = s.SetJSON("policy", map[string]any{"revision": 2}); e != nil {
@@ -193,7 +177,8 @@ func TestDatabaseContract(t *testing.T) {
 }
 func TestPostgresIdentityAndMigrations(t *testing.T) {
 	s, o, dir := contractStore(t, true)
-	_, key, e := s.ConfigurationKey()
+	_ = s.SetSecret("test-key", "application-secret")
+	key, e := s.GetSecret("test-key")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -212,7 +197,7 @@ func TestPostgresIdentityAndMigrations(t *testing.T) {
 	if e != nil || value != "private" {
 		t.Fatal(e)
 	}
-	_, key2, e := second.ConfigurationKey()
+	key2, e := second.GetSecret("test-key")
 	if e != nil || string(key) != string(key2) {
 		t.Fatal("signing key changed", e)
 	}
@@ -293,6 +278,7 @@ func TestPostgresConfigurationFailuresRedactCredentials(t *testing.T) {
 
 func TestPostgresDoesNotDowngradeTLS(t *testing.T) {
 	s, o, dir := contractStore(t, true)
+	_ = s.SetSecret("test-key", "application-secret")
 	_ = s
 	o.TLSMode = "verify-full"
 	// Plain disposable PostgreSQL fixtures do not offer trusted TLS. An explicit
@@ -336,8 +322,12 @@ func TestPostgresConcurrentFirstInitialization(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer s.Close()
+	entries, readErr := postgresMigrations.ReadDir("postgres")
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
 	var count int
-	if e = s.db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); e != nil || count != 2 {
+	if e = s.db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count); e != nil || count != len(entries) {
 		t.Fatal("migration applied incorrectly", count, e)
 	}
 	key, e := os.ReadFile(filepath.Join(dir, "master.key"))

@@ -20,7 +20,7 @@ func (c *Control) CleanupOwnedInstallation(ctx context.Context) error {
 			return e
 		}
 		if !n.Revoked {
-			return fmt.Errorf("active enrolled components remain")
+			return fmt.Errorf("active registered components remain")
 		}
 		if n.TailnetID != "" {
 			known[n.TailnetID] = true

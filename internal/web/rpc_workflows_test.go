@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,9 +13,9 @@ import (
 	"github.com/libdns/libdns"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1/funnelv1connect"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/identity"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 	"google.golang.org/protobuf/proto"
@@ -33,22 +32,26 @@ func managementClient(t *testing.T, c *Control, p Principal) funnelv1connect.Man
 	return funnelv1connect.NewManagementServiceClient(s.Client(), s.URL)
 }
 func nodeClient(t *testing.T, c *Control, p Principal) funnelv1connect.NodeServiceClient {
-	s := rpcServer(t, c, p)
-	return funnelv1connect.NewNodeServiceClient(s.Client(), s.URL)
-}
-func signedMessage(t *testing.T, purpose, id string, value any, key []byte) *v1.SignedEnvelope {
-	t.Helper()
-	pub := key[32:]
-	env, err := report.NewEnvelopeWithPurpose(purpose, id, value, pub, key, time.Now())
-	if err != nil {
-		t.Fatal(err)
+	n, e := c.Store.NodeByTailnetID(p.NodeID)
+	if e == nil {
+		reg, _ := c.Store.ComponentRegistration(n.ID)
+		if len(p.Tags) == 0 || len(p.Tags) == 1 && p.Tags[0] == "tag:tailscale-private-funnel" {
+			p.Tags = []string{identity.Tag("main", reg.Role())}
+		}
 	}
-	wire, err := report.Wire(env)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return wire
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if e == nil {
+			r.Header.Set("Funnel-Component-ID", n.ID)
+			r.Header.Set("Funnel-Instance-ID", "test-"+n.ID)
+		}
+		c.controlHandler().ServeHTTP(w, WithPrincipal(r, p))
+	}))
+	t.Cleanup(server.Close)
+	return funnelv1connect.NewNodeServiceClient(server.Client(), server.URL)
+
 }
+func typedMessage[T proto.Message](value T) T { return value }
+
 func TestRPCPolicyLifecycleAndImmediateWithdrawal(t *testing.T) {
 	c, s := testControl(t)
 	f := installDNSFixture(t, s, "example.com")
@@ -206,24 +209,19 @@ func TestRPCNodeReportIdentityReplayExpiryRevocationAndConfiguration(t *testing.
 	c, s := testControl(t)
 	installDNSFixture(t, s, "example.com")
 	zoneReportFixture(t, c, s)
-	pub, key, _ := report.GenerateKey()
+
 	_ = s.UpsertNode("test-gateway", "docker-gateway", "test-gateway")
-	_ = s.BindNodeIdentity("test-gateway", encodePublicKey(pub), "tail-test-gateway", nil)
+	_ = bindTestNode(s, "test-gateway", "tail-test-gateway", nil)
 	_ = s.SetJSON("node_deployment:test-gateway", nodeDeployment{})
 	client := nodeClient(t, c, Principal{NodeID: "tail-test-gateway", Tags: []string{"tag:tailscale-private-funnel"}, Tagged: true})
 	config, err := client.GetConfig(t.Context(), connect.NewRequest(&v1.Empty{}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	envelope, err := report.FromWire(config.Msg, "configuration")
-	if err != nil {
+	if _, err = nodeconfig.FromPayload(config.Msg, "test-gateway", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	configKey, _, _ := s.ConfigurationKey()
-	if _, err = nodeconfig.Verify(envelope, base64.RawStdEncoding.EncodeToString(configKey), "test-gateway", time.Now()); err != nil {
-		t.Fatalf("configuration signature: %v target=%s public_matches=%v", err, envelope.NodeID, envelope.PublicKey == base64.RawStdEncoding.EncodeToString(configKey))
-	}
-	message := signedMessage(t, "report", "test-gateway", &v1.ExposureReport{ExpiresAt: time.Now().Add(time.Minute).Unix()}, key)
+	message := typedMessage(&v1.ExposureReport{ExpiresAt: time.Now().Add(time.Minute).Unix()})
 	spoof := nodeClient(t, c, Principal{NodeID: "other"})
 	if _, err = spoof.SubmitReport(t.Context(), connect.NewRequest(message)); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatal("spoof", err)
@@ -231,14 +229,7 @@ func TestRPCNodeReportIdentityReplayExpiryRevocationAndConfiguration(t *testing.
 	if _, err = client.SubmitReport(t.Context(), connect.NewRequest(message)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = client.SubmitReport(t.Context(), connect.NewRequest(message)); connect.CodeOf(err) != connect.CodeAborted {
-		t.Fatal("replay", err)
-	}
-	crossPurpose := signedMessage(t, "peers", "test-gateway", &v1.ExposureReport{ExpiresAt: time.Now().Add(time.Minute).Unix()}, key)
-	if _, err = client.SubmitReport(t.Context(), connect.NewRequest(crossPurpose)); connect.CodeOf(err) != connect.CodeInvalidArgument {
-		t.Fatal("cross-purpose replay", err)
-	}
-	expired := signedMessage(t, "report", "test-gateway", &v1.ExposureReport{ExpiresAt: time.Now().Add(-time.Minute).Unix()}, key)
+	expired := typedMessage(&v1.ExposureReport{ExpiresAt: time.Now().Add(-time.Minute).Unix()})
 	if _, err = client.SubmitReport(t.Context(), connect.NewRequest(expired)); err == nil {
 		t.Fatal("expired report accepted")
 	}
@@ -250,20 +241,20 @@ func TestRPCNodeReportIdentityReplayExpiryRevocationAndConfiguration(t *testing.
 func TestRPCPublicEndpointServiceBindingAndRetention(t *testing.T) {
 	c, s := testControl(t)
 	installDNSFixture(t, s, "example.com")
-	pub, key, _ := report.GenerateKey()
+
 	_ = s.UpsertNode("lb", "loadbalancer", "lb")
-	_ = s.BindNodeIdentity("lb", encodePublicKey(pub), "tail-lb", nil)
+	_ = bindTestNode(s, "lb", "tail-lb", nil)
 	d := nodeDeployment{AddressSource: "kubernetes", DeploymentTarget: "kubernetes", KubernetesNamespace: "system", PublicService: "edge-public", LoadBalancerHostname: "edge.example.com"}
 	_ = s.SetJSON("node_deployment:lb", d)
 	_ = s.SetJSON("node_health:lb", loadBalancerHealth{ReceivedAt: time.Now().Unix()})
 	client := nodeClient(t, c, Principal{NodeID: "tail-lb"})
 	payload := &v1.PublicEndpointPayload{Namespace: "system", Service: "edge-public", Uid: "service-uid", ObservedAt: time.Now().Unix(), Ingress: []*v1.PublicIngress{{Ip: "8.8.8.8"}}}
-	message := signedMessage(t, "public-endpoint", "lb", payload, key)
+	message := typedMessage(payload)
 	if _, err := client.SubmitPublicEndpoint(t.Context(), connect.NewRequest(message)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.SubmitPublicEndpoint(t.Context(), connect.NewRequest(message)); connect.CodeOf(err) != connect.CodeAborted {
-		t.Fatal("replay", err)
+	if _, err := client.SubmitPublicEndpoint(t.Context(), connect.NewRequest(message)); err != nil {
+		t.Fatal("idempotent report repeat", err)
 	}
 	n, _ := s.Node("lb")
 	ips, err := c.kubernetesAddresses(t.Context(), n, d)
@@ -272,7 +263,7 @@ func TestRPCPublicEndpointServiceBindingAndRetention(t *testing.T) {
 	}
 	_ = s.ReplaceLedger("fixture", "example.com", "loadbalancer:lb", []libdns.Record{libdns.RR{Name: "edge.example.com", Type: "A", Data: "8.8.8.8"}})
 	payload.Ingress = []*v1.PublicIngress{{Ip: "10.0.0.1"}}
-	if _, err = client.SubmitPublicEndpoint(t.Context(), connect.NewRequest(signedMessage(t, "public-endpoint", "lb", payload, key))); err != nil {
+	if _, err = client.SubmitPublicEndpoint(t.Context(), connect.NewRequest(typedMessage(payload))); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = c.kubernetesAddresses(t.Context(), n, d); err == nil {
@@ -283,7 +274,7 @@ func TestRPCPublicEndpointServiceBindingAndRetention(t *testing.T) {
 		t.Fatal("prior owned A lost")
 	}
 	payload.Uid = "replaced"
-	if _, err = client.SubmitPublicEndpoint(t.Context(), connect.NewRequest(signedMessage(t, "public-endpoint", "lb", payload, key))); connect.CodeOf(err) != connect.CodeAborted {
+	if _, err = client.SubmitPublicEndpoint(t.Context(), connect.NewRequest(typedMessage(payload))); connect.CodeOf(err) != connect.CodeAborted {
 		t.Fatal("Service identity changed", err)
 	}
 }
@@ -339,13 +330,13 @@ func TestRPCControlInstructionsDoNotExposeCredentials(t *testing.T) {
 	_ = s.SetJSON("tailnet", map[string]any{"name": "preview.ts.net", "management_url": "http://control:8080", "release_version": "v2.0.0"})
 	server := rpcServer(t, c, Principal{NodeID: "admin"})
 	client := funnelv1connect.NewDeploymentServiceClient(server.Client(), server.URL)
-	before, _ := s.Enrollments("")
+
 	result, e := client.Instructions(t.Context(), connect.NewRequest(&v1.DeploymentRequest{Mode: "control", Target: "kubernetes", ResourceName: "other", Context: "fixture", Tailnet: "preview.ts.net"}))
 	if e != nil {
 		t.Fatal(e)
 	}
-	after, _ := s.Enrollments("")
-	if len(before) != len(after) || result.Msg.Credentials != nil {
+
+	if result.Msg.Credentials != nil {
 		t.Fatal("instructions minted enrollment")
 	}
 	if strings.Contains(result.Msg.Script, "helm upgrade") || !strings.Contains(result.Msg.Script, "k8s") {
@@ -353,76 +344,25 @@ func TestRPCControlInstructionsDoNotExposeCredentials(t *testing.T) {
 	}
 }
 
-func TestRPCEnrollmentCreatesTemporaryKeyAndConsumesProof(t *testing.T) {
-	_, s := testControl(t)
-	c := enrollmentTestControl(t, s)
-	_ = s.SetJSON("tailnet", map[string]string{"name": "example.ts.net", "management_url": "http://control.example.ts.net:8080", "release_version": "v2.0.0"})
-	server := rpcServer(t, c, Principal{NodeID: "admin"})
-	provisioning := funnelv1connect.NewDeploymentServiceClient(server.Client(), server.URL)
-	for _, mode := range []string{"docker-gateway", "tailnet-gateway", "k8s-gateway", "loadbalancer"} {
-		request := &v1.DeploymentRequest{Mode: mode, Target: "native", Hostname: "test-" + mode}
-		if mode == "k8s-gateway" {
-			request.Target = "kubernetes"
-		}
-		if mode == "loadbalancer" {
-			request.PublicHostname = "edge.example.com"
-			request.CertificateEmail = "admin@example.com"
-		}
-		plan, err := provisioning.Instructions(t.Context(), connect.NewRequest(request))
-		if err != nil {
-			t.Fatal(mode, err)
-		}
-		if plan.Msg.Credentials != nil {
-			t.Fatal("preview minted credentials")
-		}
-		result, err := provisioning.Authorize(t.Context(), connect.NewRequest(request))
-		if err != nil {
-			t.Fatal(mode, err)
-		}
-		if result.Header().Get("Cache-Control") != "no-store" || result.Msg.Credentials.AuthKey == "" || strings.Contains(result.Msg.Script, "test-secret") {
-			t.Fatal("unsafe enrollment result")
-		}
-		pub, _, _ := report.GenerateKey()
-		nodeServer := rpcServer(t, c, Principal{NodeID: "tail-" + mode, Hostname: request.Hostname, Tags: []string{"tag:tailscale-private-funnel"}, Tagged: true})
-		enrollment := funnelv1connect.NewEnrollmentServiceClient(nodeServer.Client(), nodeServer.URL)
-		bind := &v1.BindSigningKeyRequest{EnrollmentId: result.Msg.Credentials.EnrollmentId, Code: result.Msg.Credentials.EnrollmentCode, PublicKey: pub}
-		if _, err = enrollment.BindSigningKey(t.Context(), connect.NewRequest(bind)); err != nil {
-			t.Fatal(mode, err)
-		}
-		if _, err = enrollment.BindSigningKey(t.Context(), connect.NewRequest(bind)); err == nil {
-			t.Fatal("consumed enrollment proof reused")
-		}
-		node, err := s.Node(bind.EnrollmentId)
-		if err != nil || node.TailnetID != "tail-"+mode {
-			t.Fatal(node, err)
-		}
-		var deployment map[string]any
-		_ = s.GetJSON("node_deployment:"+bind.EnrollmentId, &deployment)
-		raw, _ := json.Marshal(deployment)
-		if strings.Contains(string(raw), "tskey-bootstrap-test") {
-			t.Fatal("auth key persisted")
-		}
-	}
-}
 func TestRPCTailnetPeerProbeExposureLifecycle(t *testing.T) {
 	_, s := testControl(t)
-	c := enrollmentTestControl(t, s)
+	c := registrationTestControl(t, s)
 	installDNSFixture(t, s, "example.com")
 	_ = s.SetJSON("tailnet", map[string]string{"name": "example.ts.net"})
 	_ = s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "Apps", HostnameRegexes: []string{`app[.]example[.]com`}, Enabled: true}}})
-	pub, key, _ := report.GenerateKey()
+
 	_ = s.UpsertNode("tail-gateway", "tailnet-gateway", "tail-gateway")
-	_ = s.BindNodeIdentity("tail-gateway", encodePublicKey(pub), "tail-device", nil)
+	_ = bindTestNode(s, "tail-gateway", "tail-device", nil)
 	_ = s.SetJSON("node_deployment:tail-gateway", nodeDeployment{})
-	node := nodeClient(t, c, Principal{NodeID: "tail-device", Tags: []string{"tag:tailscale-private-funnel", "tag:backend-access"}, Tagged: true})
+	node := nodeClient(t, c, Principal{NodeID: "tail-device", Tags: []string{"tag:tailscale-private-funnel-main-tailnet-gateway", "tag:backend-access"}, Tagged: true})
 	admin := managementClient(t, c, Principal{NodeID: "admin"})
 	snapshot := &v1.PeerSnapshot{Sources: []string{"tailnet"}, Peers: []*v1.Peer{{Id: "backend", Hostname: "backend", Addresses: []string{"100.70.0.1"}}}, ExpiresAt: time.Now().Add(time.Minute).Unix()}
-	message := signedMessage(t, "peers", "tail-gateway", snapshot, key)
+	message := typedMessage(snapshot)
 	if _, err := node.SubmitPeers(t.Context(), connect.NewRequest(message)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := node.SubmitPeers(t.Context(), connect.NewRequest(message)); connect.CodeOf(err) != connect.CodeAborted {
-		t.Fatal("peer replay", err)
+	if _, err := node.SubmitPeers(t.Context(), connect.NewRequest(message)); err != nil {
+		t.Fatal("peer snapshot refresh", err)
 	}
 	peers, err := admin.GetPeers(t.Context(), connect.NewRequest(&v1.ResourceID{Id: "tail-gateway"}))
 	if err != nil || !contains(peers.Msg.Tags, "tag:backend-access") {
@@ -437,7 +377,7 @@ func TestRPCTailnetPeerProbeExposureLifecycle(t *testing.T) {
 		t.Fatal("untested accessibility accepted")
 	}
 	snapshot.Results = []*v1.ProbeResult{{Id: probe.Msg.Id, DeviceId: "backend", Port: 8080, Reachable: true, CheckedAt: time.Now().Unix()}}
-	if _, err = node.SubmitPeers(t.Context(), connect.NewRequest(signedMessage(t, "peers", "tail-gateway", snapshot, key))); err != nil {
+	if _, err = node.SubmitPeers(t.Context(), connect.NewRequest(typedMessage(snapshot))); err != nil {
 		t.Fatal(err)
 	}
 	input.PublicHostname = "denied.example.com"
@@ -469,7 +409,7 @@ func TestRPCTailnetPeerProbeExposureLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot.ExpiresAt = time.Now().Add(-time.Minute).Unix()
-	if _, err = node.SubmitPeers(t.Context(), connect.NewRequest(signedMessage(t, "peers", "tail-gateway", snapshot, key))); err == nil {
+	if _, err = node.SubmitPeers(t.Context(), connect.NewRequest(typedMessage(snapshot))); err == nil {
 		t.Fatal("expired snapshot accepted")
 	}
 }
@@ -509,7 +449,7 @@ func TestRPCDefaultOwnerAndCapabilityAuthorization(t *testing.T) {
 func TestRPCOAuthRotationTestingAndDefaultsPreserveSecrets(t *testing.T) {
 	c, s := testControl(t)
 	_ = s.SetJSON("tailnet", map[string]any{"name": "example.ts.net", "management_url": "http://old-control", "release_version": "v2.0.0"})
-	_ = s.SetSecrets(map[string]string{"tailscale_oauth_client_id": "old-id", "tailscale_oauth_client_secret": "old-secret"})
+	_ = s.SetSecrets(map[string]string{"tailscale_users_client_id": "old-id", "tailscale_users_client_secret": "old-secret"})
 	fail := false
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/oauth/token") {
@@ -534,31 +474,31 @@ func TestRPCOAuthRotationTestingAndDefaultsPreserveSecrets(t *testing.T) {
 	c.TailscaleClient = &tailscale.Client{HTTP: api.Client(), APIBase: api.URL, OAuthBase: api.URL}
 	c.ReleaseCheck = func(context.Context, string) error { return nil }
 	client := managementClient(t, c, Principal{NodeID: "admin"})
-	if _, err := client.TestOAuth(t.Context(), connect.NewRequest(&v1.OAuthRequest{ClientId: "new-id", ClientSecret: "new-secret"})); err != nil {
+	if _, err := client.TestOAuth(t.Context(), connect.NewRequest(&v1.OAuthRequest{Purpose: "users", ClientId: "new-id", ClientSecret: "new-secret"})); err != nil {
 		t.Fatal(err)
 	}
-	secret, _ := s.GetSecret("tailscale_oauth_client_secret")
+	secret, _ := s.GetSecret("tailscale_users_client_secret")
 	if secret != "old-secret" {
 		t.Fatal("test mutated credentials")
 	}
-	if _, err := client.SaveOAuth(t.Context(), connect.NewRequest(&v1.OAuthRequest{ClientId: "new-id", ClientSecret: "new-secret"})); err != nil {
+	if _, err := client.SaveOAuth(t.Context(), connect.NewRequest(&v1.OAuthRequest{Purpose: "users", ClientId: "new-id", ClientSecret: "new-secret"})); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.SaveOAuth(t.Context(), connect.NewRequest(&v1.OAuthRequest{})); err != nil {
+	if _, err := client.SaveOAuth(t.Context(), connect.NewRequest(&v1.OAuthRequest{Purpose: "users"})); err != nil {
 		t.Fatal("blank replacement failed", err)
 	}
 	fail = true
-	if _, err := client.SaveOAuth(t.Context(), connect.NewRequest(&v1.OAuthRequest{ClientSecret: "bad-secret"})); connect.CodeOf(err) != connect.CodeUnavailable {
+	if _, err := client.SaveOAuth(t.Context(), connect.NewRequest(&v1.OAuthRequest{Purpose: "users", ClientSecret: "bad-secret"})); connect.CodeOf(err) != connect.CodeUnavailable {
 		t.Fatal(err)
 	}
-	secret, _ = s.GetSecret("tailscale_oauth_client_secret")
+	secret, _ = s.GetSecret("tailscale_users_client_secret")
 	if secret != "new-secret" {
 		t.Fatal("failed rotation damaged credentials")
 	}
-	if _, err := client.SaveDefaults(t.Context(), connect.NewRequest(&v1.EnrollmentDefaults{ManagementUrl: "http://control:8080", ReleaseVersion: "v2.0.0"})); err != nil {
+	if _, err := client.SaveDefaults(t.Context(), connect.NewRequest(&v1.DeploymentDefaults{ManagementUrl: "http://control:8080", ReleaseVersion: "v2.0.0"})); err != nil {
 		t.Fatal(err)
 	}
-	secret, _ = s.GetSecret("tailscale_oauth_client_secret")
+	secret, _ = s.GetSecret("tailscale_users_client_secret")
 	if secret != "new-secret" {
 		t.Fatal("defaults cleared OAuth")
 	}
@@ -570,17 +510,17 @@ func TestRPCOAuthRotationTestingAndDefaultsPreserveSecrets(t *testing.T) {
 
 func TestRPCKubernetesDesiredStateBindingReplayAndRecovery(t *testing.T) {
 	_, s := testControl(t)
-	c := enrollmentTestControl(t, s)
+	c := registrationTestControl(t, s)
 	installDNSFixture(t, s, "example.com")
 	_ = s.SetJSON("tailnet", map[string]string{"name": "example.ts.net"})
 	_ = s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "Kubernetes", HostnameRegexes: []string{`(?:app|alias)[.]example[.]com`}, Enabled: true}}})
-	pub, key, _ := report.GenerateKey()
+
 	_ = s.UpsertNode("kube", "k8s-gateway", "kube")
-	_ = s.BindNodeIdentity("kube", encodePublicKey(pub), "kube-device", nil)
+	_ = bindTestNode(s, "kube", "kube-device", nil)
 	backend := &v1.HTTPBackend{Key: "service:8080", Address: "10.43.0.1:8080", Port: 8080, Weight: 1, Endpoints: []*v1.PodEndpoint{{Address: "10.42.0.5:8080", PodUid: "pod-uid", NodeName: "node", NodeUid: "node-uid"}}}
 	snapshot := &v1.KubernetesPayload{ClusterId: "cluster", ExpiresAt: time.Now().Add(time.Minute).Unix(), Hosts: []*v1.KubernetesHost{{Hostname: "app.example.com", Rules: []*v1.HTTPRule{{Matches: []*v1.HTTPMatch{{Path: "/"}}, Backends: []*v1.HTTPBackend{backend}}}}, {Hostname: "alias.example.com", Rules: []*v1.HTTPRule{{Matches: []*v1.HTTPMatch{{Path: "/"}}, Backends: []*v1.HTTPBackend{backend}}}}}}
 	client := nodeClient(t, c, Principal{NodeID: "kube-device", Tags: []string{"tag:tailscale-private-funnel"}, Tagged: true})
-	message := signedMessage(t, "kubernetes", "kube", snapshot, key)
+	message := typedMessage(snapshot)
 	if _, err := client.SubmitKubernetes(t.Context(), connect.NewRequest(message)); err != nil {
 		t.Fatal(err)
 	}
@@ -588,8 +528,8 @@ func TestRPCKubernetesDesiredStateBindingReplayAndRecovery(t *testing.T) {
 	if err != nil || len(apps) != 2 || apps[0].ServiceName != apps[1].ServiceName || len(apps[0].HTTPBackends) != 1 || len(apps[0].HTTPBackends[0].Endpoints) != 1 || apps[0].AllowedGatewayNodes[0] != "kube" {
 		t.Fatal("translation changed routing/ownership", apps, err)
 	}
-	if _, err = client.SubmitKubernetes(t.Context(), connect.NewRequest(message)); connect.CodeOf(err) != connect.CodeAborted {
-		t.Fatal("replay", err)
+	if _, err = client.SubmitKubernetes(t.Context(), connect.NewRequest(message)); err != nil {
+		t.Fatal("idempotent report repeat", err)
 	}
 	// Routine snapshots reuse control-owned Service bindings without REST calls.
 	// A supplied target must never replace that trusted binding.
@@ -598,7 +538,7 @@ func TestRPCKubernetesDesiredStateBindingReplayAndRecovery(t *testing.T) {
 	c.TailscaleClient.HTTP = &http.Client{Transport: reportStallTransport{called}}
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
-	if _, err := client.SubmitKubernetes(ctx, connect.NewRequest(signedMessage(t, "kubernetes", "kube", snapshot, key))); err != nil {
+	if _, err := client.SubmitKubernetes(ctx, connect.NewRequest(typedMessage(snapshot))); err != nil {
 		t.Fatal("unchanged snapshot depended on external API", err)
 	}
 	select {
@@ -612,7 +552,7 @@ func TestRPCKubernetesDesiredStateBindingReplayAndRecovery(t *testing.T) {
 	}
 	apps[0].Enabled = false
 	_ = s.UpsertApplication(apps[0])
-	if _, err = client.SubmitKubernetes(t.Context(), connect.NewRequest(signedMessage(t, "kubernetes", "kube", snapshot, key))); err != nil {
+	if _, err = client.SubmitKubernetes(t.Context(), connect.NewRequest(typedMessage(snapshot))); err != nil {
 		t.Fatal("recovery", err)
 	}
 	recovered, _ := s.Applications()

@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/app"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/deploymentcli"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/gateway"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/manage"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/operator"
@@ -49,7 +48,7 @@ func NewRoot(version string) *cobra.Command {
 	kube := deploymentcli.Kubernetes(version)
 	native.AddCommand(nativeRuntime())
 	kube.AddCommand(kubernetesRuntime())
-	root.AddCommand(native, kube, management, deploymentcli.TransferRemote(version), &cobra.Command{Use: "version", Args: cobra.NoArgs, Run: func(c *cobra.Command, _ []string) { fmt.Fprintln(c.OutOrStdout(), version) }})
+	root.AddCommand(native, kube, management, &cobra.Command{Use: "version", Args: cobra.NoArgs, Run: func(c *cobra.Command, _ []string) { fmt.Fprintln(c.OutOrStdout(), version) }})
 	// Groups must reject unknown commands rather than silently printing help.
 	var strict func(*cobra.Command)
 	strict = func(c *cobra.Command) {
@@ -68,7 +67,7 @@ func NewRoot(version string) *cobra.Command {
 }
 func nativeRuntime() *cobra.Command {
 	runtime := &cobra.Command{Use: "runtime", Hidden: true}
-	runtime.AddCommand(deploymentcli.Installer("native"), deploymentcli.TransferInstaller("native"))
+	runtime.AddCommand(deploymentcli.Installer("native"))
 	for _, mode := range []string{"control", "loadbalancer", "docker-gateway", "tailnet-gateway"} {
 		mode := mode
 		o := app.Options{}
@@ -88,19 +87,21 @@ func nativeRuntime() *cobra.Command {
 				if e = json.Unmarshal(b, &p); e != nil {
 					return e
 				}
-				if p.Credentials == nil || p.Deployment == nil || p.Deployment.Mode != mode {
+				if p.Deployment == nil || p.Deployment.Mode != mode {
 					return errors.New("matching bootstrap bundle required")
 				}
 				d, key := p.Deployment, p.Credentials
 				o.ManagementURL = p.ManagementUrl
-				o.EnrollmentID = key.EnrollmentId
-				o.EnrollmentCode = key.EnrollmentCode
-				o.ControlKey = key.ControlKey
+				o.Installation = d.Installation
+				o.TailscaleConnection = d.TailscaleConnection
+				o.TailscaleSocket = d.TailscaleSocket
 				o.CertEmail = d.CertificateEmail
 				o.LoadBalancerHostname = d.PublicHostname
 				o.LabelKeys = d.LabelKeys
 				o.DenyNetworks = d.DenyNetworks
-				_ = os.Setenv("TS_AUTHKEY", key.AuthKey)
+				if key != nil {
+					_ = os.Setenv("TS_AUTHKEY", key.AuthKey)
+				}
 				defer os.Unsetenv("TS_AUTHKEY")
 				return app.Deploy(c.Context(), mode, o)
 			}
@@ -112,23 +113,20 @@ func nativeRuntime() *cobra.Command {
 		serve.Flags().BoolVar(&stdin, "bootstrap-stdin", false, "read one-use bootstrap bundle")
 		runtimeFlags(serve, &o)
 		parent.AddCommand(serve)
-		if mode == "docker-gateway" {
-			relay := &cobra.Command{Use: "relay", Hidden: true}
-			var listen, target string
-			run := &cobra.Command{Use: "serve", Hidden: true, RunE: func(c *cobra.Command, _ []string) error { return gateway.ServeRelay(c.Context(), listen, target) }}
-			run.Flags().StringVar(&listen, "listen", ":10000", "")
-			run.Flags().StringVar(&target, "target", "", "")
-			var checkTarget string
-			check := &cobra.Command{Use: "check", Hidden: true, RunE: func(c *cobra.Command, _ []string) error { return gateway.CheckRelay(checkTarget) }}
-			check.Flags().StringVar(&checkTarget, "target", "", "")
-			relay.AddCommand(run, check)
-			parent.AddCommand(relay)
-		}
+
 		runtime.AddCommand(parent)
 	}
 	return runtime
 }
 func runtimeFlags(c *cobra.Command, o *app.Options) {
+	c.Flags().StringVar(&o.TailscaleConnection, "tailscale", "embedded", "Tailscale connection: embedded or host")
+	c.Flags().StringVar(&o.TailscaleSocket, "tailscale-socket", "", "existing host LocalAPI socket")
+	c.Flags().StringVar(&o.Installation, "installation", "main", "installation role boundary")
+	c.Flags().StringVar(&o.BootstrapURL, "bootstrap-url", "", "operator bootstrap endpoint")
+	c.Flags().StringVar(&o.BootstrapTokenFile, "bootstrap-token-file", "", "projected Kubernetes bootstrap token")
+	c.Flags().StringVar(&o.BootstrapCAFile, "bootstrap-ca-file", "", "operator bootstrap CA")
+	c.Flags().StringVar(&o.ManagementURL, "control-url", "", "stable private control Service URL")
+
 	c.Flags().StringVar(&o.Database.Type, "database", "sqlite", "")
 	c.Flags().StringVar(&o.Database.URLFile, "database-url-file", "", "")
 	c.Flags().StringVar(&o.Database.CAFile, "database-ca-file", "", "")
@@ -141,11 +139,17 @@ func runtimeFlags(c *cobra.Command, o *app.Options) {
 	c.Flags().StringVar(&o.Tailnet, "tailnet", "", "")
 	c.Flags().StringVar(&o.OAuthClientIDFile, "oauth-client-id-file", "", "")
 	c.Flags().StringVar(&o.OAuthClientSecretFile, "oauth-client-secret-file", "", "")
+	c.Flags().StringVar(&o.UsersClientIDFile, "users-client-id-file", "", "protected users:read client ID file")
+	c.Flags().StringVar(&o.UsersClientSecretFile, "users-client-secret-file", "", "protected users:read client secret file")
+	c.Flags().StringVar(&o.ServicesClientIDFile, "services-client-id-file", "", "protected Service-management OAuth ID file")
+	c.Flags().StringVar(&o.ServicesClientSecretFile, "services-client-secret-file", "", "protected Service-management OAuth secret file")
+	c.Flags().StringVar(&o.LoadBalancerHostname, "public-hostname", "", "public DNS hostname")
+	c.Flags().StringVar(&o.CertEmail, "certificate-email", "", "ACME contact email")
 	c.Flags().StringVar(&o.Listen, "listen", "", "")
 }
 func kubernetesRuntime() *cobra.Command {
 	runtime := &cobra.Command{Use: "runtime", Hidden: true}
-	runtime.AddCommand(deploymentcli.Installer("kubernetes"), deploymentcli.TransferInstaller("kubernetes"))
+	runtime.AddCommand(deploymentcli.Installer("kubernetes"))
 	var namespaces []string
 	var probe string
 	op := &cobra.Command{Use: "operator", Hidden: true}
@@ -157,62 +161,30 @@ func kubernetesRuntime() *cobra.Command {
 	for _, mode := range []string{"control", "loadbalancer", "gateway"} {
 		mode := mode
 		parent := &cobra.Command{Use: mode, Hidden: true}
-		actions := []string{"bootstrap", "serve"}
-		if mode == "control" {
-			actions = append(actions, "transfer-hold", "transfer-export", "transfer-mark", "transfer-restore")
-		}
+		actions := []string{"serve"}
+
 		for _, action := range actions {
 			action := action
 			o := app.Options{}
 			var cleanup bool
-			var transferID string
 			command := &cobra.Command{Use: action, Hidden: true, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
-				switch action {
-				case "transfer-hold":
-					<-c.Context().Done()
-					return nil
-				case "transfer-export":
-					b, err := app.ExportKubernetesControl(c.Context(), o)
-					if err != nil {
-						return err
-					}
-					return json.NewEncoder(c.OutOrStdout()).Encode(b)
-				case "transfer-mark":
-					return app.MarkKubernetesControlTransferred(c.Context(), o, transferID)
-				case "transfer-restore":
-					var b app.ControlTransfer
-					d := json.NewDecoder(io.LimitReader(c.InOrStdin(), 512<<20))
-					d.DisallowUnknownFields()
-					if err := d.Decode(&b); err != nil {
-						return errors.New("invalid control transfer input")
-					}
-					return app.RestoreKubernetesControl(c.Context(), o, &b)
-				}
+
 				if mode == "gateway" {
 					if cleanup {
 						return app.CleanupKubernetesAgent(c.Context(), o)
-					}
-					if action == "bootstrap" {
-						return app.BootstrapKubernetesAgent(c.Context(), o)
 					}
 					return app.ServeKubernetesAgent(c.Context(), o)
 				}
 				if cleanup {
 					return app.CleanupKubernetesNode(c.Context(), mode, o)
 				}
-				if action == "bootstrap" {
-					return app.BootstrapKubernetesNode(c.Context(), mode, o)
-				}
 				return app.ServeKubernetesNode(c.Context(), mode, o)
 			}}
 			runtimeFlags(command, &o)
-			command.Flags().StringVar(&transferID, "transfer-id", "", "")
 			command.Flags().StringVar(&o.KubeNamespace, "namespace", "", "")
-			command.Flags().StringVar(&o.Installation, "installation", "", "")
-			command.Flags().StringVar(&o.IdentitySecret, "identity-secret", "", "")
 			command.Flags().StringVar(&o.PersistentDir, "persistent-dir", "/persistent", "")
-			command.Flags().StringVar(&o.BootstrapSecretDir, "bootstrap-secret-dir", "/bootstrap", "")
 			command.Flags().StringVar(&o.KubernetesService, "kubernetes-service", "", "")
+			command.Flags().StringVar(&o.MaterialDir, "material-dir", "/etc/funnel-material", "control encryption material")
 			command.Flags().StringVar(&o.GatewayClass, "gateway-class", "tailscale-private-funnel", "")
 			command.Flags().StringVar(&o.IngressClass, "ingress-class", "tailscale-private-funnel", "")
 			command.Flags().StringVar(&o.ControllerName, "agent-name", "tailscale-private-funnel.io/gateway-agent", "")
@@ -226,6 +198,8 @@ func kubernetesRuntime() *cobra.Command {
 	forwarder := &cobra.Command{Use: "forwarder", Hidden: true}
 	var o app.Options
 	run = &cobra.Command{Use: "serve", Hidden: true, RunE: func(c *cobra.Command, _ []string) error { return app.ServeKubernetesForwarder(c.Context(), o) }}
+	runtimeFlags(run, &o)
+	run.Flags().StringVar(&o.KubeNamespace, "namespace", "", "")
 	run.Flags().StringVar(&o.BrokerURL, "broker-url", "", "")
 	run.Flags().StringVar(&o.BrokerCAFile, "broker-ca-file", "/broker/ca.crt", "")
 	run.Flags().StringVar(&o.BrokerTokenFile, "broker-token-file", "/identity/token", "")

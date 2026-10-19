@@ -1,16 +1,17 @@
 package web
 
 import (
-	"connectrpc.com/connect"
 	"database/sql"
 	"fmt"
-	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"connectrpc.com/connect"
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 )
 
 // Opt-in backend fixture lets existing API/authorization contracts run unchanged.

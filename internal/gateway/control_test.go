@@ -2,7 +2,7 @@ package gateway
 
 import (
 	"context"
-	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -20,11 +20,11 @@ import (
 
 type nodeFixture struct {
 	funnelv1connect.UnimplementedNodeServiceHandler
-	envelope *v1.SignedEnvelope
+	envelope *v1.ConfigurationPayload
 	health   int
 }
 
-func (f *nodeFixture) ResolveApplication(context.Context, *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.SignedEnvelope], error) {
+func (f *nodeFixture) ResolveApplication(context.Context, *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.ConfigurationPayload], error) {
 	return connect.NewResponse(f.envelope), nil
 }
 func (f *nodeFixture) ReportHealth(context.Context, *connect.Request[v1.NodeHealth]) (*connect.Response[v1.Empty], error) {
@@ -33,17 +33,18 @@ func (f *nodeFixture) ReportHealth(context.Context, *connect.Request[v1.NodeHeal
 }
 func resolverFixture(t *testing.T) (RPCResolver, *nodeFixture) {
 	t.Helper()
-	pub, key, e := report.GenerateKey()
+
+	var e error
 	if e != nil {
 		t.Fatal(e)
 	}
 	config := nodeconfig.Configuration{NodeID: "node-1", Applications: []store.ApplicationRecord{{ID: "checkout", ServiceName: "svc:checkout", ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"checkout.dev.example.com"}, Enabled: true}}, IssuedAt: time.Now().Unix()}
 	config.Revision = nodeconfig.Revision(config)
-	envelope, e := report.NewEnvelopeWithPurpose("configuration", "node-1", config, pub, key, time.Now())
+	envelope, e := report.NewSnapshot("configuration", "node-1", config, time.Now())
 	if e != nil {
 		t.Fatal(e)
 	}
-	wire, e := report.Wire(envelope)
+	wire, e := report.Payload(json.RawMessage(envelope.Payload), new(v1.ConfigurationPayload))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -53,7 +54,7 @@ func resolverFixture(t *testing.T) (RPCResolver, *nodeFixture) {
 	mux.Handle(path, h)
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
-	return RPCResolver{BaseURL: server.URL, NodeID: "node-1", ControlKey: base64.RawStdEncoding.EncodeToString(pub), Client: server.Client()}, fixture
+	return RPCResolver{BaseURL: server.URL, NodeID: "node-1", Client: server.Client()}, fixture
 }
 func TestRPCResolverMatchesApprovedPublicHostname(t *testing.T) {
 	r, _ := resolverFixture(t)
@@ -68,9 +69,9 @@ func TestRPCResolverRejectsUnapprovedPort(t *testing.T) {
 		t.Fatal("unapproved port accepted")
 	}
 }
-func TestRPCResolverRejectsWrongSignedPurpose(t *testing.T) {
+func TestRPCResolverRejectsWrongComponent(t *testing.T) {
 	r, f := resolverFixture(t)
-	f.envelope.Purpose = "report"
+	f.envelope.NodeId = "another-component"
 	if _, e := r.Resolve(t.Context(), Spec{Hostname: "checkout.dev.example.com", Port: 8080}); e == nil {
 		t.Fatal("report accepted as configuration")
 	}
@@ -91,20 +92,19 @@ func TestRPCResolverReportsHealth(t *testing.T) {
 	}
 }
 
-func TestRPCResolverSelectsSignedPathAssignment(t *testing.T) {
+func TestRPCResolverSelectsPathAssignment(t *testing.T) {
 	r, f := resolverFixture(t)
-	pub, key, _ := report.GenerateKey()
-	r.ControlKey = base64.RawStdEncoding.EncodeToString(pub)
+
 	config := nodeconfig.Configuration{NodeID: "node-1", IssuedAt: time.Now().Unix()}
 	for _, path := range []string{"/api", "/admin"} {
 		config.Applications = append(config.Applications, store.ApplicationRecord{ID: path, ServiceName: "svc:" + path[1:], ServicePort: 8080, BackendPort: 8080, PublicHostnames: []string{"app.example.com"}, Enabled: true, HTTPRules: []proxy.HTTPRule{{Matches: []proxy.Match{{Path: path}}, Rewrite: &proxy.PrefixRewrite{ReplacePrefix: "/"}}}})
 	}
 	config.Revision = nodeconfig.Revision(config)
-	env, err := report.NewEnvelopeWithPurpose("configuration", "node-1", config, pub, key, time.Now())
+	env, err := report.NewSnapshot("configuration", "node-1", config, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.envelope, err = report.Wire(env)
+	f.envelope, err = report.Payload(json.RawMessage(env.Payload), new(v1.ConfigurationPayload))
 	if err != nil {
 		t.Fatal(err)
 	}

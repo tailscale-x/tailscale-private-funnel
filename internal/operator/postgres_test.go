@@ -40,7 +40,7 @@ func TestPostgresControlRendering(t *testing.T) {
 			}
 			for _, container := range append(v.Spec.Template.Spec.InitContainers, v.Spec.Template.Spec.Containers...) {
 				text := strings.Join(container.Args, " ")
-				if !strings.Contains(text, "--database=postgres") || !strings.Contains(text, "--database-ca-file=/database/ca.crt") {
+				if !strings.Contains(text, "--database=postgres") || !strings.Contains(text, "--database-ca-file=/etc/funnel-database-ca/ca.crt") {
 					t.Fatal(text)
 				}
 			}
@@ -73,7 +73,7 @@ func TestPostgresControlRendering(t *testing.T) {
 
 func TestPostgresCredentialsCannotBeUsedAsIdentity(t *testing.T) {
 	c := testControl()
-	c.Spec.Database = funnel.ControlDatabase{Type: "postgres", Postgres: &funnel.PostgresDatabase{ConnectionSecretRef: core.SecretKeySelector{LocalObjectReference: core.LocalObjectReference{Name: "control-identity"}, Key: "uri"}}}
+	c.Spec.Database = funnel.ControlDatabase{Type: "postgres", Postgres: &funnel.PostgresDatabase{ConnectionSecretRef: core.SecretKeySelector{LocalObjectReference: core.LocalObjectReference{Name: "control-material"}, Key: "uri"}}}
 	if _, e := Render(c); e == nil {
 		t.Fatal("would mutate database credential Secret as identity")
 	}

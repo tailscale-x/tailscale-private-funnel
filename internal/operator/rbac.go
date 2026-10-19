@@ -15,8 +15,8 @@ package operator
 // Namespace-scoped component ownership and delegated workload roles.
 // +kubebuilder:rbac:namespace=FUNNEL_MANAGED_NAMESPACE,groups=rbac.authorization.k8s.io,resources=roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:namespace=FUNNEL_MANAGED_NAMESPACE,groups=tailscale-private-funnel.io,resources=funnelcontrols;funnelloadbalancers;funnelgateways;funnelcontrols/status;funnelloadbalancers/status;funnelgateways/status;funnelcontrols/finalizers;funnelloadbalancers/finalizers;funnelgateways/finalizers,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:namespace=FUNNEL_MANAGED_NAMESPACE,groups="",resources=secrets;serviceaccounts;services;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:namespace=FUNNEL_MANAGED_NAMESPACE,groups=apps,resources=deployments;daemonsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:namespace=FUNNEL_MANAGED_NAMESPACE,groups="",resources=secrets;configmaps;serviceaccounts;services;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:namespace=FUNNEL_MANAGED_NAMESPACE,groups=apps,resources=deployments;daemonsets;replicasets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:namespace=FUNNEL_MANAGED_NAMESPACE,groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:namespace=FUNNEL_MANAGED_NAMESPACE,groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:namespace=FUNNEL_MANAGED_NAMESPACE,groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete

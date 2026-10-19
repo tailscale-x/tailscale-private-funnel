@@ -2,10 +2,11 @@ package kube
 
 import (
 	"context"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 
 	core "k8s.io/api/core/v1"
 	discovery "k8s.io/api/discovery/v1"

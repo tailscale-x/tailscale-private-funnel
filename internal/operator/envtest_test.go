@@ -64,15 +64,18 @@ func TestEnvtestCRValidationOwnershipAndFinalizer(t *testing.T) {
 		t.Fatal(e)
 	}
 	var secret core.Secret
-	if e = c.Get(ctx, types.NamespacedName{Namespace: ns.Name, Name: identityName(o)}, &secret); e != nil {
+	if e = c.Get(ctx, types.NamespacedName{Namespace: ns.Name, Name: materialName(o)}, &secret); e != nil {
 		t.Fatal(e)
 	}
 	if secret.Labels[OwnerLabel] != string(o.UID) || len(secret.OwnerReferences) != 1 {
 		t.Fatal("identity ownership missing")
 	}
-	// Cleanup is blocked if runtime reports an active enrolled component.
-	secret.Data = map[string][]byte{"active-components": []byte("1"), "initialized": []byte("1")}
-	if e = c.Update(ctx, &secret); e != nil {
+	// Once initialized, deletion requires a successful owned cleanup workload.
+	if e = c.Get(ctx, request.NamespacedName, o); e != nil {
+		t.Fatal(e)
+	}
+	o.Status.Initialized = true
+	if e = c.Status().Update(ctx, o); e != nil {
 		t.Fatal(e)
 	}
 	if e = c.Delete(ctx, o); e != nil {
@@ -85,7 +88,7 @@ func TestEnvtestCRValidationOwnershipAndFinalizer(t *testing.T) {
 	if e = c.Get(ctx, request.NamespacedName, &got); e != nil {
 		t.Fatal(e)
 	}
-	if len(got.Finalizers) == 0 || len(got.Status.Conditions) == 0 || got.Status.Conditions[0].Reason != "DeletionBlocked" {
+	if len(got.Finalizers) == 0 || len(got.Status.Conditions) == 0 || got.Status.Conditions[0].Reason != "CleanupPending" {
 		t.Fatalf("unsafe deletion: %+v", got.Status)
 	}
 	// A same-name foreign Secret must remain unchanged.
@@ -119,7 +122,7 @@ func TestEnvtestCRValidationOwnershipAndFinalizer(t *testing.T) {
 	}
 }
 
-func TestEnvtestTransferControlReferenceHandoff(t *testing.T) {
+func TestEnvtestControlEndpointUpdatePreservesLogicalBindings(t *testing.T) {
 	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
 		t.Skip("envtest assets required")
 	}
@@ -137,11 +140,11 @@ func TestEnvtestTransferControlReferenceHandoff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ns := &core.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "transfer"}}
+	ns := &core.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "endpoint-update"}}
 	if err = c.Create(t.Context(), ns); err != nil {
 		t.Fatal(err)
 	}
-	lb := &funnel.FunnelLoadBalancer{ObjectMeta: metav1.ObjectMeta{Name: "lb", Namespace: ns.Name}, Spec: funnel.LoadBalancerSpec{ComponentSpec: funnel.ComponentSpec{Image: "ghcr.io/tailscale-x/tailscale-private-funnel:dev-test", ControlRef: &core.LocalObjectReference{Name: "source"}}}}
+	lb := &funnel.FunnelLoadBalancer{ObjectMeta: metav1.ObjectMeta{Name: "lb", Namespace: ns.Name}, Spec: funnel.LoadBalancerSpec{ComponentSpec: funnel.ComponentSpec{ComponentID: "logical-edge", Image: "ghcr.io/tailscale-x/tailscale-private-funnel:dev-test", KeyIssuerRef: funnel.KeyIssuerReference{Name: "issuer"}, ControlRef: &core.LocalObjectReference{Name: "source"}}}}
 	if err = c.Create(t.Context(), lb); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +154,16 @@ func TestEnvtestTransferControlReferenceHandoff(t *testing.T) {
 		t.Fatal("same-control URL handoff refused", err)
 	}
 	lb.Spec.ManagementURL = "http://100.64.0.2:8080"
+	if err = c.Update(t.Context(), lb); err != nil {
+		t.Fatal("control endpoint update refused", err)
+	}
+	lb.Spec.ComponentID = "another-edge"
 	if err = c.Update(t.Context(), lb); !apierrors.IsInvalid(err) {
-		t.Fatal("established management URL is not immutable", err)
+		t.Fatal("logical component identity changed", err)
+	}
+	lb.Spec.ComponentID = "logical-edge"
+	lb.Spec.Installation = "other"
+	if err = c.Update(t.Context(), lb); !apierrors.IsInvalid(err) {
+		t.Fatal("installation changed", err)
 	}
 }

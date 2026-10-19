@@ -43,3 +43,18 @@ func TestPostgresPersistentStateHasNoSQLiteFile(t *testing.T) {
 		t.Fatal("SQLite accepted missing database")
 	}
 }
+
+func TestPostgresPodStorageDoesNotCreateAnUnmountedPersistentDirectory(t *testing.T) {
+	o := Options{KubeNamespace: "installation", StateDir: filepath.Join(t.TempDir(), "state"), DataDir: filepath.Join(t.TempDir(), "data"), PersistentDir: "/unmounted-readonly-pvc"}
+	o.Database.Type = "postgres"
+	resolved, err := kubernetesNodeOptions("control", o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.PersistentDir != "" || resolved.DatabaseDir != "" {
+		t.Fatal("PostgreSQL acquired a local database path", resolved.PersistentDir, resolved.DatabaseDir)
+	}
+	if err = prepareNodeStorage("control", resolved); err != nil {
+		t.Fatal(err)
+	}
+}

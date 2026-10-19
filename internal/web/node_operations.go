@@ -18,6 +18,7 @@ import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/gateway"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/identity"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
@@ -31,12 +32,41 @@ func (c *Control) callerNodeContext(ctx context.Context, mode string) (store.Nod
 	if p.NodeID == "" {
 		return store.NodeRecord{}, fmt.Errorf("verified tailnet node identity required")
 	}
-	node, err := c.Store.NodeByTailnetID(p.NodeID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return node, rpcFailure(connect.CodeUnavailable, errors.New("node identity storage unavailable"))
+	selection, _ := ctx.Value(componentContext{}).(componentContext)
+	var node store.NodeRecord
+	var err error
+	if selection.ID != "" {
+		node, err = c.Store.Node(selection.ID)
+	} else {
+		node, err = c.Store.NodeByTailnetID(p.NodeID)
 	}
-	if err != nil || node.Revoked || (mode != "" && node.Mode != mode) {
-		return node, fmt.Errorf("unknown, revoked, or mismatched node identity")
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return node, rpcFailure(connect.CodeUnavailable, errors.New("component storage unavailable"))
+		}
+		return node, fmt.Errorf("unknown or ambiguous component")
+	}
+	registration, err := c.Store.ComponentRegistration(node.ID)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return node, rpcFailure(connect.CodeUnavailable, errors.New("component storage unavailable"))
+		}
+		return node, fmt.Errorf("component registration unavailable")
+	}
+	if registration.Installation != c.installation() {
+		return node, fmt.Errorf("component belongs to another installation")
+	}
+	if err = identity.Authorize(c.installation(), registration.Role(), p.Tags); err != nil {
+		return node, err
+	}
+	if node.Revoked || (mode != "" && node.Mode != mode) {
+		return node, fmt.Errorf("inactive or mismatched component")
+	}
+	if selection.Instance == "" {
+		return node, fmt.Errorf("runtime instance selector required")
+	}
+	if err = c.Store.RenewInstance(node.ID, selection.Instance, p.NodeID, time.Now()); err != nil {
+		return node, err
 	}
 	verifiedHostname := strings.SplitN(strings.TrimSuffix(p.Hostname, "."), ".", 2)[0]
 	if verifiedHostname != "" && verifiedHostname != node.Hostname {
@@ -66,28 +96,28 @@ func (c *Control) callerGatewayContext(ctx context.Context) (store.NodeRecord, e
 		return n, err
 	}
 	if !store.IsGateway(n.Mode) {
-		return n, fmt.Errorf("enrolled gateway required")
+		return n, fmt.Errorf("registered gateway required")
 	}
 	return n, nil
 }
 
-func (c *Control) nodeConfiguration(ctx context.Context) (report.Envelope, error) {
+func (c *Control) nodeConfiguration(ctx context.Context) (report.Snapshot, error) {
 	if n, err := c.callerNodeContext(ctx, "loadbalancer"); err == nil && n.Mode == "loadbalancer" {
 		return c.loadBalancerConfiguration(ctx)
 	}
 	node, err := c.callerGatewayContext(ctx)
 	id := node.ID
 	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(403), errors.New(err.Error()))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(403), errors.New(err.Error()))
 	}
 	_ = c.Store.SetJSON("node_policy_roles:"+node.ID, rpcPrincipal(ctx).RoleSelectors())
 	apps, err := c.Store.Applications()
 	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
 	}
 	deployment, err := c.nodeDeployment(node.ID)
 	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(503), errors.New("Unable to read node settings"))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(503), errors.New("Unable to read node settings"))
 	}
 	settings := struct{ LabelKeys string }{deployment.LabelKeys}
 	filtered := make([]store.ApplicationRecord, 0)
@@ -124,26 +154,22 @@ func (c *Control) nodeConfiguration(ctx context.Context) (report.Envelope, error
 	}
 	config.Revision = nodeconfig.Revision(config)
 	config.IssuedAt = time.Now().Unix()
-	pub, key, err := c.Store.ConfigurationKey()
+	envelope, err := report.NewSnapshot("configuration", id, config, time.Now())
 	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
-	}
-	envelope, err := report.NewEnvelopeWithPurpose("configuration", id, config, pub, key, time.Now())
-	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
 	}
 
 	return envelope, nil
 }
 
-func (c *Control) loadBalancerConfiguration(ctx context.Context) (report.Envelope, error) {
-	node, err := c.Store.NodeByTailnetID(rpcPrincipal(ctx).NodeID)
+func (c *Control) loadBalancerConfiguration(ctx context.Context) (report.Snapshot, error) {
+	node, err := c.callerNodeContext(ctx, "loadbalancer")
 	if err != nil || node.Revoked || node.Mode != "loadbalancer" {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(403), errors.New("enrolled LoadBalancer identity required"))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(403), errors.New("registered load balancer identity required"))
 	}
 	apps, err := c.Store.Applications()
 	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
 	}
 	routes := []proxy.Route{}
 	config := nodeconfig.Configuration{NodeID: node.ID}
@@ -198,20 +224,16 @@ func (c *Control) loadBalancerConfiguration(ctx context.Context) (report.Envelop
 	config.Revision = nodeconfig.Revision(config)
 	config.IssuedAt = time.Now().Unix()
 	_ = c.Store.SetJSON("node_sent_config:"+node.ID, map[string]any{"revision": config.Revision, "routes": routes})
-	pub, key, err := c.Store.ConfigurationKey()
+	envelope, err := report.NewSnapshot("configuration", node.ID, config, time.Now())
 	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
-	}
-	envelope, err := report.NewEnvelopeWithPurpose("configuration", node.ID, config, pub, key, time.Now())
-	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
 	}
 
 	return envelope, nil
 }
 
-func (c *Control) acceptDirectReport(ctx context.Context, env report.Envelope, node store.NodeRecord) error {
-	if node.Revoked || node.TailnetID == "" || rpcPrincipal(ctx).NodeID != node.TailnetID || env.PublicKey != node.PublicKey {
+func (c *Control) acceptDirectReport(ctx context.Context, env report.Snapshot, node store.NodeRecord) error {
+	if node.Revoked || node.TailnetID == "" || rpcPrincipal(ctx).NodeID != node.TailnetID {
 		return rpcFailure(connectCodeHTTP(403), errors.New("load balancer identity mismatch"))
 	}
 	var p struct {
@@ -239,7 +261,7 @@ func (c *Control) acceptDirectReport(ctx context.Context, env report.Envelope, n
 	}
 
 	encoded, _ := json.Marshal(env)
-	if err = c.Store.AcceptReport(node.ID, env.Nonce, encoded, env.PublicKey); err != nil {
+	if err = c.Store.AcceptReport(node.ID, env.Nonce, encoded); err != nil {
 		status := 500
 		if strings.Contains(err.Error(), "nonce already") {
 			status = 409
@@ -250,7 +272,7 @@ func (c *Control) acceptDirectReport(ctx context.Context, env report.Envelope, n
 	return nil
 }
 
-func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Envelope) error {
+func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Snapshot) error {
 	// Accepted reports are durable desired state. A bounded background worker
 	// reconciles DNS and Service approvals; external outages must not consume the
 	// heartbeat lease or queue callers behind cleanup/provider operations.
@@ -266,7 +288,7 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Enve
 	if err := c.policyStorageError(); err != nil {
 		return rpcFailure(connectCodeHTTP(503), errors.New("Exposure policy unavailable; retry later"))
 	}
-	if _, _, err := report.Verify(envelope, time.Now(), 5*time.Minute); err != nil {
+	if err := envelope.Validate(time.Now(), 5*time.Minute); err != nil {
 		return rpcFailure(connectCodeHTTP(http.StatusUnauthorized), errors.New(err.Error()))
 	}
 	if reportHasRemovedEdgeField(envelope.Payload) {
@@ -278,7 +300,7 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Enve
 		return c.acceptDirectReport(ctx, envelope, node)
 	}
 	if p.NodeID == "" || nodeErr != nil || !store.IsGateway(node.Mode) || node.TailnetID == "" || node.TailnetID != p.NodeID {
-		return rpcFailure(connectCodeHTTP(403), errors.New(fmt.Sprintf("report node does not match enrolled tailnet identity (report=%s whois=%s stored=%s err=%v)", envelope.NodeID, p.NodeID, node.TailnetID, nodeErr)))
+		return rpcFailure(connectCodeHTTP(403), errors.New(fmt.Sprintf("report node does not match registered tailnet identity (report=%s whois=%s stored=%s err=%v)", envelope.NodeID, p.NodeID, node.TailnetID, nodeErr)))
 	}
 	if node.ParentID != "" {
 		parent, e := c.Store.Node(node.ParentID)
@@ -323,7 +345,7 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Enve
 		}
 	}
 	reportPayload.Exposures = c.expandDockerAliases(reportPayload.Exposures, applications, node, roles)
-	// Keep the original signed envelope for audit; derive only current backend
+	// Keep the authenticated snapshot for audit; derive only current backend
 	// assignments from it. A known retired claim cannot starve other apps.
 	filtered := reportPayload.Exposures[:0]
 	for _, exposure := range reportPayload.Exposures {
@@ -376,7 +398,7 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Enve
 	if err != nil {
 		return rpcFailure(connectCodeHTTP(http.StatusBadRequest), errors.New(err.Error()))
 	}
-	if err := c.Store.AcceptReport(strings.TrimSpace(envelope.NodeID), envelope.Nonce, payload, envelope.PublicKey); err != nil {
+	if err := c.Store.AcceptReport(strings.TrimSpace(envelope.NodeID), envelope.Nonce, payload); err != nil {
 		if strings.Contains(err.Error(), "nonce already used") {
 			return rpcFailure(connectCodeHTTP(http.StatusConflict), errors.New(err.Error()))
 		}
@@ -386,7 +408,7 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Enve
 	activeBackends := map[string]bool{}
 	for _, exposure := range reportPayload.Exposures {
 		activeBackends[backendRecordID(envelope.NodeID, exposure)] = true
-		if err := c.Store.UpsertEnrolledBackend(store.BackendAssignment{
+		if err := c.Store.UpsertRegisteredBackend(store.BackendAssignment{
 			ID: backendRecordID(envelope.NodeID, exposure), ApplicationID: exposure.ApplicationID, NodeID: envelope.NodeID,
 			ContainerID: exposure.ContainerID, BackendIP: exposure.BackendIP, BackendPort: exposure.Port,
 			Networks: exposure.Networks, Reachable: exposure.Reachable, ConfigRevision: envelope.Timestamp,
@@ -401,7 +423,7 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Enve
 	return nil
 }
 
-func (c *Control) acceptPeerSnapshot(ctx context.Context, env report.Envelope) error {
+func (c *Control) acceptPeerSnapshot(ctx context.Context, env report.Snapshot) error {
 	node, err := c.callerNodeContext(ctx, "")
 	if err != nil {
 		return rpcFailure(connectCodeHTTP(403), errors.New("Unknown or revoked node"))
@@ -409,10 +431,10 @@ func (c *Control) acceptPeerSnapshot(ctx context.Context, env report.Envelope) e
 	if node.Mode != "tailnet-gateway" {
 		return rpcFailure(connectCodeHTTP(403), errors.New("Tailnet gateway required"))
 	}
-	if env.NodeID != node.ID || env.PublicKey != node.PublicKey {
+	if env.NodeID != node.ID {
 		return rpcFailure(connectCodeHTTP(403), errors.New("Snapshot identity mismatch"))
 	}
-	if _, _, err = report.Verify(env, time.Now(), 5*time.Minute); err != nil {
+	if err = env.Validate(time.Now(), 5*time.Minute); err != nil {
 		return rpcFailure(connectCodeHTTP(401), errors.New("Invalid snapshot signature or timestamp"))
 	}
 	var snapshot nodeconfig.PeerSnapshot
@@ -467,22 +489,22 @@ func (c *Control) acceptPeerSnapshot(ctx context.Context, env report.Envelope) e
 		}
 	}
 	payload, _ := json.Marshal(snapshot)
-	if err = c.Store.AcceptNodeSnapshot(node.ID, env.Nonce, env.PublicKey, "node_peers:"+node.ID, payload); err != nil {
+	if err = c.Store.AcceptNodeSnapshot(node.ID, env.Nonce, "node_peers:"+node.ID, payload); err != nil {
 		return rpcFailure(connectCodeHTTP(409), errors.New("Snapshot rejected: replay or revoked identity"))
 	}
 	_ = c.Store.SetJSON("node_policy_roles:"+node.ID, rpcPrincipal(ctx).RoleSelectors())
 	return nil
 }
 
-func (c *Control) resolveApplication(ctx context.Context, request *v1.ResolveApplicationRequest) (report.Envelope, error) {
+func (c *Control) resolveApplication(ctx context.Context, request *v1.ResolveApplicationRequest) (report.Snapshot, error) {
 	hostname, backendPort := request.Hostname, uint16(request.BackendPort)
 	node, err := c.callerNodeContext(ctx, "docker-gateway")
 	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(403), errors.New(err.Error()))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(403), errors.New(err.Error()))
 	}
 	hostname = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(hostname), "."))
 	if err := policy.ValidateHostname(hostname); err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(400), errors.New(err.Error()))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(400), errors.New(err.Error()))
 	}
 	var path string
 	var rewrite *proxy.PrefixRewrite
@@ -494,16 +516,16 @@ func (c *Control) resolveApplication(ctx context.Context, request *v1.ResolveApp
 	}
 	if path != "" {
 		if e := proxy.ValidatePath(path); e != nil {
-			return report.Envelope{}, rpcFailure(connect.CodeInvalidArgument, e)
+			return report.Snapshot{}, rpcFailure(connect.CodeInvalidArgument, e)
 		}
 		path = gateway.NormalizePrefix(path)
 	}
 	if rewrite != nil && path == "" {
-		return report.Envelope{}, rpcFailure(connect.CodeInvalidArgument, errors.New("rewrite requires a path prefix"))
+		return report.Snapshot{}, rpcFailure(connect.CodeInvalidArgument, errors.New("rewrite requires a path prefix"))
 	}
 	if rewrite != nil {
 		if e := proxy.ValidatePath(rewrite.ReplacePrefix); e != nil {
-			return report.Envelope{}, rpcFailure(connect.CodeInvalidArgument, e)
+			return report.Snapshot{}, rpcFailure(connect.CodeInvalidArgument, e)
 		}
 	}
 	var settings struct {
@@ -511,28 +533,28 @@ func (c *Control) resolveApplication(ctx context.Context, request *v1.ResolveApp
 		LoadBalancer string `json:"loadbalancer_hostname"`
 	}
 	if err := c.Store.GetJSON("tailnet", &settings); err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(503), errors.New("Unable to read control settings"))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(503), errors.New("Unable to read control settings"))
 	}
 	if allowed, _ := c.loadExposurePolicy().Allows(hostname, []string{node.ID, node.TailnetID}, rpcPrincipal(ctx).RoleSelectors()); !allowed {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(403), errors.New("hostname denied by exposure policy"))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(403), errors.New("hostname denied by exposure policy"))
 	}
 	if _, err := c.managedZone(hostname); err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(403), errors.New(err.Error()))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(403), errors.New(err.Error()))
 	}
 	declaration := store.ApplicationRecord{BackendPort: backendPort, PublicHostnames: []string{hostname}}
 	if path != "" {
 		declaration.HTTPRules = []proxy.HTTPRule{{Matches: []proxy.Match{{Path: path}}, Rewrite: rewrite}}
 	}
 	if ok, e := c.Store.DockerDeclarationAllowed(node.ID, declaration, "", true); e != nil {
-		return report.Envelope{}, rpcFailure(connect.CodeUnavailable, e)
+		return report.Snapshot{}, rpcFailure(connect.CodeUnavailable, e)
 	} else if !ok {
-		return report.Envelope{}, rpcFailure(connect.CodeFailedPrecondition, errors.New("declaration absent from current Docker inventory"))
+		return report.Snapshot{}, rpcFailure(connect.CodeFailedPrecondition, errors.New("declaration absent from current Docker inventory"))
 	}
 	// Discovery re-resolves existing labels on every tick. Reading an unchanged,
 	// authorized binding must never wait behind creation of another Service.
 	current, err := c.Store.Applications()
 	if err != nil {
-		return report.Envelope{}, rpcFailure(connect.CodeUnavailable, err)
+		return report.Snapshot{}, rpcFailure(connect.CodeUnavailable, err)
 	}
 	for _, app := range current {
 		if app.BackendSource != "docker" && app.BackendSource != "" {
@@ -545,11 +567,11 @@ func (c *Control) resolveApplication(ctx context.Context, request *v1.ResolveApp
 	c.provisionMu.Lock()
 	defer c.provisionMu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return report.Envelope{}, rpcFailure(connect.CodeDeadlineExceeded, err)
+		return report.Snapshot{}, rpcFailure(connect.CodeDeadlineExceeded, err)
 	}
 	apps, err := c.Store.Applications()
 	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
 	}
 	var existing *store.ApplicationRecord
 	for _, app := range apps {
@@ -557,7 +579,7 @@ func (c *Control) resolveApplication(ctx context.Context, request *v1.ResolveApp
 			continue
 		}
 		if app.BackendSource == "kubernetes" || app.BackendSource == "tailnet" || !applicationAllows(app, node) {
-			return report.Envelope{}, rpcFailure(connect.CodeAlreadyExists, errors.New("hostname already assigned to another backend source"))
+			return report.Snapshot{}, rpcFailure(connect.CodeAlreadyExists, errors.New("hostname already assigned to another backend source"))
 		}
 		appPath := "/"
 		if len(app.HTTPRules) > 0 && len(app.HTTPRules[0].Matches) > 0 {
@@ -567,7 +589,7 @@ func (c *Control) resolveApplication(ctx context.Context, request *v1.ResolveApp
 			continue
 		}
 		if !applicationAllows(app, node) || app.BackendPort != backendPort {
-			return report.Envelope{}, rpcFailure(connect.CodeAlreadyExists, errors.New("hostname/path already assigned to a different gateway or backend port"))
+			return report.Snapshot{}, rpcFailure(connect.CodeAlreadyExists, errors.New("hostname/path already assigned to a different gateway or backend port"))
 		}
 		copy := app
 		existing = &copy
@@ -588,23 +610,23 @@ func (c *Control) resolveApplication(ctx context.Context, request *v1.ResolveApp
 	if existing != nil {
 		if nodeconfig.Revision(existing.HTTPRules) != nodeconfig.Revision(app.HTTPRules) {
 			if err := c.Store.UpsertApplication(app); err != nil {
-				return report.Envelope{}, rpcFailure(connect.CodeInternal, err)
+				return report.Snapshot{}, rpcFailure(connect.CodeInternal, err)
 			}
 			_ = c.Store.Audit("application.route.update:"+app.ID, "node:"+node.TailnetID)
 		}
 		return c.nodeConfiguration(ctx)
 	}
-	clientID, err := c.Store.GetSecret("tailscale_oauth_client_id")
+	clientID, err := c.Store.GetSecret("tailscale_services_client_id")
 	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(428), errors.New("configure Tailscale OAuth first"))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(428), errors.New("configure Tailscale OAuth first"))
 	}
-	secret, err := c.Store.GetSecret("tailscale_oauth_client_secret")
+	secret, err := c.Store.GetSecret("tailscale_services_client_secret")
 	if err != nil || settings.Name == "" {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(428), errors.New("configure Tailscale OAuth and tailnet first"))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(428), errors.New("configure Tailscale OAuth and tailnet first"))
 	}
-	service, err := c.tsClient(clientID, secret, settings.Name).CreateService(ctx, tailscale.Service{Name: app.ServiceName, DisplayName: hostname, Ports: []string{fmt.Sprintf("tcp:%d", app.ServicePort)}, Tags: []string{"tag:tailscale-private-funnel"}})
+	service, err := c.tsClient(clientID, secret, settings.Name).CreateService(ctx, tailscale.Service{Name: app.ServiceName, DisplayName: hostname, Ports: []string{fmt.Sprintf("tcp:%d", app.ServicePort)}, Tags: []string{identity.ServiceTag(c.installation(), false)}})
 	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(502), errors.New(err.Error()))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(502), errors.New(err.Error()))
 	}
 	app.ServiceFQDN = selectServiceTarget(service.Addresses, app.ServiceName, settings.Name)
 	for i := range app.HTTPRules {
@@ -613,44 +635,44 @@ func (c *Control) resolveApplication(ctx context.Context, request *v1.ResolveApp
 		}
 	}
 	if err := c.Store.UpsertApplication(app); err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
 	}
 	_ = c.Store.Audit("application.autoprovision:"+hostname, "node:"+node.TailnetID)
 	return c.nodeConfiguration(ctx)
 }
 
-func (c *Control) acceptKubernetesSnapshot(ctx context.Context, env report.Envelope) (report.Envelope, error) {
+func (c *Control) acceptKubernetesSnapshot(ctx context.Context, env report.Snapshot) (report.Snapshot, error) {
 	node, err := c.callerNodeContext(ctx, "k8s-gateway")
 	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(403), errors.New("Kubernetes gateway required"))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(403), errors.New("Kubernetes gateway required"))
 	}
-	if env.NodeID != node.ID || env.PublicKey != node.PublicKey {
-		return report.Envelope{}, rpcFailure(connect.CodePermissionDenied, errors.New("signed gateway snapshot required"))
+	if env.NodeID != node.ID {
+		return report.Snapshot{}, rpcFailure(connect.CodePermissionDenied, errors.New("authenticated gateway snapshot required"))
 	}
-	if _, _, err = report.Verify(env, time.Now(), 5*time.Minute); err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(401), errors.New(err.Error()))
+	if err = env.Validate(time.Now(), 5*time.Minute); err != nil {
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(401), errors.New(err.Error()))
 	}
 	var snapshot nodeconfig.KubernetesSnapshot
 	payloadDecoder := json.NewDecoder(bytes.NewReader(env.Payload))
 	payloadDecoder.DisallowUnknownFields()
 	if payloadDecoder.Decode(&snapshot) != nil || snapshot.ClusterID == "" || len(snapshot.ClusterID) > 128 || len(snapshot.Hosts) > 500 || snapshot.ExpiresAt <= time.Now().Unix() || snapshot.ExpiresAt > env.Timestamp+300 {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(400), errors.New("invalid Kubernetes snapshot"))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(400), errors.New("invalid Kubernetes snapshot"))
 	}
 	seen := map[string]bool{}
 	for _, host := range snapshot.Hosts {
 		if policy.ValidateHostname(host.Hostname) != nil || seen[host.Hostname] || len(host.Rules) == 0 || len(host.Rules) > 100 {
-			return report.Envelope{}, rpcFailure(connectCodeHTTP(400), errors.New("invalid or duplicate hostname"))
+			return report.Snapshot{}, rpcFailure(connectCodeHTTP(400), errors.New("invalid or duplicate hostname"))
 		}
 		seen[host.Hostname] = true
 		if ok, _ := c.loadExposurePolicy().Allows(host.Hostname, []string{node.ID, node.TailnetID}, rpcPrincipal(ctx).RoleSelectors()); !ok {
-			return report.Envelope{}, rpcFailure(connectCodeHTTP(403), errors.New("hostname denied by exposure policy"))
+			return report.Snapshot{}, rpcFailure(connectCodeHTTP(403), errors.New("hostname denied by exposure policy"))
 		}
 		if _, err := c.managedZone(host.Hostname); err != nil {
-			return report.Envelope{}, rpcFailure(connectCodeHTTP(403), errors.New(err.Error()))
+			return report.Snapshot{}, rpcFailure(connectCodeHTTP(403), errors.New(err.Error()))
 		}
 		for _, rule := range host.Rules {
 			if err := proxy.ValidateHTTPRule(rule, false); err != nil {
-				return report.Envelope{}, rpcFailure(connectCodeHTTP(400), errors.New(err.Error()))
+				return report.Snapshot{}, rpcFailure(connectCodeHTTP(400), errors.New(err.Error()))
 			}
 		}
 	}
@@ -658,24 +680,24 @@ func (c *Control) acceptKubernetesSnapshot(ctx context.Context, env report.Envel
 	defer c.provisionMu.Unlock()
 	apps, err := c.Store.Applications()
 	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
 	}
 	for _, h := range snapshot.Hosts {
 		for _, a := range apps {
 			for _, name := range a.PublicHostnames {
 				if name == h.Hostname && (a.BackendSource != "kubernetes" || !contains(a.AllowedGatewayNodes, node.ID)) {
-					return report.Envelope{}, rpcFailure(connectCodeHTTP(409), errors.New("hostname owned by another gateway or source"))
+					return report.Snapshot{}, rpcFailure(connectCodeHTTP(409), errors.New("hostname owned by another gateway or source"))
 				}
 			}
 		}
 	}
 	// Consume the nonce before external mutations; retry uses a fresh envelope.
-	if err = c.Store.AcceptNodeSnapshot(node.ID, env.Nonce, env.PublicKey, "node_kubernetes:"+node.ID, env.Payload); err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(409), errors.New("snapshot rejected or replayed"))
+	if err = c.Store.AcceptNodeSnapshot(node.ID, env.Nonce, "node_kubernetes:"+node.ID, env.Payload); err != nil {
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(409), errors.New("snapshot rejected or replayed"))
 	}
 	ts, err := c.tailscaleRuntimeClient()
 	if err != nil {
-		return report.Envelope{}, rpcFailure(connectCodeHTTP(428), errors.New(err.Error()))
+		return report.Snapshot{}, rpcFailure(connectCodeHTTP(428), errors.New(err.Error()))
 	}
 	desired := map[string]bool{}
 	for _, h := range snapshot.Hosts {
@@ -703,9 +725,9 @@ func (c *Control) acceptKubernetesSnapshot(ctx context.Context, env report.Envel
 						}
 					}
 					if assigned.Service == "" {
-						service, e := ts.CreateService(ctx, tailscale.Service{Name: assigned.ServiceName, DisplayName: h.Hostname, Ports: []string{fmt.Sprintf("tcp:%d", b.Port)}, Tags: []string{"tag:tailscale-private-funnel"}})
+						service, e := ts.CreateService(ctx, tailscale.Service{Name: assigned.ServiceName, DisplayName: h.Hostname, Ports: []string{fmt.Sprintf("tcp:%d", b.Port)}, Tags: []string{identity.ServiceTag(c.installation(), false)}})
 						if e != nil {
-							return report.Envelope{}, rpcFailure(connectCodeHTTP(502), errors.New(e.Error()))
+							return report.Snapshot{}, rpcFailure(connectCodeHTTP(502), errors.New(e.Error()))
 						}
 						assigned.Service = selectServiceTarget(service.Addresses, assigned.ServiceName, ts.Tailnet)
 					}
@@ -732,14 +754,14 @@ func (c *Control) acceptKubernetesSnapshot(ctx context.Context, env report.Envel
 			a.BackendPort = all[0].Port
 		}
 		if err = c.Store.UpsertApplication(a); err != nil {
-			return report.Envelope{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
+			return report.Snapshot{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
 		}
 	}
 	for _, a := range apps {
 		if a.BackendSource == "kubernetes" && applicationAllows(a, node) && !desired[a.ID] {
 			a.Enabled = false
 			if err = c.Store.UpsertApplication(a); err != nil {
-				return report.Envelope{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
+				return report.Snapshot{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
 			}
 		}
 	}
@@ -747,19 +769,19 @@ func (c *Control) acceptKubernetesSnapshot(ctx context.Context, env report.Envel
 	return c.nodeConfiguration(ctx)
 }
 
-func (c *Control) acceptPublicEndpoint(ctx context.Context, env report.Envelope) error {
+func (c *Control) acceptPublicEndpoint(ctx context.Context, env report.Snapshot) error {
 	n, err := c.callerNodeContext(ctx, "loadbalancer")
 	if err != nil {
-		return rpcFailure(connectCodeHTTP(403), errors.New("enrolled load balancer required"))
+		return rpcFailure(connectCodeHTTP(403), errors.New("registered load balancer required"))
 	}
 	d, err := c.nodeDeployment(n.ID)
 	if err != nil || d.AddressSource != "kubernetes" {
 		return rpcFailure(connectCodeHTTP(403), errors.New("Kubernetes address discovery not authorized for this node"))
 	}
-	if env.NodeID != n.ID || env.PublicKey != n.PublicKey {
-		return rpcFailure(connect.CodePermissionDenied, errors.New("signed endpoint required"))
+	if env.NodeID != n.ID {
+		return rpcFailure(connect.CodePermissionDenied, errors.New("authenticated endpoint required"))
 	}
-	if _, _, err = report.Verify(env, time.Now(), time.Minute); err != nil {
+	if err = env.Validate(time.Now(), time.Minute); err != nil {
 		return rpcFailure(connectCodeHTTP(401), errors.New("invalid endpoint signature or timestamp"))
 	}
 	var in publicEndpoint
@@ -777,9 +799,9 @@ func (c *Control) acceptPublicEndpoint(ctx context.Context, env report.Envelope)
 		return rpcFailure(connectCodeHTTP(503), errors.New("Service binding unavailable"))
 	}
 	if err == nil && previous.UID != in.UID {
-		return rpcFailure(connectCodeHTTP(409), errors.New("Service identity changed; administrator reenrollment required"))
+		return rpcFailure(connectCodeHTTP(409), errors.New("Service identity changed; recreate the component after checking its public Service binding"))
 	}
-	if err = c.Store.AcceptNodeSnapshot(n.ID, env.Nonce, env.PublicKey, "node_public_endpoint:"+n.ID, env.Payload); err != nil {
+	if err = c.Store.AcceptNodeSnapshot(n.ID, env.Nonce, "node_public_endpoint:"+n.ID, env.Payload); err != nil {
 		return rpcFailure(connectCodeHTTP(409), errors.New("endpoint replayed or unavailable"))
 	}
 	_ = c.Store.Audit("loadbalancer.public-endpoint:"+n.ID, "node:"+n.TailnetID)
@@ -789,17 +811,6 @@ func (c *Control) acceptPublicEndpoint(ctx context.Context, env report.Envelope)
 }
 
 // Revoked nodes retain only caller-scoped cleanup authority while their device still exists.
-func (c *Control) cleanupCallerContext(ctx context.Context) (store.NodeRecord, error) {
-	p := rpcPrincipal(ctx)
-	if p.NodeID == "" {
-		return store.NodeRecord{}, fmt.Errorf("verified tailnet node identity required")
-	}
-	n, e := c.Store.NodeByTailnetID(p.NodeID)
-	if e != nil {
-		return n, fmt.Errorf("unknown node identity")
-	}
-	return n, nil
-}
 
 func dockerReportRouteMatches(app store.ApplicationRecord, e dns.GatewayExposure) bool {
 	if app.BackendSource != "docker" && app.BackendSource != "" {

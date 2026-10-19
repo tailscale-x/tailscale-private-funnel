@@ -50,21 +50,18 @@ func (c *Client) OpenSession(ctx context.Context) (*v1.BrokerSession, error) {
 	}
 	return r.Msg, nil
 }
-func (c *Client) GetConfig(ctx context.Context) (report.Envelope, error) {
+func (c *Client) GetConfig(ctx context.Context) (report.Snapshot, error) {
 	r, e := c.rpc.GetConfig(ctx, connect.NewRequest(&v1.Empty{}))
 	if e != nil {
-		return report.Envelope{}, e
+		return report.Snapshot{}, e
 	}
-	return report.FromWire(r.Msg, "configuration")
+	return report.NewSnapshot("configuration", r.Msg.NodeId, r.Msg, time.Unix(r.Msg.IssuedAt, 0))
 }
 func (c *Client) RenewLease(ctx context.Context) error {
 	_, e := c.rpc.RenewLease(ctx, connect.NewRequest(&v1.Empty{}))
 	return e
 }
-func (c *Client) WriteState(ctx context.Context, key string, value []byte) error {
-	_, e := c.rpc.WriteState(ctx, connect.NewRequest(&v1.StateUpdate{Key: key, Value: value}))
-	return e
-}
+
 func (c *Client) ReleaseLease(ctx context.Context) error {
 	_, e := c.rpc.ReleaseLease(ctx, connect.NewRequest(&v1.Empty{}))
 	return e

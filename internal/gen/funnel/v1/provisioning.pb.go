@@ -57,11 +57,20 @@ type DeploymentRequest struct {
 	StorageClass          string                 `protobuf:"bytes,31,opt,name=storage_class,json=storageClass,proto3" json:"storage_class,omitempty"`
 	StorageSize           string                 `protobuf:"bytes,32,opt,name=storage_size,json=storageSize,proto3" json:"storage_size,omitempty"`
 	// Resolved placement, carried to the executor without local file references.
-	PlacementJson          []byte                 `protobuf:"bytes,33,opt,name=placement_json,json=placementJson,proto3" json:"placement_json,omitempty"`
-	ForwarderPlacementJson []byte                 `protobuf:"bytes,34,opt,name=forwarder_placement_json,json=forwarderPlacementJson,proto3" json:"forwarder_placement_json,omitempty"`
-	Database               *DatabaseConfiguration `protobuf:"bytes,35,opt,name=database,proto3" json:"database,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	PlacementJson            []byte                 `protobuf:"bytes,33,opt,name=placement_json,json=placementJson,proto3" json:"placement_json,omitempty"`
+	ForwarderPlacementJson   []byte                 `protobuf:"bytes,34,opt,name=forwarder_placement_json,json=forwarderPlacementJson,proto3" json:"forwarder_placement_json,omitempty"`
+	Database                 *DatabaseConfiguration `protobuf:"bytes,35,opt,name=database,proto3" json:"database,omitempty"`
+	TailscaleConnection      string                 `protobuf:"bytes,36,opt,name=tailscale_connection,json=tailscaleConnection,proto3" json:"tailscale_connection,omitempty"`
+	TailscaleSocket          string                 `protobuf:"bytes,37,opt,name=tailscale_socket,json=tailscaleSocket,proto3" json:"tailscale_socket,omitempty"`
+	KeyIssuerSecret          string                 `protobuf:"bytes,38,opt,name=key_issuer_secret,json=keyIssuerSecret,proto3" json:"key_issuer_secret,omitempty"`
+	ServicesSecret           string                 `protobuf:"bytes,39,opt,name=services_secret,json=servicesSecret,proto3" json:"services_secret,omitempty"`
+	ServicesClientIdFile     string                 `protobuf:"bytes,40,opt,name=services_client_id_file,json=servicesClientIdFile,proto3" json:"services_client_id_file,omitempty"`
+	ServicesClientSecretFile string                 `protobuf:"bytes,41,opt,name=services_client_secret_file,json=servicesClientSecretFile,proto3" json:"services_client_secret_file,omitempty"`
+	UsersSecret              string                 `protobuf:"bytes,42,opt,name=users_secret,json=usersSecret,proto3" json:"users_secret,omitempty"`
+	UsersClientIdFile        string                 `protobuf:"bytes,43,opt,name=users_client_id_file,json=usersClientIdFile,proto3" json:"users_client_id_file,omitempty"`
+	UsersClientSecretFile    string                 `protobuf:"bytes,44,opt,name=users_client_secret_file,json=usersClientSecretFile,proto3" json:"users_client_secret_file,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *DeploymentRequest) Reset() {
@@ -339,16 +348,76 @@ func (x *DeploymentRequest) GetDatabase() *DatabaseConfiguration {
 	return nil
 }
 
+func (x *DeploymentRequest) GetTailscaleConnection() string {
+	if x != nil {
+		return x.TailscaleConnection
+	}
+	return ""
+}
+
+func (x *DeploymentRequest) GetTailscaleSocket() string {
+	if x != nil {
+		return x.TailscaleSocket
+	}
+	return ""
+}
+
+func (x *DeploymentRequest) GetKeyIssuerSecret() string {
+	if x != nil {
+		return x.KeyIssuerSecret
+	}
+	return ""
+}
+
+func (x *DeploymentRequest) GetServicesSecret() string {
+	if x != nil {
+		return x.ServicesSecret
+	}
+	return ""
+}
+
+func (x *DeploymentRequest) GetServicesClientIdFile() string {
+	if x != nil {
+		return x.ServicesClientIdFile
+	}
+	return ""
+}
+
+func (x *DeploymentRequest) GetServicesClientSecretFile() string {
+	if x != nil {
+		return x.ServicesClientSecretFile
+	}
+	return ""
+}
+
+func (x *DeploymentRequest) GetUsersSecret() string {
+	if x != nil {
+		return x.UsersSecret
+	}
+	return ""
+}
+
+func (x *DeploymentRequest) GetUsersClientIdFile() string {
+	if x != nil {
+		return x.UsersClientIdFile
+	}
+	return ""
+}
+
+func (x *DeploymentRequest) GetUsersClientSecretFile() string {
+	if x != nil {
+		return x.UsersClientSecretFile
+	}
+	return ""
+}
+
 // Bootstrap credentials must not be persisted in plans, logs or receipts.
 type BootstrapCredentials struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	EnrollmentId   string                 `protobuf:"bytes,1,opt,name=enrollment_id,json=enrollmentId,proto3" json:"enrollment_id,omitempty"`
-	EnrollmentCode string                 `protobuf:"bytes,2,opt,name=enrollment_code,json=enrollmentCode,proto3" json:"enrollment_code,omitempty"`
-	AuthKey        string                 `protobuf:"bytes,3,opt,name=auth_key,json=authKey,proto3" json:"auth_key,omitempty"`
-	ControlKey     string                 `protobuf:"bytes,4,opt,name=control_key,json=controlKey,proto3" json:"control_key,omitempty"`
-	ExpiresAt      int64                  `protobuf:"varint,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AuthKey       string                 `protobuf:"bytes,3,opt,name=auth_key,json=authKey,proto3" json:"auth_key,omitempty"`
+	ExpiresAt     int64                  `protobuf:"varint,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *BootstrapCredentials) Reset() {
@@ -381,30 +450,9 @@ func (*BootstrapCredentials) Descriptor() ([]byte, []int) {
 	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *BootstrapCredentials) GetEnrollmentId() string {
-	if x != nil {
-		return x.EnrollmentId
-	}
-	return ""
-}
-
-func (x *BootstrapCredentials) GetEnrollmentCode() string {
-	if x != nil {
-		return x.EnrollmentCode
-	}
-	return ""
-}
-
 func (x *BootstrapCredentials) GetAuthKey() string {
 	if x != nil {
 		return x.AuthKey
-	}
-	return ""
-}
-
-func (x *BootstrapCredentials) GetControlKey() string {
-	if x != nil {
-		return x.ControlKey
 	}
 	return ""
 }
@@ -430,7 +478,6 @@ type DeploymentInstructions struct {
 	Credentials   *BootstrapCredentials  `protobuf:"bytes,10,opt,name=credentials,proto3" json:"credentials,omitempty"`
 	Script        string                 `protobuf:"bytes,11,opt,name=script,proto3" json:"script,omitempty"`
 	Example       string                 `protobuf:"bytes,12,opt,name=example,proto3" json:"example,omitempty"`
-	Enrollment    *Enrollment            `protobuf:"bytes,13,opt,name=enrollment,proto3" json:"enrollment,omitempty"`
 	Commands      map[string]string      `protobuf:"bytes,14,rep,name=commands,proto3" json:"commands,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Preview-only bundles are rejected by hidden installers.
 	DryRun        bool `protobuf:"varint,15,opt,name=dry_run,json=dryRun,proto3" json:"dry_run,omitempty"`
@@ -550,13 +597,6 @@ func (x *DeploymentInstructions) GetExample() string {
 		return x.Example
 	}
 	return ""
-}
-
-func (x *DeploymentInstructions) GetEnrollment() *Enrollment {
-	if x != nil {
-		return x.Enrollment
-	}
-	return nil
 }
 
 func (x *DeploymentInstructions) GetCommands() map[string]string {
@@ -738,7 +778,7 @@ var File_funnel_v1_provisioning_proto protoreflect.FileDescriptor
 
 const file_funnel_v1_provisioning_proto_rawDesc = "" +
 	"\n" +
-	"\x1cfunnel/v1/provisioning.proto\x12\tfunnel.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1afunnel/v1/management.proto\x1a\x17funnel/v1/options.proto\"\xdc\v\n" +
+	"\x1cfunnel/v1/provisioning.proto\x12\tfunnel.v1\x1a\x1bbuf/validate/validate.proto\x1a\x17funnel/v1/options.proto\"\x92\x0f\n" +
 	"\x11DeploymentRequest\x12k\n" +
 	"\x04mode\x18\x01 \x01(\tBW\xbaHT\xd8\x01\x01rOR\boperatorR\acontrolR\floadbalancerR\x0edocker-gatewayR\x0ftailnet-gatewayR\vk8s-gatewayR\x04mode\x124\n" +
 	"\x06target\x18\x02 \x01(\tB\x1c\xbaH\x19\xd8\x01\x01r\x14R\x06nativeR\n" +
@@ -777,18 +817,23 @@ const file_funnel_v1_provisioning_proto_rawDesc = "" +
 	"\fstorage_size\x18  \x01(\tR\vstorageSize\x12%\n" +
 	"\x0eplacement_json\x18! \x01(\fR\rplacementJson\x128\n" +
 	"\x18forwarder_placement_json\x18\" \x01(\fR\x16forwarderPlacementJson\x12<\n" +
-	"\bdatabase\x18# \x01(\v2 .funnel.v1.DatabaseConfigurationR\bdatabase\x1a?\n" +
+	"\bdatabase\x18# \x01(\v2 .funnel.v1.DatabaseConfigurationR\bdatabase\x121\n" +
+	"\x14tailscale_connection\x18$ \x01(\tR\x13tailscaleConnection\x12)\n" +
+	"\x10tailscale_socket\x18% \x01(\tR\x0ftailscaleSocket\x12*\n" +
+	"\x11key_issuer_secret\x18& \x01(\tR\x0fkeyIssuerSecret\x12'\n" +
+	"\x0fservices_secret\x18' \x01(\tR\x0eservicesSecret\x125\n" +
+	"\x17services_client_id_file\x18( \x01(\tR\x14servicesClientIdFile\x12=\n" +
+	"\x1bservices_client_secret_file\x18) \x01(\tR\x18servicesClientSecretFile\x12!\n" +
+	"\fusers_secret\x18* \x01(\tR\vusersSecret\x12/\n" +
+	"\x14users_client_id_file\x18+ \x01(\tR\x11usersClientIdFile\x127\n" +
+	"\x18users_client_secret_file\x18, \x01(\tR\x15usersClientSecretFile\x1a?\n" +
 	"\x11NodeSelectorEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbf\x01\n" +
-	"\x14BootstrapCredentials\x12#\n" +
-	"\renrollment_id\x18\x01 \x01(\tR\fenrollmentId\x12'\n" +
-	"\x0fenrollment_code\x18\x02 \x01(\tR\x0eenrollmentCode\x12\x19\n" +
-	"\bauth_key\x18\x03 \x01(\tR\aauthKey\x12\x1f\n" +
-	"\vcontrol_key\x18\x04 \x01(\tR\n" +
-	"controlKey\x12\x1d\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"P\n" +
+	"\x14BootstrapCredentials\x12\x19\n" +
+	"\bauth_key\x18\x03 \x01(\tR\aauthKey\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\x05 \x01(\x03R\texpiresAt\"\xac\x05\n" +
+	"expires_at\x18\x05 \x01(\x03R\texpiresAt\"\xf5\x04\n" +
 	"\x16DeploymentInstructions\x12<\n" +
 	"\n" +
 	"deployment\x18\x01 \x01(\v2\x1c.funnel.v1.DeploymentRequestR\n" +
@@ -804,10 +849,7 @@ const file_funnel_v1_provisioning_proto_rawDesc = "" +
 	"\vcredentials\x18\n" +
 	" \x01(\v2\x1f.funnel.v1.BootstrapCredentialsR\vcredentials\x12\x16\n" +
 	"\x06script\x18\v \x01(\tR\x06script\x12\x18\n" +
-	"\aexample\x18\f \x01(\tR\aexample\x125\n" +
-	"\n" +
-	"enrollment\x18\r \x01(\v2\x15.funnel.v1.EnrollmentR\n" +
-	"enrollment\x12K\n" +
+	"\aexample\x18\f \x01(\tR\aexample\x12K\n" +
 	"\bcommands\x18\x0e \x03(\v2/.funnel.v1.DeploymentInstructions.CommandsEntryR\bcommands\x12\x17\n" +
 	"\adry_run\x18\x0f \x01(\bR\x06dryRun\x1a;\n" +
 	"\rCommandsEntry\x12\x10\n" +
@@ -851,7 +893,6 @@ var file_funnel_v1_provisioning_proto_goTypes = []any{
 	(*DatabaseConfiguration)(nil),  // 4: funnel.v1.DatabaseConfiguration
 	nil,                            // 5: funnel.v1.DeploymentRequest.NodeSelectorEntry
 	nil,                            // 6: funnel.v1.DeploymentInstructions.CommandsEntry
-	(*Enrollment)(nil),             // 7: funnel.v1.Enrollment
 }
 var file_funnel_v1_provisioning_proto_depIdxs = []int32{
 	5, // 0: funnel.v1.DeploymentRequest.node_selector:type_name -> funnel.v1.DeploymentRequest.NodeSelectorEntry
@@ -859,17 +900,16 @@ var file_funnel_v1_provisioning_proto_depIdxs = []int32{
 	0, // 2: funnel.v1.DeploymentInstructions.deployment:type_name -> funnel.v1.DeploymentRequest
 	3, // 3: funnel.v1.DeploymentInstructions.steps:type_name -> funnel.v1.DeploymentStep
 	1, // 4: funnel.v1.DeploymentInstructions.credentials:type_name -> funnel.v1.BootstrapCredentials
-	7, // 5: funnel.v1.DeploymentInstructions.enrollment:type_name -> funnel.v1.Enrollment
-	6, // 6: funnel.v1.DeploymentInstructions.commands:type_name -> funnel.v1.DeploymentInstructions.CommandsEntry
-	0, // 7: funnel.v1.DeploymentService.Instructions:input_type -> funnel.v1.DeploymentRequest
-	0, // 8: funnel.v1.DeploymentService.Authorize:input_type -> funnel.v1.DeploymentRequest
-	2, // 9: funnel.v1.DeploymentService.Instructions:output_type -> funnel.v1.DeploymentInstructions
-	2, // 10: funnel.v1.DeploymentService.Authorize:output_type -> funnel.v1.DeploymentInstructions
-	9, // [9:11] is the sub-list for method output_type
-	7, // [7:9] is the sub-list for method input_type
-	7, // [7:7] is the sub-list for extension type_name
-	7, // [7:7] is the sub-list for extension extendee
-	0, // [0:7] is the sub-list for field type_name
+	6, // 5: funnel.v1.DeploymentInstructions.commands:type_name -> funnel.v1.DeploymentInstructions.CommandsEntry
+	0, // 6: funnel.v1.DeploymentService.Instructions:input_type -> funnel.v1.DeploymentRequest
+	0, // 7: funnel.v1.DeploymentService.Authorize:input_type -> funnel.v1.DeploymentRequest
+	2, // 8: funnel.v1.DeploymentService.Instructions:output_type -> funnel.v1.DeploymentInstructions
+	2, // 9: funnel.v1.DeploymentService.Authorize:output_type -> funnel.v1.DeploymentInstructions
+	8, // [8:10] is the sub-list for method output_type
+	6, // [6:8] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_funnel_v1_provisioning_proto_init() }
@@ -877,7 +917,6 @@ func file_funnel_v1_provisioning_proto_init() {
 	if File_funnel_v1_provisioning_proto != nil {
 		return
 	}
-	file_funnel_v1_management_proto_init()
 	file_funnel_v1_options_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{

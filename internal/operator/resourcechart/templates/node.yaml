@@ -2,14 +2,12 @@
 {{- include "funnel.namespaceIsolation" . }}
 {{- $control := eq .Values.component "control" }}
 {{- $postgres := and $control (eq .Values.control.database.type "postgres") }}
-{{- $identity := default (printf "%s-identity" .Release.Name) .Values.identity.existingSecret }}
 {{- $claim := default (printf "%s-data" .Release.Name) .Values.persistence.existingClaim }}
 {{- if and (not $postgres) (not .Values.persistence.existingClaim) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ $claim }}
-  annotations: {helm.sh/resource-policy: keep}
 spec:
   accessModes: [ReadWriteOnce]
   {{- if .Values.persistence.storageClass }}
@@ -28,10 +26,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Release.Name }}-{{ .Values.component }}
-  labels:
-    app.kubernetes.io/part-of: tailscale-private-funnel
-    app.kubernetes.io/instance: {{ .Release.Name }}
-    tailscale-private-funnel.io/installation: {{ .Values.installation }}
 spec:
   replicas: 1
   strategy: {type: Recreate}
@@ -42,48 +36,16 @@ spec:
       labels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: {{ .Values.component }}, tailscale-private-funnel.io/installation: {{ .Values.installation }}}
     spec:
       serviceAccountName: {{ .Release.Name }}-{{ .Values.component }}
+      automountServiceAccountToken: false
       nodeSelector: {{ toYaml (get (index .Values .Values.component) "nodeSelector") | nindent 8 }}
       affinity: {{ toYaml (get (index .Values .Values.component) "affinity") | nindent 8 }}
       tolerations: {{ toYaml (get (index .Values .Values.component) "tolerations") | nindent 8 }}
-      automountServiceAccountToken: false
-      terminationGracePeriodSeconds: 60
-      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
-      initContainers:
-        - name: bootstrap
-          image: {{ .Values.image.reference | quote }}
-          args:
-            - k8s
-            - runtime
-            - {{ .Values.component }}
-            - bootstrap
-            - --namespace={{ .Release.Namespace }}
-            - --identity-secret={{ $identity }}
-            - --persistent-dir=/persistent
-            {{- if $postgres }}
-            - --database=postgres
-            - --database-url-file=/database/url
-            - --database-tls-mode={{ default "verify-full" .Values.control.database.postgres.tlsMode }}
-            {{- if .Values.control.database.postgres.caSecretRef }}
-            - --database-ca-file=/database/ca.crt
-            {{- end }}
-            {{- end }}
-            - --bootstrap-secret-dir=/bootstrap
-            {{- if $control }}
-            - --hostname={{ .Values.control.hostname }}
-            - --tailnet={{ .Values.control.tailnet }}
-            {{- end }}
-          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
-          resources: {{ toYaml .Values.resources | nindent 12 }}
-          volumeMounts:
-            - {name: runtime, mountPath: /var/lib/tailscale-private-funnel}
-            {{- if $postgres }}
-            - {name: database, mountPath: /database, readOnly: true}
-            {{- else }}
-            - {name: data, mountPath: /persistent}
-            {{- end }}
-            - {name: tmp, mountPath: /tmp}
-            - {name: bootstrap, mountPath: /bootstrap, readOnly: true}
-            - {name: api, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
       containers:
         - name: {{ .Values.component }}
           image: {{ .Values.image.reference | quote }}
@@ -94,20 +56,30 @@ spec:
             - {{ .Values.component }}
             - serve
             - --namespace={{ .Release.Namespace }}
-            - --identity-secret={{ $identity }}
-            - --persistent-dir=/persistent
+            - --installation={{ .Values.installation }}
+            {{- if not $postgres }}
+            - --persistent-dir=/persist
+            {{- end }}
+            - --hostname={{ default .Release.Name .Values.hostname }}
+            - --probe-listen=:9091
+            {{- if $control }}
+            - --tailnet={{ .Values.control.tailnet }}
+            - --material-dir=/etc/funnel-material
             {{- if $postgres }}
             - --database=postgres
-            - --database-url-file=/database/url
+            - --database-url-file=/etc/funnel-database/connection
             - --database-tls-mode={{ default "verify-full" .Values.control.database.postgres.tlsMode }}
             {{- if .Values.control.database.postgres.caSecretRef }}
-            - --database-ca-file=/database/ca.crt
+            - --database-ca-file=/etc/funnel-database-ca/ca.crt
             {{- end }}
             {{- end }}
-            - --probe-listen=:9090
-            {{- if not $control }}
+            {{- else }}
+            - --public-hostname={{ .Values.loadbalancer.publicHostname }}
+            - --certificate-email={{ .Values.loadbalancer.certificateEmail }}
             - --kubernetes-service={{ .Release.Name }}-public
             {{- end }}
+          env:
+            {{- include "funnel.runtimeEnvironment" . | nindent 12 }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -117,73 +89,75 @@ spec:
               add: [NET_BIND_SERVICE]
               {{- end }}
           ports:
-            - {name: health, containerPort: 9090}
+            - {name: health, containerPort: 9091}
             {{- if not $control }}
             - {name: http, containerPort: 80}
             - {name: https, containerPort: 443}
             {{- end }}
-          startupProbe: {httpGet: {path: /readyz, port: health}, failureThreshold: 60, periodSeconds: 5}
+          startupProbe: {httpGet: {path: /readyz, port: health}, periodSeconds: 5, failureThreshold: 60}
           readinessProbe: {httpGet: {path: /readyz, port: health}}
           livenessProbe: {httpGet: {path: /healthz, port: health}}
           resources: {{ toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - {name: runtime, mountPath: /var/lib/tailscale-private-funnel}
-            {{- if $postgres }}
-            - {name: database, mountPath: /database, readOnly: true}
-            {{- else }}
-            - {name: data, mountPath: /persistent}
-            {{- end }}
             - {name: tmp, mountPath: /tmp}
-            - {name: api, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+            - {name: operator-token, mountPath: /var/run/secrets/funnel-operator, readOnly: true}
+            - {name: operator-ca, mountPath: /etc/funnel-operator-ca, readOnly: true}
+            {{- if not $control }}
+            - {name: api-token, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
+            {{- end }}
+            {{- if not $postgres }}
+            - {name: persistent, mountPath: /persist}
+            {{- end }}
+            {{- if $control }}
+            - {name: material, mountPath: /etc/funnel-material, readOnly: true}
+            - {name: services-credentials, mountPath: /etc/funnel-services, readOnly: true}
+            - {name: users-credentials, mountPath: /etc/funnel-users, readOnly: true}
+            {{- if $postgres }}
+            - {name: database, mountPath: /etc/funnel-database, readOnly: true}
+            {{- if .Values.control.database.postgres.caSecretRef }}
+            - {name: database-ca, mountPath: /etc/funnel-database-ca, readOnly: true}
+            {{- end }}
+            {{- end }}
+            {{- end }}
       volumes:
+        - {name: runtime, emptyDir: {medium: Memory}}
         - {name: tmp, emptyDir: {}}
-        - {name: runtime, emptyDir: {}}
-        {{- if $postgres }}
-        - name: database
-          projected:
-            defaultMode: 0440
-            sources:
-              - secret:
-                  name: {{ .Values.control.database.postgres.connectionSecretRef.name | quote }}
-                  items: [{key: {{ .Values.control.database.postgres.connectionSecretRef.key | quote }}, path: url}]
-              {{- if .Values.control.database.postgres.caSecretRef }}
-              - secret:
-                  name: {{ .Values.control.database.postgres.caSecretRef.name | quote }}
-                  items: [{key: {{ .Values.control.database.postgres.caSecretRef.key | quote }}, path: ca.crt}]
-              {{- end }}
-        {{- else }}
-        - {name: data, persistentVolumeClaim: {claimName: {{ $claim }}}}
-        {{- end }}
-        - name: bootstrap
-          secret:
-            secretName: {{ required "bootstrap.existingSecret is required" .Values.bootstrap.existingSecret }}
-            optional: true
-            defaultMode: 0440
-        - name: api
+        {{- include "funnel.operatorBootstrapVolumes" . | nindent 8 }}
+        {{- if not $control }}
+        - name: api-token
           projected:
             defaultMode: 0440
             sources:
               - serviceAccountToken: {path: token, expirationSeconds: 600}
-              - configMap:
-                  name: kube-root-ca.crt
-                  items: [{key: ca.crt, path: ca.crt}]
-              - downwardAPI:
-                  items: [{path: namespace, fieldRef: {fieldPath: metadata.namespace}}]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata: {name: {{ .Release.Name }}-identity}
-rules:
-  - apiGroups: [""]
-    resources: [secrets]
-    resourceNames: [{{ $identity | quote }}]
-    verbs: [get, update, patch]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata: {name: {{ .Release.Name }}-identity}
-roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ .Release.Name }}-identity}
-subjects: [{kind: ServiceAccount, name: {{ .Release.Name }}-{{ .Values.component }}, namespace: {{ .Release.Namespace }}}]
+              - configMap: {name: kube-root-ca.crt, items: [{key: ca.crt, path: ca.crt}]}
+              - downwardAPI: {items: [{path: namespace, fieldRef: {fieldPath: metadata.namespace}}]}
+        {{- end }}
+        {{- if not $postgres }}
+        - name: persistent
+          persistentVolumeClaim: {claimName: {{ $claim }}}
+        {{- end }}
+        {{- if $control }}
+        - name: material
+          secret: {secretName: {{ .Values.materialSecret }}, defaultMode: 0440}
+        - name: users-credentials
+          secret: {secretName: {{ .Values.control.usersSecret }}, defaultMode: 0440}
+        - name: services-credentials
+          secret: {secretName: {{ .Values.control.servicesSecret }}, defaultMode: 0440}
+        {{- if $postgres }}
+        - name: database
+          secret:
+            secretName: {{ .Values.control.database.postgres.connectionSecretRef.name }}
+            defaultMode: 0440
+            items: [{key: {{ .Values.control.database.postgres.connectionSecretRef.key }}, path: connection}]
+        {{- if .Values.control.database.postgres.caSecretRef }}
+        - name: database-ca
+          secret:
+            secretName: {{ .Values.control.database.postgres.caSecretRef.name }}
+            items: [{key: {{ .Values.control.database.postgres.caSecretRef.key }}, path: ca.crt}]
+        {{- end }}
+        {{- end }}
+        {{- end }}
 {{- if not $control }}
 ---
 apiVersion: v1
@@ -193,10 +167,10 @@ metadata:
   annotations: {{ toYaml .Values.loadbalancer.service.annotations | nindent 4 }}
 spec:
   type: LoadBalancer
-  externalTrafficPolicy: {{ .Values.loadbalancer.service.externalTrafficPolicy }}
   {{- if .Values.loadbalancer.service.loadBalancerClass }}
-  loadBalancerClass: {{ .Values.loadbalancer.service.loadBalancerClass | quote }}
+  loadBalancerClass: {{ .Values.loadbalancer.service.loadBalancerClass }}
   {{- end }}
+  externalTrafficPolicy: {{ .Values.loadbalancer.service.externalTrafficPolicy }}
   {{- if .Values.loadbalancer.service.loadBalancerSourceRanges }}
   loadBalancerSourceRanges: {{ toYaml .Values.loadbalancer.service.loadBalancerSourceRanges | nindent 4 }}
   {{- end }}
@@ -205,7 +179,7 @@ spec:
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
-metadata: {name: {{ .Release.Name }}-public-service}
+metadata: {name: {{ .Release.Name }}-public-endpoint}
 rules:
   - apiGroups: [""]
     resources: [services]
@@ -214,34 +188,8 @@ rules:
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
-metadata: {name: {{ .Release.Name }}-public-service}
-roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ .Release.Name }}-public-service}
+metadata: {name: {{ .Release.Name }}-public-endpoint}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: {{ .Release.Name }}-public-endpoint}
 subjects: [{kind: ServiceAccount, name: {{ .Release.Name }}-loadbalancer, namespace: {{ .Release.Namespace }}}]
-{{- end }}
-{{- if .Values.networkPolicy.enabled }}
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata: {name: {{ .Release.Name }}-node}
-spec:
-  podSelector:
-    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: {{ .Values.component }}, tailscale-private-funnel.io/installation: {{ .Values.installation }}}
-  policyTypes: [Ingress, Egress]
-  ingress:
-    {{- if $control }} []
-    {{- else }}
-    - ports: [{protocol: TCP, port: 80}, {protocol: TCP, port: 443}]
-    {{- end }}
-  egress:
-    {{- if $postgres }}
-    - to:
-        {{- if .Values.control.database.postgres.egressPeers }}
-        {{- toYaml .Values.control.database.postgres.egressPeers | nindent 8 }}
-        {{- else }}
-        - podSelector: {}
-        {{- end }}
-      ports: [{protocol: TCP, port: {{ default 5432 .Values.control.database.postgres.port }}}]
-    {{- end }}
-    - ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 6443}, {protocol: UDP, port: 53}, {protocol: TCP, port: 53}, {protocol: UDP, port: 1, endPort: 65535}]
 {{- end }}
 {{- end }}

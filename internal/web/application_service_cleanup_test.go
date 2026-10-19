@@ -17,8 +17,8 @@ import (
 func TestTailnetDeletionRetainsOwnershipUntilServiceCleanupSucceeds(t *testing.T) {
 	c, s := testControl(t)
 	s.SetJSON("tailnet", map[string]string{"name": "test"})
-	s.SetSecret("tailscale_oauth_client_id", "fixture")
-	s.SetSecret("tailscale_oauth_client_secret", "fixture")
+	s.SetSecret("tailscale_services_client_id", "fixture")
+	s.SetSecret("tailscale_services_client_secret", "fixture")
 	fail := true
 	deletes := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

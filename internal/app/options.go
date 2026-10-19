@@ -2,28 +2,39 @@ package app
 
 import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
-	"tailscale.com/ipn"
 )
 
 var BuildVersion = "dev"
 
 type Options struct {
-	Database          store.DatabaseOptions
-	Administrators    []string
-	DatabaseDir       string `json:"-"`
-	IdentitySecret    string
-	PersistentDir     string
-	TSStore           ipn.StateStore `json:"-"`
-	RequireJoined     bool
-	KubernetesService string
-	KubeNamespace     string
-	Installation      string
-	ControllerName    string
-	BrokerURL         string
-	BrokerCAFile      string
-	BrokerTokenFile   string
+	UsersClientIDFile, UsersClientSecretFile       string
+	ServicesClientIDFile, ServicesClientSecretFile string
+	MaterialDir                                    string
+	BootstrapURL                                   string
+	BootstrapTokenFile                             string
+	BootstrapCAFile                                string
+	NodeUID                                        string
+	NodeName                                       string
 
-	BootstrapSecretDir     string
+	TailscaleConnection    string
+	TailscaleSocket        string
+	RoutingID              string
+	ComponentID            string
+	InstanceID             string
+	ParentID               string
+	Ephemeral              bool
+	Database               store.DatabaseOptions
+	Administrators         []string
+	DatabaseDir            string `json:"-"`
+	PersistentDir          string
+	RequireJoined          bool
+	KubernetesService      string
+	KubeNamespace          string
+	Installation           string
+	ControllerName         string
+	BrokerURL              string
+	BrokerCAFile           string
+	BrokerTokenFile        string
 	Kubeconfig             string
 	GatewayClass           string
 	IngressClass           string
@@ -42,9 +53,6 @@ type Options struct {
 	StateDir               string
 	DataDir                string
 	ManagementURL          string
-	ControlKey             string
-	EnrollmentID           string
-	EnrollmentCode         string
 	LoginServer            string
 	AcceptDNS              bool
 	Tags                   []string
@@ -54,6 +62,4 @@ type Options struct {
 	LabelKeys              []string
 	DenyNetworks           []string
 	ConfigFile             string
-	EnrollmentCodeFile     string
-	EnrollmentCodeStdin    bool
 }

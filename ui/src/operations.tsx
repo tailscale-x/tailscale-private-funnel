@@ -65,7 +65,7 @@ export function OperationsPage() {
       </Panel>
       <Panel title="Gateway reports">
         <p className="pf-help">
-          Only fresh, signed reports from enrolled identities can authorize
+          Only fresh reports authenticated through verified Tailscale roles can authorize
           routing. A visible peer or Service is not proof of backend
           reachability.
         </p>

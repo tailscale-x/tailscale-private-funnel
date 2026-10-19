@@ -9,26 +9,36 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tsconnection"
+
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	core "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"tailscale.com/tsnet"
 )
 
 func validatePersistentState(mode string, o Options) error {
-	files := []string{filepath.Join(o.StateDir, "joined"), filepath.Join(o.StateDir, "tailscaled.state"), filepath.Join(o.DataDir, "master.key")}
-	if mode != "control" || o.Database.Type != "postgres" {
+	files := []string{}
+	if mode == "control" {
+		files = append(files, filepath.Join(o.DataDir, "master.key"))
+	}
+	if o.TailscaleConnection != "host" {
+		files = append(files, filepath.Join(o.StateDir, "joined"), filepath.Join(o.StateDir, "tailscaled.state"))
+	}
+	if mode == "control" && o.Database.Type != "postgres" {
 		files = append(files, filepath.Join(o.DataDir, "funnel.db"))
 	}
 	if mode != "control" {
-		files = append(files, filepath.Join(o.DataDir, "node-id"), filepath.Join(o.DataDir, "report-identity.json"), configPath(mode, o))
+		files = append(files, filepath.Join(o.DataDir, "node-id"), configPath(mode, o))
 	}
 	for _, f := range files {
 		info, err := os.Stat(f)
 		if err != nil || info.Size() == 0 {
 			return fmt.Errorf("persistent %s state missing or empty: %s; restore storage rather than reenrolling", mode, f)
 		}
+	}
+	if o.TailscaleConnection == "host" {
+		return nil
 	}
 	b, err := os.ReadFile(filepath.Join(o.StateDir, "tailscaled.state"))
 	if err != nil {
@@ -40,7 +50,7 @@ func validatePersistentState(mode string, o Options) error {
 	}
 	return nil
 }
-func reportKubernetesEndpoint(ctx context.Context, s *tsnet.Server, o Options) {
+func reportKubernetesEndpoint(ctx context.Context, s tsconnection.Connection, o Options) {
 	c, _, err := kubernetesClients(o)
 	if err != nil {
 		slog.Error("Kubernetes Service discovery unavailable", "error", err)

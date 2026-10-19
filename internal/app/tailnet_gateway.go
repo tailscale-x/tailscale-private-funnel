@@ -6,15 +6,16 @@ import (
 	"net"
 	"time"
 
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tsconnection"
+
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 
 	"github.com/tailscale-x/tailscale-private-funnel/internal/gateway"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
-	"tailscale.com/tsnet"
 )
 
-func runTailnetGateway(ctx context.Context, o Options, s *tsnet.Server) error {
-	session := gateway.Session{Resolver: gateway.RPCResolver{BaseURL: o.ManagementURL, NodeID: loadBalancerNodeID(o.DataDir), ControlKey: o.ControlKey, Client: tsnetHTTPClient(s)}, Listeners: gateway.NewListenerManager(s), Agent: report.Agent{NodeID: loadBalancerNodeID(o.DataDir), ManagementURL: o.ManagementURL, DataDir: o.DataDir, HTTPClient: tsnetHTTPClient(s)}}
+func runTailnetGateway(ctx context.Context, o Options, s tsconnection.Connection) error {
+	session := gateway.Session{Resolver: gateway.RPCResolver{BaseURL: o.ManagementURL, NodeID: loadBalancerNodeID(o.DataDir), Client: tsnetHTTPClient(s)}, Listeners: gateway.NewListenerManager(s), Agent: report.Agent{NodeID: loadBalancerNodeID(o.DataDir), ManagementURL: o.ManagementURL, DataDir: o.DataDir, HTTPClient: tsnetHTTPClient(s)}}
 	defer session.Listeners.Close()
 	reconcile := func() {
 		peers, err := gatewayPeers(ctx, s)
@@ -62,6 +63,8 @@ func runTailnetGateway(ctx context.Context, o Options, s *tsnet.Server) error {
 		}
 		if err = session.Publish(ctx, config, runtimes, nil); err != nil {
 			slog.Warn("gateway report failed", "error", err)
+		} else {
+			markRuntimeReady(o.DataDir)
 		}
 	}
 	reconcile()

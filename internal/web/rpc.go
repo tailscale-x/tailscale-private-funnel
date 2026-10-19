@@ -52,13 +52,10 @@ func (c *Control) rpcInterceptor() connect.UnaryInterceptorFunc {
 				}
 				ctx = context.WithValue(ctx, accessKey{}, a)
 			}
-			if permission == funnelv1.Permission_PERMISSION_NODE {
+			if permission == funnelv1.Permission_PERMISSION_NODE && req.Spec().Procedure != funnelv1connect.NodeServiceRegisterComponentProcedure {
+				ctx = context.WithValue(ctx, componentContext{}, componentContext{ID: req.Header().Get("Funnel-Component-ID"), Instance: req.Header().Get("Funnel-Instance-ID")})
 				var err error
-				if req.Spec().Procedure == funnelv1connect.NodeServiceShutdownProcedure {
-					_, err = c.cleanupCallerContext(ctx)
-				} else {
-					_, err = c.callerNodeContext(ctx, "")
-				}
+				_, err = c.callerNodeContext(ctx, "")
 				if err != nil {
 					return nil, rpcFailure(connect.CodePermissionDenied, err)
 				}
@@ -104,8 +101,6 @@ func (c *Control) registerRPC(r interface{ Handle(string, http.Handler) }) {
 	path, handler = funnelv1connect.NewDeploymentServiceHandler(&deploymentRPC{c: c}, connect.WithInterceptors(c.rpcInterceptor()), connect.WithCodec(rpc.StrictJSON{}), connect.WithReadMaxBytes(2<<20))
 	r.Handle(path+"*", handler)
 	path, handler = funnelv1connect.NewNodeServiceHandler(&nodeRPC{c: c}, connect.WithInterceptors(c.rpcInterceptor()), connect.WithCodec(rpc.StrictJSON{}), connect.WithReadMaxBytes(2<<20))
-	r.Handle(path+"*", handler)
-	path, handler = funnelv1connect.NewEnrollmentServiceHandler(&enrollmentRPC{c: c}, connect.WithInterceptors(c.rpcInterceptor()), connect.WithCodec(rpc.StrictJSON{}), connect.WithReadMaxBytes(64<<10))
 	r.Handle(path+"*", handler)
 
 }

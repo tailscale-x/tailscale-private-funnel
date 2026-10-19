@@ -1,4 +1,4 @@
-// Package nodeconfig defines the signed control-to-node contract.
+// Package nodeconfig defines the control-to-node contract.
 package nodeconfig
 
 import (
@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
@@ -30,12 +31,12 @@ func Revision(v any) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
-func Verify(e report.Envelope, pinnedKey, nodeID string, now time.Time) (Configuration, error) {
+func Read(e report.Snapshot, nodeID string, now time.Time) (Configuration, error) {
 	var config Configuration
-	if pinnedKey == "" || e.PublicKey != pinnedKey || e.NodeID != nodeID {
+	if e.NodeID != nodeID {
 		return config, fmt.Errorf("control configuration identity mismatch")
 	}
-	if _, _, err := report.Verify(e, now, 5*time.Minute); err != nil {
+	if err := e.Validate(now, 5*time.Minute); err != nil {
 		return config, err
 	}
 	if err := json.Unmarshal(e.Payload, &config); err != nil {
@@ -45,4 +46,12 @@ func Verify(e report.Envelope, pinnedKey, nodeID string, now time.Time) (Configu
 		return config, fmt.Errorf("invalid configuration target or revision")
 	}
 	return config, nil
+}
+
+func FromPayload(p *v1.ConfigurationPayload, nodeID string, now time.Time) (Configuration, error) {
+	s, e := report.NewSnapshot("configuration", nodeID, p, time.Unix(p.IssuedAt, 0))
+	if e != nil {
+		return Configuration{}, e
+	}
+	return Read(s, nodeID, now)
 }

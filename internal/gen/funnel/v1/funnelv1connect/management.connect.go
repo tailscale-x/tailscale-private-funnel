@@ -78,15 +78,9 @@ const (
 	// ManagementServiceRenameNodeProcedure is the fully-qualified name of the ManagementService's
 	// RenameNode RPC.
 	ManagementServiceRenameNodeProcedure = "/funnel.v1.ManagementService/RenameNode"
-	// ManagementServiceRenameEnrollmentProcedure is the fully-qualified name of the ManagementService's
-	// RenameEnrollment RPC.
-	ManagementServiceRenameEnrollmentProcedure = "/funnel.v1.ManagementService/RenameEnrollment"
 	// ManagementServiceRenameApplicationProcedure is the fully-qualified name of the
 	// ManagementService's RenameApplication RPC.
 	ManagementServiceRenameApplicationProcedure = "/funnel.v1.ManagementService/RenameApplication"
-	// ManagementServiceListEnrollmentsProcedure is the fully-qualified name of the ManagementService's
-	// ListEnrollments RPC.
-	ManagementServiceListEnrollmentsProcedure = "/funnel.v1.ManagementService/ListEnrollments"
 	// ManagementServiceGetPolicyProcedure is the fully-qualified name of the ManagementService's
 	// GetPolicy RPC.
 	ManagementServiceGetPolicyProcedure = "/funnel.v1.ManagementService/GetPolicy"
@@ -99,6 +93,9 @@ const (
 	// ManagementServiceGetAccessProcedure is the fully-qualified name of the ManagementService's
 	// GetAccess RPC.
 	ManagementServiceGetAccessProcedure = "/funnel.v1.ManagementService/GetAccess"
+	// ManagementServiceRolePolicyProcedure is the fully-qualified name of the ManagementService's
+	// RolePolicy RPC.
+	ManagementServiceRolePolicyProcedure = "/funnel.v1.ManagementService/RolePolicy"
 	// ManagementServiceGetSettingsProcedure is the fully-qualified name of the ManagementService's
 	// GetSettings RPC.
 	ManagementServiceGetSettingsProcedure = "/funnel.v1.ManagementService/GetSettings"
@@ -144,15 +141,12 @@ const (
 	// ManagementServiceListExposuresProcedure is the fully-qualified name of the ManagementService's
 	// ListExposures RPC.
 	ManagementServiceListExposuresProcedure = "/funnel.v1.ManagementService/ListExposures"
-	// ManagementServiceRevokeNodeProcedure is the fully-qualified name of the ManagementService's
-	// RevokeNode RPC.
-	ManagementServiceRevokeNodeProcedure = "/funnel.v1.ManagementService/RevokeNode"
+	// ManagementServiceDisableNodeProcedure is the fully-qualified name of the ManagementService's
+	// DisableNode RPC.
+	ManagementServiceDisableNodeProcedure = "/funnel.v1.ManagementService/DisableNode"
 	// ManagementServiceCleanupNodeProcedure is the fully-qualified name of the ManagementService's
 	// CleanupNode RPC.
 	ManagementServiceCleanupNodeProcedure = "/funnel.v1.ManagementService/CleanupNode"
-	// ManagementServiceRevokeEnrollmentProcedure is the fully-qualified name of the ManagementService's
-	// RevokeEnrollment RPC.
-	ManagementServiceRevokeEnrollmentProcedure = "/funnel.v1.ManagementService/RevokeEnrollment"
 	// ManagementServiceGetPeersProcedure is the fully-qualified name of the ManagementService's
 	// GetPeers RPC.
 	ManagementServiceGetPeersProcedure = "/funnel.v1.ManagementService/GetPeers"
@@ -198,13 +192,12 @@ type ManagementServiceClient interface {
 	ListNodes(context.Context, *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.Nodes], error)
 	GetNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.Node], error)
 	RenameNode(context.Context, *connect.Request[v1.RenameRequest]) (*connect.Response[v1.Empty], error)
-	RenameEnrollment(context.Context, *connect.Request[v1.RenameRequest]) (*connect.Response[v1.Empty], error)
 	RenameApplication(context.Context, *connect.Request[v1.RenameRequest]) (*connect.Response[v1.Empty], error)
-	ListEnrollments(context.Context, *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.Enrollments], error)
 	GetPolicy(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Policy], error)
 	ValidatePolicy(context.Context, *connect.Request[v1.Policy]) (*connect.Response[v1.TestResult], error)
 	TestPolicy(context.Context, *connect.Request[v1.PolicyTestRequest]) (*connect.Response[v1.PolicyTestResult], error)
 	GetAccess(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.AccessSettings], error)
+	RolePolicy(context.Context, *connect.Request[v1.RolePolicyRequest]) (*connect.Response[v1.RolePolicyTemplate], error)
 	GetSettings(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Settings], error)
 	ListApplications(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Applications], error)
 	// Inspect accepted exposure reports and their freshness without replaying them.
@@ -218,13 +211,12 @@ type ManagementServiceClient interface {
 	SaveRule(context.Context, *connect.Request[v1.SaveRuleRequest]) (*connect.Response[v1.PolicySaveResult], error)
 	DeleteRule(context.Context, *connect.Request[v1.DeleteRuleRequest]) (*connect.Response[v1.PolicySaveResult], error)
 	SaveAccess(context.Context, *connect.Request[v1.AccessSettings]) (*connect.Response[v1.AccessSettings], error)
-	SaveDefaults(context.Context, *connect.Request[v1.EnrollmentDefaults]) (*connect.Response[v1.Settings], error)
+	SaveDefaults(context.Context, *connect.Request[v1.DeploymentDefaults]) (*connect.Response[v1.Settings], error)
 	TestOAuth(context.Context, *connect.Request[v1.OAuthRequest]) (*connect.Response[v1.TestResult], error)
 	SaveOAuth(context.Context, *connect.Request[v1.OAuthRequest]) (*connect.Response[v1.TestResult], error)
 	ListExposures(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Exposures], error)
-	RevokeNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error)
+	DisableNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error)
 	CleanupNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error)
-	RevokeEnrollment(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.Empty], error)
 	GetPeers(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.PeerSnapshot], error)
 	ProbeBackend(context.Context, *connect.Request[v1.ProbeRequest]) (*connect.Response[v1.Probe], error)
 	SaveTailnetExposure(context.Context, *connect.Request[v1.TailnetExposureRequest]) (*connect.Response[v1.Application], error)
@@ -336,22 +328,10 @@ func NewManagementServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(managementServiceMethods.ByName("RenameNode")),
 			connect.WithClientOptions(opts...),
 		),
-		renameEnrollment: connect.NewClient[v1.RenameRequest, v1.Empty](
-			httpClient,
-			baseURL+ManagementServiceRenameEnrollmentProcedure,
-			connect.WithSchema(managementServiceMethods.ByName("RenameEnrollment")),
-			connect.WithClientOptions(opts...),
-		),
 		renameApplication: connect.NewClient[v1.RenameRequest, v1.Empty](
 			httpClient,
 			baseURL+ManagementServiceRenameApplicationProcedure,
 			connect.WithSchema(managementServiceMethods.ByName("RenameApplication")),
-			connect.WithClientOptions(opts...),
-		),
-		listEnrollments: connect.NewClient[v1.ListNodesRequest, v1.Enrollments](
-			httpClient,
-			baseURL+ManagementServiceListEnrollmentsProcedure,
-			connect.WithSchema(managementServiceMethods.ByName("ListEnrollments")),
 			connect.WithClientOptions(opts...),
 		),
 		getPolicy: connect.NewClient[v1.Empty, v1.Policy](
@@ -376,6 +356,12 @@ func NewManagementServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			httpClient,
 			baseURL+ManagementServiceGetAccessProcedure,
 			connect.WithSchema(managementServiceMethods.ByName("GetAccess")),
+			connect.WithClientOptions(opts...),
+		),
+		rolePolicy: connect.NewClient[v1.RolePolicyRequest, v1.RolePolicyTemplate](
+			httpClient,
+			baseURL+ManagementServiceRolePolicyProcedure,
+			connect.WithSchema(managementServiceMethods.ByName("RolePolicy")),
 			connect.WithClientOptions(opts...),
 		),
 		getSettings: connect.NewClient[v1.Empty, v1.Settings](
@@ -444,7 +430,7 @@ func NewManagementServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(managementServiceMethods.ByName("SaveAccess")),
 			connect.WithClientOptions(opts...),
 		),
-		saveDefaults: connect.NewClient[v1.EnrollmentDefaults, v1.Settings](
+		saveDefaults: connect.NewClient[v1.DeploymentDefaults, v1.Settings](
 			httpClient,
 			baseURL+ManagementServiceSaveDefaultsProcedure,
 			connect.WithSchema(managementServiceMethods.ByName("SaveDefaults")),
@@ -468,22 +454,16 @@ func NewManagementServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(managementServiceMethods.ByName("ListExposures")),
 			connect.WithClientOptions(opts...),
 		),
-		revokeNode: connect.NewClient[v1.ResourceID, v1.TestResult](
+		disableNode: connect.NewClient[v1.ResourceID, v1.TestResult](
 			httpClient,
-			baseURL+ManagementServiceRevokeNodeProcedure,
-			connect.WithSchema(managementServiceMethods.ByName("RevokeNode")),
+			baseURL+ManagementServiceDisableNodeProcedure,
+			connect.WithSchema(managementServiceMethods.ByName("DisableNode")),
 			connect.WithClientOptions(opts...),
 		),
 		cleanupNode: connect.NewClient[v1.ResourceID, v1.TestResult](
 			httpClient,
 			baseURL+ManagementServiceCleanupNodeProcedure,
 			connect.WithSchema(managementServiceMethods.ByName("CleanupNode")),
-			connect.WithClientOptions(opts...),
-		),
-		revokeEnrollment: connect.NewClient[v1.ResourceID, v1.Empty](
-			httpClient,
-			baseURL+ManagementServiceRevokeEnrollmentProcedure,
-			connect.WithSchema(managementServiceMethods.ByName("RevokeEnrollment")),
 			connect.WithClientOptions(opts...),
 		),
 		getPeers: connect.NewClient[v1.ResourceID, v1.PeerSnapshot](
@@ -554,13 +534,12 @@ type managementServiceClient struct {
 	listNodes             *connect.Client[v1.ListNodesRequest, v1.Nodes]
 	getNode               *connect.Client[v1.ResourceID, v1.Node]
 	renameNode            *connect.Client[v1.RenameRequest, v1.Empty]
-	renameEnrollment      *connect.Client[v1.RenameRequest, v1.Empty]
 	renameApplication     *connect.Client[v1.RenameRequest, v1.Empty]
-	listEnrollments       *connect.Client[v1.ListNodesRequest, v1.Enrollments]
 	getPolicy             *connect.Client[v1.Empty, v1.Policy]
 	validatePolicy        *connect.Client[v1.Policy, v1.TestResult]
 	testPolicy            *connect.Client[v1.PolicyTestRequest, v1.PolicyTestResult]
 	getAccess             *connect.Client[v1.Empty, v1.AccessSettings]
+	rolePolicy            *connect.Client[v1.RolePolicyRequest, v1.RolePolicyTemplate]
 	getSettings           *connect.Client[v1.Empty, v1.Settings]
 	listApplications      *connect.Client[v1.Empty, v1.Applications]
 	listReports           *connect.Client[v1.Empty, v1.Reports]
@@ -572,13 +551,12 @@ type managementServiceClient struct {
 	saveRule              *connect.Client[v1.SaveRuleRequest, v1.PolicySaveResult]
 	deleteRule            *connect.Client[v1.DeleteRuleRequest, v1.PolicySaveResult]
 	saveAccess            *connect.Client[v1.AccessSettings, v1.AccessSettings]
-	saveDefaults          *connect.Client[v1.EnrollmentDefaults, v1.Settings]
+	saveDefaults          *connect.Client[v1.DeploymentDefaults, v1.Settings]
 	testOAuth             *connect.Client[v1.OAuthRequest, v1.TestResult]
 	saveOAuth             *connect.Client[v1.OAuthRequest, v1.TestResult]
 	listExposures         *connect.Client[v1.Empty, v1.Exposures]
-	revokeNode            *connect.Client[v1.ResourceID, v1.TestResult]
+	disableNode           *connect.Client[v1.ResourceID, v1.TestResult]
 	cleanupNode           *connect.Client[v1.ResourceID, v1.TestResult]
-	revokeEnrollment      *connect.Client[v1.ResourceID, v1.Empty]
 	getPeers              *connect.Client[v1.ResourceID, v1.PeerSnapshot]
 	probeBackend          *connect.Client[v1.ProbeRequest, v1.Probe]
 	saveTailnetExposure   *connect.Client[v1.TailnetExposureRequest, v1.Application]
@@ -664,19 +642,9 @@ func (c *managementServiceClient) RenameNode(ctx context.Context, req *connect.R
 	return c.renameNode.CallUnary(ctx, req)
 }
 
-// RenameEnrollment calls funnel.v1.ManagementService.RenameEnrollment.
-func (c *managementServiceClient) RenameEnrollment(ctx context.Context, req *connect.Request[v1.RenameRequest]) (*connect.Response[v1.Empty], error) {
-	return c.renameEnrollment.CallUnary(ctx, req)
-}
-
 // RenameApplication calls funnel.v1.ManagementService.RenameApplication.
 func (c *managementServiceClient) RenameApplication(ctx context.Context, req *connect.Request[v1.RenameRequest]) (*connect.Response[v1.Empty], error) {
 	return c.renameApplication.CallUnary(ctx, req)
-}
-
-// ListEnrollments calls funnel.v1.ManagementService.ListEnrollments.
-func (c *managementServiceClient) ListEnrollments(ctx context.Context, req *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.Enrollments], error) {
-	return c.listEnrollments.CallUnary(ctx, req)
 }
 
 // GetPolicy calls funnel.v1.ManagementService.GetPolicy.
@@ -697,6 +665,11 @@ func (c *managementServiceClient) TestPolicy(ctx context.Context, req *connect.R
 // GetAccess calls funnel.v1.ManagementService.GetAccess.
 func (c *managementServiceClient) GetAccess(ctx context.Context, req *connect.Request[v1.Empty]) (*connect.Response[v1.AccessSettings], error) {
 	return c.getAccess.CallUnary(ctx, req)
+}
+
+// RolePolicy calls funnel.v1.ManagementService.RolePolicy.
+func (c *managementServiceClient) RolePolicy(ctx context.Context, req *connect.Request[v1.RolePolicyRequest]) (*connect.Response[v1.RolePolicyTemplate], error) {
+	return c.rolePolicy.CallUnary(ctx, req)
 }
 
 // GetSettings calls funnel.v1.ManagementService.GetSettings.
@@ -755,7 +728,7 @@ func (c *managementServiceClient) SaveAccess(ctx context.Context, req *connect.R
 }
 
 // SaveDefaults calls funnel.v1.ManagementService.SaveDefaults.
-func (c *managementServiceClient) SaveDefaults(ctx context.Context, req *connect.Request[v1.EnrollmentDefaults]) (*connect.Response[v1.Settings], error) {
+func (c *managementServiceClient) SaveDefaults(ctx context.Context, req *connect.Request[v1.DeploymentDefaults]) (*connect.Response[v1.Settings], error) {
 	return c.saveDefaults.CallUnary(ctx, req)
 }
 
@@ -774,19 +747,14 @@ func (c *managementServiceClient) ListExposures(ctx context.Context, req *connec
 	return c.listExposures.CallUnary(ctx, req)
 }
 
-// RevokeNode calls funnel.v1.ManagementService.RevokeNode.
-func (c *managementServiceClient) RevokeNode(ctx context.Context, req *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error) {
-	return c.revokeNode.CallUnary(ctx, req)
+// DisableNode calls funnel.v1.ManagementService.DisableNode.
+func (c *managementServiceClient) DisableNode(ctx context.Context, req *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error) {
+	return c.disableNode.CallUnary(ctx, req)
 }
 
 // CleanupNode calls funnel.v1.ManagementService.CleanupNode.
 func (c *managementServiceClient) CleanupNode(ctx context.Context, req *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error) {
 	return c.cleanupNode.CallUnary(ctx, req)
-}
-
-// RevokeEnrollment calls funnel.v1.ManagementService.RevokeEnrollment.
-func (c *managementServiceClient) RevokeEnrollment(ctx context.Context, req *connect.Request[v1.ResourceID]) (*connect.Response[v1.Empty], error) {
-	return c.revokeEnrollment.CallUnary(ctx, req)
 }
 
 // GetPeers calls funnel.v1.ManagementService.GetPeers.
@@ -848,13 +816,12 @@ type ManagementServiceHandler interface {
 	ListNodes(context.Context, *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.Nodes], error)
 	GetNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.Node], error)
 	RenameNode(context.Context, *connect.Request[v1.RenameRequest]) (*connect.Response[v1.Empty], error)
-	RenameEnrollment(context.Context, *connect.Request[v1.RenameRequest]) (*connect.Response[v1.Empty], error)
 	RenameApplication(context.Context, *connect.Request[v1.RenameRequest]) (*connect.Response[v1.Empty], error)
-	ListEnrollments(context.Context, *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.Enrollments], error)
 	GetPolicy(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Policy], error)
 	ValidatePolicy(context.Context, *connect.Request[v1.Policy]) (*connect.Response[v1.TestResult], error)
 	TestPolicy(context.Context, *connect.Request[v1.PolicyTestRequest]) (*connect.Response[v1.PolicyTestResult], error)
 	GetAccess(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.AccessSettings], error)
+	RolePolicy(context.Context, *connect.Request[v1.RolePolicyRequest]) (*connect.Response[v1.RolePolicyTemplate], error)
 	GetSettings(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Settings], error)
 	ListApplications(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Applications], error)
 	// Inspect accepted exposure reports and their freshness without replaying them.
@@ -868,13 +835,12 @@ type ManagementServiceHandler interface {
 	SaveRule(context.Context, *connect.Request[v1.SaveRuleRequest]) (*connect.Response[v1.PolicySaveResult], error)
 	DeleteRule(context.Context, *connect.Request[v1.DeleteRuleRequest]) (*connect.Response[v1.PolicySaveResult], error)
 	SaveAccess(context.Context, *connect.Request[v1.AccessSettings]) (*connect.Response[v1.AccessSettings], error)
-	SaveDefaults(context.Context, *connect.Request[v1.EnrollmentDefaults]) (*connect.Response[v1.Settings], error)
+	SaveDefaults(context.Context, *connect.Request[v1.DeploymentDefaults]) (*connect.Response[v1.Settings], error)
 	TestOAuth(context.Context, *connect.Request[v1.OAuthRequest]) (*connect.Response[v1.TestResult], error)
 	SaveOAuth(context.Context, *connect.Request[v1.OAuthRequest]) (*connect.Response[v1.TestResult], error)
 	ListExposures(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Exposures], error)
-	RevokeNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error)
+	DisableNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error)
 	CleanupNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error)
-	RevokeEnrollment(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.Empty], error)
 	GetPeers(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.PeerSnapshot], error)
 	ProbeBackend(context.Context, *connect.Request[v1.ProbeRequest]) (*connect.Response[v1.Probe], error)
 	SaveTailnetExposure(context.Context, *connect.Request[v1.TailnetExposureRequest]) (*connect.Response[v1.Application], error)
@@ -982,22 +948,10 @@ func NewManagementServiceHandler(svc ManagementServiceHandler, opts ...connect.H
 		connect.WithSchema(managementServiceMethods.ByName("RenameNode")),
 		connect.WithHandlerOptions(opts...),
 	)
-	managementServiceRenameEnrollmentHandler := connect.NewUnaryHandler(
-		ManagementServiceRenameEnrollmentProcedure,
-		svc.RenameEnrollment,
-		connect.WithSchema(managementServiceMethods.ByName("RenameEnrollment")),
-		connect.WithHandlerOptions(opts...),
-	)
 	managementServiceRenameApplicationHandler := connect.NewUnaryHandler(
 		ManagementServiceRenameApplicationProcedure,
 		svc.RenameApplication,
 		connect.WithSchema(managementServiceMethods.ByName("RenameApplication")),
-		connect.WithHandlerOptions(opts...),
-	)
-	managementServiceListEnrollmentsHandler := connect.NewUnaryHandler(
-		ManagementServiceListEnrollmentsProcedure,
-		svc.ListEnrollments,
-		connect.WithSchema(managementServiceMethods.ByName("ListEnrollments")),
 		connect.WithHandlerOptions(opts...),
 	)
 	managementServiceGetPolicyHandler := connect.NewUnaryHandler(
@@ -1022,6 +976,12 @@ func NewManagementServiceHandler(svc ManagementServiceHandler, opts ...connect.H
 		ManagementServiceGetAccessProcedure,
 		svc.GetAccess,
 		connect.WithSchema(managementServiceMethods.ByName("GetAccess")),
+		connect.WithHandlerOptions(opts...),
+	)
+	managementServiceRolePolicyHandler := connect.NewUnaryHandler(
+		ManagementServiceRolePolicyProcedure,
+		svc.RolePolicy,
+		connect.WithSchema(managementServiceMethods.ByName("RolePolicy")),
 		connect.WithHandlerOptions(opts...),
 	)
 	managementServiceGetSettingsHandler := connect.NewUnaryHandler(
@@ -1114,22 +1074,16 @@ func NewManagementServiceHandler(svc ManagementServiceHandler, opts ...connect.H
 		connect.WithSchema(managementServiceMethods.ByName("ListExposures")),
 		connect.WithHandlerOptions(opts...),
 	)
-	managementServiceRevokeNodeHandler := connect.NewUnaryHandler(
-		ManagementServiceRevokeNodeProcedure,
-		svc.RevokeNode,
-		connect.WithSchema(managementServiceMethods.ByName("RevokeNode")),
+	managementServiceDisableNodeHandler := connect.NewUnaryHandler(
+		ManagementServiceDisableNodeProcedure,
+		svc.DisableNode,
+		connect.WithSchema(managementServiceMethods.ByName("DisableNode")),
 		connect.WithHandlerOptions(opts...),
 	)
 	managementServiceCleanupNodeHandler := connect.NewUnaryHandler(
 		ManagementServiceCleanupNodeProcedure,
 		svc.CleanupNode,
 		connect.WithSchema(managementServiceMethods.ByName("CleanupNode")),
-		connect.WithHandlerOptions(opts...),
-	)
-	managementServiceRevokeEnrollmentHandler := connect.NewUnaryHandler(
-		ManagementServiceRevokeEnrollmentProcedure,
-		svc.RevokeEnrollment,
-		connect.WithSchema(managementServiceMethods.ByName("RevokeEnrollment")),
 		connect.WithHandlerOptions(opts...),
 	)
 	managementServiceGetPeersHandler := connect.NewUnaryHandler(
@@ -1212,12 +1166,8 @@ func NewManagementServiceHandler(svc ManagementServiceHandler, opts ...connect.H
 			managementServiceGetNodeHandler.ServeHTTP(w, r)
 		case ManagementServiceRenameNodeProcedure:
 			managementServiceRenameNodeHandler.ServeHTTP(w, r)
-		case ManagementServiceRenameEnrollmentProcedure:
-			managementServiceRenameEnrollmentHandler.ServeHTTP(w, r)
 		case ManagementServiceRenameApplicationProcedure:
 			managementServiceRenameApplicationHandler.ServeHTTP(w, r)
-		case ManagementServiceListEnrollmentsProcedure:
-			managementServiceListEnrollmentsHandler.ServeHTTP(w, r)
 		case ManagementServiceGetPolicyProcedure:
 			managementServiceGetPolicyHandler.ServeHTTP(w, r)
 		case ManagementServiceValidatePolicyProcedure:
@@ -1226,6 +1176,8 @@ func NewManagementServiceHandler(svc ManagementServiceHandler, opts ...connect.H
 			managementServiceTestPolicyHandler.ServeHTTP(w, r)
 		case ManagementServiceGetAccessProcedure:
 			managementServiceGetAccessHandler.ServeHTTP(w, r)
+		case ManagementServiceRolePolicyProcedure:
+			managementServiceRolePolicyHandler.ServeHTTP(w, r)
 		case ManagementServiceGetSettingsProcedure:
 			managementServiceGetSettingsHandler.ServeHTTP(w, r)
 		case ManagementServiceListApplicationsProcedure:
@@ -1256,12 +1208,10 @@ func NewManagementServiceHandler(svc ManagementServiceHandler, opts ...connect.H
 			managementServiceSaveOAuthHandler.ServeHTTP(w, r)
 		case ManagementServiceListExposuresProcedure:
 			managementServiceListExposuresHandler.ServeHTTP(w, r)
-		case ManagementServiceRevokeNodeProcedure:
-			managementServiceRevokeNodeHandler.ServeHTTP(w, r)
+		case ManagementServiceDisableNodeProcedure:
+			managementServiceDisableNodeHandler.ServeHTTP(w, r)
 		case ManagementServiceCleanupNodeProcedure:
 			managementServiceCleanupNodeHandler.ServeHTTP(w, r)
-		case ManagementServiceRevokeEnrollmentProcedure:
-			managementServiceRevokeEnrollmentHandler.ServeHTTP(w, r)
 		case ManagementServiceGetPeersProcedure:
 			managementServiceGetPeersHandler.ServeHTTP(w, r)
 		case ManagementServiceProbeBackendProcedure:
@@ -1347,16 +1297,8 @@ func (UnimplementedManagementServiceHandler) RenameNode(context.Context, *connec
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.RenameNode is not implemented"))
 }
 
-func (UnimplementedManagementServiceHandler) RenameEnrollment(context.Context, *connect.Request[v1.RenameRequest]) (*connect.Response[v1.Empty], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.RenameEnrollment is not implemented"))
-}
-
 func (UnimplementedManagementServiceHandler) RenameApplication(context.Context, *connect.Request[v1.RenameRequest]) (*connect.Response[v1.Empty], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.RenameApplication is not implemented"))
-}
-
-func (UnimplementedManagementServiceHandler) ListEnrollments(context.Context, *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.Enrollments], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.ListEnrollments is not implemented"))
 }
 
 func (UnimplementedManagementServiceHandler) GetPolicy(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Policy], error) {
@@ -1373,6 +1315,10 @@ func (UnimplementedManagementServiceHandler) TestPolicy(context.Context, *connec
 
 func (UnimplementedManagementServiceHandler) GetAccess(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.AccessSettings], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.GetAccess is not implemented"))
+}
+
+func (UnimplementedManagementServiceHandler) RolePolicy(context.Context, *connect.Request[v1.RolePolicyRequest]) (*connect.Response[v1.RolePolicyTemplate], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.RolePolicy is not implemented"))
 }
 
 func (UnimplementedManagementServiceHandler) GetSettings(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Settings], error) {
@@ -1419,7 +1365,7 @@ func (UnimplementedManagementServiceHandler) SaveAccess(context.Context, *connec
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.SaveAccess is not implemented"))
 }
 
-func (UnimplementedManagementServiceHandler) SaveDefaults(context.Context, *connect.Request[v1.EnrollmentDefaults]) (*connect.Response[v1.Settings], error) {
+func (UnimplementedManagementServiceHandler) SaveDefaults(context.Context, *connect.Request[v1.DeploymentDefaults]) (*connect.Response[v1.Settings], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.SaveDefaults is not implemented"))
 }
 
@@ -1435,16 +1381,12 @@ func (UnimplementedManagementServiceHandler) ListExposures(context.Context, *con
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.ListExposures is not implemented"))
 }
 
-func (UnimplementedManagementServiceHandler) RevokeNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.RevokeNode is not implemented"))
+func (UnimplementedManagementServiceHandler) DisableNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.DisableNode is not implemented"))
 }
 
 func (UnimplementedManagementServiceHandler) CleanupNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.CleanupNode is not implemented"))
-}
-
-func (UnimplementedManagementServiceHandler) RevokeEnrollment(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.Empty], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.RevokeEnrollment is not implemented"))
 }
 
 func (UnimplementedManagementServiceHandler) GetPeers(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.PeerSnapshot], error) {

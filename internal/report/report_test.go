@@ -1,95 +1,31 @@
 package report
 
 import (
-	"bytes"
-	"encoding/json"
-	"path/filepath"
 	"testing"
 	"time"
+
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 )
 
-func TestEnvelopeRoundTrip(t *testing.T) {
-	pub, priv, err := GenerateKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	now := time.Unix(1700000000, 0)
-	e, err := NewEnvelope("gateway-1", map[string]any{"host": "app.example"}, pub, priv, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	payload, _, err := Verify(e, now.Add(time.Second), time.Minute)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if payload["host"] != "app.example" {
-		t.Fatalf("payload=%v", payload)
-	}
-}
-
-func TestLoadOrCreateIdentityPersists(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "identity.json")
-	pub1, priv1, err := LoadOrCreate(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pub2, priv2, err := LoadOrCreate(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(pub1, pub2) || !bytes.Equal(priv1, priv2) {
-		t.Fatal("report identity changed")
-	}
-}
-
-func TestEnvelopeRejectsTampering(t *testing.T) {
-	pub, priv, _ := GenerateKey()
-	now := time.Unix(1700000000, 0)
-	e, _ := NewEnvelope("gateway-1", map[string]any{"host": "app.example"}, pub, priv, now)
-	e.Payload = []byte(`{"host":"evil.example"}`)
-	if _, _, err := Verify(e, now, time.Minute); err == nil {
-		t.Fatal("tampered payload accepted")
-	}
-}
-
-func TestEnvelopeRejectsStale(t *testing.T) {
-	pub, priv, _ := GenerateKey()
-	now := time.Unix(1700000000, 0)
-	e, _ := NewEnvelope("gateway-1", map[string]any{}, pub, priv, now)
-	if _, _, err := Verify(e, now.Add(2*time.Minute), time.Minute); err == nil {
-		t.Fatal("stale report accepted")
-	}
-}
-
-func TestSignedBytesSurvivePrettyJSONAndPurposeBinding(t *testing.T) {
-	pub, key, e := GenerateKey()
+func TestTypedSnapshotRoundTrip(t *testing.T) {
+	now := time.Now()
+	p := &v1.ExposureReport{ExpiresAt: now.Add(time.Minute).Unix()}
+	a, e := NewSnapshot("report", "node", p, now)
 	if e != nil {
 		t.Fatal(e)
 	}
-	payload := json.RawMessage("{\n  \"exposures\": [],\n  \"expires_at\": 123\n}")
-	env, e := NewEnvelopeWithPurpose("peers", "node", payload, pub, key, time.Now())
-	if e != nil {
+	var out v1.ExposureReport
+	if e = Decode(a, &out); e != nil || out.ExpiresAt != p.ExpiresAt {
+		t.Fatal(out.ExpiresAt, e)
+	}
+	b, _ := NewSnapshot("report", "node", p, now)
+	if a.Nonce == b.Nonce {
+		t.Fatal("duplicate bookkeeping nonce")
+	}
+	if e = a.Validate(now, 5*time.Minute); e != nil {
 		t.Fatal(e)
 	}
-	wire, e := Wire(env)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if _, e = FromWire(wire, "report"); e == nil {
-		t.Fatal("cross-purpose replay accepted")
-	}
-	encoded, e := json.MarshalIndent(env, "", "  ")
-	if e != nil {
-		t.Fatal(e)
-	}
-	var restored Envelope
-	if e = json.Unmarshal(encoded, &restored); e != nil {
-		t.Fatal(e)
-	}
-	if _, _, e = Verify(restored, time.Now(), time.Minute); e != nil {
-		t.Fatal(e)
-	}
-	if string(env.Payload) != string(restored.Payload) {
-		t.Fatal("signed payload bytes changed")
+	if e = a.Validate(now.Add(6*time.Minute), 5*time.Minute); e == nil {
+		t.Fatal("stale snapshot accepted")
 	}
 }

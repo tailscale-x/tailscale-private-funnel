@@ -1,69 +1,71 @@
-# Generate once, execute on the target
+# Generate an installer, execute it on the target
 
-Use matching prebuilt artifacts for the generator and target installer.
+Public `create` only generates. Other lifecycle operations execute on the local
+native host or the explicitly selected Kubernetes context. Use matching pinned
+artifacts for the generator and target. UI commands are rendered by Go; the browser
+never assembles shell scripts or mints keys.
 
-All public `create` commands **generate installers**. They never install on the
-invoking machine, connect over SSH, or contact Kubernetes. Inspect, update,
-delete, and native service-operation commands still execute their named action.
+## Embedded native deployment
 
-## Native gateway or load balancer
-
-Run on an authorized machine that can reach the private control URL:
+Run on an authorized machine with private control access:
 
 ```sh
-tailscale-private-funnel native gateways create site \
-  --type docker --control-url http://CONTROL:8080 --version VERSION \
-  --output script | ssh ubuntu@TARGET 'sh -s'
+tailscale-private-funnel native gateways create site --type docker \
+  --installation main --control-url http://CONTROL_SERVICE_FQDN:8080 \
+  --version VERSION --output script | ssh ubuntu@TARGET 'sh -s'
 ```
 
-The generated installer downloads a pinned binary, checks prerequisites, and
-runs a hidden installer. The target needs Linux/systemd and appropriate system
-permissions, internet access to Tailscale, and Docker for a Docker gateway.
-It does **not** need a host Tailscale installation. Its embedded tsnet joins
-first, reaches private control, and binds its enrollment and signing key.
+The target needs Linux/systemd, internet connectivity, and Docker for Docker
+discovery, but no host Tailscale installation. The installer passes a single-use,
+15-minute role-tagged key through stdin. Embedded tsnet joins before contacting
+control. The key is discarded; native identity persists. Treat generated embedded
+installers as secrets. Expired or consumed keys require newly generated output.
 
-## Kubernetes gateway or load balancer
+## Existing host Tailscale
 
-Generate on an authorized machine; the context need not exist there:
+Select `--tailscale host`, optionally `--tailscale-socket PATH`. This installer has
+no join secret. The host must already be connected with the correct installation
+role tag and LocalAPI permissions. Funnel does not change the device's tags,
+hostname, operator, login, routes, or unrelated Serve configuration.
+
+## Kubernetes
 
 ```sh
-umask 077
-tailscale-private-funnel k8s gateways create site \
+tailscale-private-funnel k8s gateways create site --installation main \
   --context TARGET_CONTEXT --namespace tailscale-private-funnel-main-system \
-  --control-url http://CONTROL:8080 --version VERSION --wait \
-  --output script > install-site.sh
+  --key-issuer-secret installation-issuer \
+  --control-url http://CONTROL_SERVICE_FQDN:8080 --version VERSION \
+  --wait --output script > install-site.sh
 ```
 
-Use `umask 077` before saving secret output. Transfer the installer securely to a
-machine with the selected kubeconfig and execute `sh install-site.sh`. That
-machine does not need Tailscale access to control. The operator must already
-manage the selected namespace. Workloads bootstrap using a temporary Kubernetes
-Secret, join embedded tsnet, and then contact control. Successful initialization
-removes the bootstrap Secret. `--wait` and `--timeout` apply during execution.
+Generation reads no kubeconfig and contacts no cluster. Execute with `sh` on a
+machine that has the selected context and an installed operator managing that
+namespace. The executor needs no tailnet route to control. The existing issuer
+Secret holds installation-wide `auth_keys` OAuth credentials. Pod-bound audience tokens
+and TLS authenticate key issuance; the operator derives the allowed role from
+verified workload ownership. Every Pod receives its own ephemeral, single-use key.
+No shared reusable key, bootstrap Secret, or identity restoration is used.
 
-## Control and operator
+## Fresh control
 
-Their `create` commands also generate installers, without contacting an existing
-control or Kubernetes. OAuth-file paths reference **execution-machine** files;
-their contents never enter generated output. Operator execution requires Helm,
-kubectl and explicit cluster context. Components never implicitly install an
-operator.
+Native control references separate protected target-side files for the installation
+issuer, Service manager, and `users:read` client. Control requires embedded Tailscale:
+tailscaled rejects PROXY v2 with Unix targets, so host-reused control fails closed.
+Native load balancers and Docker/Tailnet gateways can reuse a connected role-tagged
+daemon with appropriate LocalAPI permissions, without a joining credential.
+Kubernetes control references `--key-issuer-secret`, `--services-secret`, and
+`--users-secret`; credentials never enter CRs or Helm values.
+See [role requirements](TAILSCALE-ROLES.md).
 
-## Credentials and lifecycle
+## Lifecycle
 
-`--output instructions` is the default; `script` emits only executable POSIX shell;
-`json` returns typed settings, credentials where applicable, and the installer.
-Treat all enrolled-component output as secret. `--dry-run` makes no network calls,
-creates no credentials, and cannot produce an executable installer.
+`--output instructions` is the readable default; `script` is executable POSIX shell
+only; `json` is typed settings and an installer, with a temporary key only where
+applicable. Dry runs mint no keys and produce non-executable previews. `--wait` and
+`--timeout` apply on the execution target.
 
-Enrollment credentials and Tailscale auth keys are one-use and expire after
-15 minutes. Regenerate expired or consumed installers. Auth keys are
-preauthorized, non-ephemeral and scoped to `tag:tailscale-private-funnel`.
-OAuth credentials stay on control. Credentials pass through stdin and temporary
-Kubernetes bootstrap Secrets, never command arguments, units, receipts or CR specs.
-Persisted component identity survives ordinary service/Pod restarts. Stop preserves
-identity/data; delete revokes access and removes owned state.
-
-The web UI generates commands without minting credentials. Run the generated
-command from an authorized machine to issue the short-lived installer, then
-execute that output on the target. Generating output does not prove readiness.
+Native stop preserves identity and data. Kubernetes replacement intentionally
+changes device identity while preserving application state. Disable/delete removes
+owned Funnel resources; remove Tailscale role tags or devices to revoke authority.
+Installer generation is not deployment success: inspect role registration, fresh
+reports, backend health, and public readiness after execution.

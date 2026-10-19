@@ -2,28 +2,29 @@ package web
 
 import (
 	"encoding/json"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 )
 
 func TestDockerRetirementCleanupRetriesAndPreservesSharedServices(t *testing.T) {
 	c, s := testControl(t)
 	_ = s.UpsertNode("docker", "docker-gateway", "docker")
-	_ = s.BindNodeIdentity("docker", "key", "device", nil)
+	_ = bindTestNode(s, "docker", "device", nil)
 	a := store.ApplicationRecord{ID: "old", BackendSource: "docker", ServiceName: "svc:tailscale-private-funnel-app-old", ServiceFQDN: "100.70.0.1", BackendPort: 8080, ServicePort: 8080, AllowedGatewayNodes: []string{"docker"}, PublicHostnames: []string{"old.example.com"}, Enabled: true}
 	if err := s.UpsertApplication(a); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.AcceptDockerInventory("docker", "key", "removed", store.DockerInventory{Revision: 1}); err != nil {
+	if _, err := s.AcceptDockerInventory("docker", "removed", store.DockerInventory{Revision: 1}); err != nil {
 		t.Fatal(err)
 	}
 	_ = s.SetJSON("tailnet", map[string]string{"name": "test"})
-	_ = s.SetSecret("tailscale_oauth_client_id", "fixture")
-	_ = s.SetSecret("tailscale_oauth_client_secret", "fixture")
+	_ = s.SetSecret("tailscale_services_client_id", "fixture")
+	_ = s.SetSecret("tailscale_services_client_secret", "fixture")
 	fail := true
 	deletes := 0
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

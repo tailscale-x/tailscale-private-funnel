@@ -1,27 +1,27 @@
 package web
 
 import (
-	"connectrpc.com/connect"
 	"context"
-	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 	"net/http"
 	"testing"
 	"time"
+
+	"connectrpc.com/connect"
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 )
 
 func TestRPCDockerRetirementAllowsKubernetesWithoutBreakingSharedReports(t *testing.T) {
 	_, s := testControl(t)
-	c := enrollmentTestControl(t, s)
+	c := registrationTestControl(t, s)
 	installDNSFixture(t, s, "example.com")
 	_ = s.SetJSON("tailnet", map[string]string{"name": "example.ts.net"})
 	_ = s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "Apps", HostnameRegexes: []string{`(?:app|other)[.]example[.]com`}, Enabled: true}}})
-	pub, key, _ := report.GenerateKey()
+
 	_ = s.UpsertNode("docker", "docker-gateway", "docker")
-	_ = s.BindNodeIdentity("docker", encodePublicKey(pub), "docker-device", nil)
+	_ = bindTestNode(s, "docker", "docker-device", nil)
 	makeApp := func(id, host string) store.ApplicationRecord {
 		a := store.ApplicationRecord{ID: id, BackendSource: "docker", Enabled: true, PublicHostnames: []string{host}, ServiceName: "svc:tailscale-private-funnel-app-" + id, ServiceFQDN: "100.70.0.1", ServicePort: 8080, BackendPort: 8080, AllowedGatewayNodes: []string{"docker"}}
 		if err := s.UpsertApplication(a); err != nil {
@@ -35,7 +35,7 @@ func TestRPCDockerRetirementAllowsKubernetesWithoutBreakingSharedReports(t *test
 	source := nodeClient(t, c, Principal{NodeID: "docker-device", Tagged: true})
 	inv := &v1.DockerInventoryPayload{Revision: 1, Complete: true, Containers: []*v1.DockerInventoryContainer{{Id: "old-container", Running: true, Labels: map[string]string{"tailscale-private-funnel.expose": "8080:app.example.com:http"}}, {Id: "other-container", Running: true, Labels: map[string]string{"tailscale-private-funnel.expose": "8080:other.example.com:http"}}}}
 	sendInventory := func() error {
-		_, err := source.SubmitDockerInventory(t.Context(), connect.NewRequest(signedMessage(t, "docker-inventory", "docker", inv, key)))
+		_, err := source.SubmitDockerInventory(t.Context(), connect.NewRequest(typedMessage(inv)))
 		return err
 	}
 	if err := sendInventory(); err != nil {
@@ -43,7 +43,7 @@ func TestRPCDockerRetirementAllowsKubernetesWithoutBreakingSharedReports(t *test
 	}
 	payload := &v1.ExposureReport{ExpiresAt: time.Now().Add(time.Minute).Unix(), Exposures: []*v1.ReportedExposure{{ApplicationId: old.ID, ServiceName: old.ServiceName, PublicHostname: "app.example.com", ContainerId: "old-container", Port: 8080, Protocol: "http", Reachable: true}, {ApplicationId: other.ID, ServiceName: other.ServiceName, PublicHostname: "other.example.com", ContainerId: "other-container", Port: 8080, Protocol: "http", Reachable: true}}}
 	sendReport := func() error {
-		_, err := source.SubmitReport(t.Context(), connect.NewRequest(signedMessage(t, "report", "docker", payload, key)))
+		_, err := source.SubmitReport(t.Context(), connect.NewRequest(typedMessage(payload)))
 		return err
 	}
 	if err := sendReport(); err != nil {
@@ -64,7 +64,7 @@ func TestRPCDockerRetirementAllowsKubernetesWithoutBreakingSharedReports(t *test
 	// Local acceptance must also progress while external DNS is blocked.
 	c.cleanupMu.Lock()
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-	_, err := source.SubmitDockerInventory(ctx, connect.NewRequest(signedMessage(t, "docker-inventory", "docker", inv, key)))
+	_, err := source.SubmitDockerInventory(ctx, connect.NewRequest(typedMessage(inv)))
 	cancel()
 	c.cleanupMu.Unlock()
 	if err != nil {
@@ -84,12 +84,12 @@ func TestRPCDockerRetirementAllowsKubernetesWithoutBreakingSharedReports(t *test
 		t.Fatal("inventory revision replay accepted", err)
 	}
 	// Existing Kubernetes enrollment claims the released host normally.
-	kp, kk, _ := report.GenerateKey()
+
 	_ = s.UpsertNode("kube", "k8s-gateway", "kube")
-	_ = s.BindNodeIdentity("kube", encodePublicKey(kp), "kube-device", nil)
+	_ = bindTestNode(s, "kube", "kube-device", nil)
 	destination := nodeClient(t, c, Principal{NodeID: "kube-device", Tagged: true})
 	snapshot := &v1.KubernetesPayload{ClusterId: "cluster", ExpiresAt: time.Now().Add(time.Minute).Unix(), Hosts: []*v1.KubernetesHost{{Hostname: "app.example.com", Rules: []*v1.HTTPRule{{Matches: []*v1.HTTPMatch{{Path: "/"}}, Backends: []*v1.HTTPBackend{{Key: "service:8080", Address: "10.43.0.1:8080", Port: 8080, Weight: 1, Endpoints: []*v1.PodEndpoint{{Address: "10.42.0.5:8080", PodUid: "pod", NodeName: "node", NodeUid: "uid"}}}}}}}}}
-	if _, err = destination.SubmitKubernetes(t.Context(), connect.NewRequest(signedMessage(t, "kubernetes", "kube", snapshot, kk))); err != nil {
+	if _, err = destination.SubmitKubernetes(t.Context(), connect.NewRequest(typedMessage(snapshot))); err != nil {
 		t.Fatal("normal Kubernetes claim rejected", err)
 	}
 	after, _ := c.mapping("app.example.com")
@@ -100,7 +100,7 @@ func TestRPCDockerRetirementAllowsKubernetesWithoutBreakingSharedReports(t *test
 		t.Fatal("Kubernetes takeover broke Docker heartbeat", err)
 	}
 	foreign := nodeClient(t, c, Principal{NodeID: "kube-device", Tagged: true})
-	if _, err = foreign.SubmitDockerInventory(t.Context(), connect.NewRequest(signedMessage(t, "docker-inventory", "docker", inv, key))); err == nil {
+	if _, err = foreign.SubmitDockerInventory(t.Context(), connect.NewRequest(typedMessage(inv))); err == nil {
 		t.Fatal("foreign caller accepted")
 	}
 	// A stalled external transport is unrelated to local report acceptance.

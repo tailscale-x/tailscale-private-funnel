@@ -65,7 +65,7 @@ func (c *Control) edgeFresh(n store.NodeRecord) bool {
 	return !n.Revoked && h.ReceivedAt > 0 && time.Since(time.Unix(h.ReceivedAt, 0)) < ttl
 }
 
-// Signed reports have already passed WhoIs, signature and nonce checks on write.
+// Stored reports have already passed WhoIs, role, instance and freshness checks.
 func (c *Control) freshReport(n store.NodeRecord) []dns.GatewayExposure {
 	if n.Mode == "k8s-gateway" && !n.Revoked {
 		children, e := c.Store.Forwarders(n.ID)
@@ -96,7 +96,7 @@ func (c *Control) freshReport(n store.NodeRecord) []dns.GatewayExposure {
 	if n.LastReport < time.Now().Add(-ttl).Unix() {
 		return nil
 	}
-	var env report.Envelope
+	var env report.Snapshot
 	var p struct {
 		Exposures []dns.GatewayExposure `json:"exposures"`
 		ExpiresAt int64                 `json:"expires_at"`

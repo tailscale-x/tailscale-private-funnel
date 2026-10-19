@@ -51,6 +51,12 @@ func (c *Control) loadAccessSettings() (AccessSettings, error) {
 }
 
 func (settings AccessSettings) permissions(p Principal) Access {
+	for _, tag := range p.Tags {
+		if strings.HasPrefix(tag, "tag:tailscale-private-funnel-") {
+			return Access{}
+		}
+	}
+
 	adminSelectors, configured := settings.Roles["admin"]
 	if !configured {
 		adminSelectors = []string{"autogroup:owner"}

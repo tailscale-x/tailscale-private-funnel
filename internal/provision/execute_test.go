@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"io"
 	"net/http"
 	"os"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 )
 
 type transportFunc func(*http.Request) (*http.Response, error)
@@ -63,7 +64,7 @@ func TestReleaseBinaryChecksum(t *testing.T) {
 }
 func TestRemoteScriptIsCompletePOSIXAndSecretsOnlyOnStdin(t *testing.T) {
 	p := fixture(t)
-	p.Credentials = &v1.BootstrapCredentials{AuthKey: "auth-secret", EnrollmentCode: "code-secret", ExpiresAt: time.Now().Add(time.Minute).Unix()}
+	p.Credentials = &v1.BootstrapCredentials{AuthKey: "auth-secret", ExpiresAt: time.Now().Add(time.Minute).Unix()}
 	s, e := RemoteOutput(p, "script", false)
 	if e != nil {
 		t.Fatal(e)
@@ -143,7 +144,7 @@ func TestInstallerShellDeliversBootstrapToHiddenReceiver(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			p.Credentials = &v1.BootstrapCredentials{AuthKey: "auth-secret", EnrollmentCode: "code-secret", ExpiresAt: time.Now().Add(time.Minute).Unix()}
+			p.Credentials = &v1.BootstrapCredentials{AuthKey: "auth-secret", ExpiresAt: time.Now().Add(time.Minute).Unix()}
 			dir := t.TempDir()
 			bin := filepath.Join(dir, "bin with spaces")
 			os.MkdirAll(bin, 0700)

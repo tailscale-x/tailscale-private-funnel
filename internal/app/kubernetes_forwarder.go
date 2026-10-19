@@ -6,9 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sync/atomic"
 	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tsconnection"
 
 	"github.com/tailscale-x/tailscale-private-funnel/internal/gateway"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
@@ -37,7 +38,7 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 	for {
 		state, e = client.OpenSession(ctx)
 		if e == nil {
-			if state.ControllerId == "" || state.NodeId == "" || state.NodeUid == "" || state.NodeName == "" || state.ControlKey == "" {
+			if state.ControllerId == "" || state.NodeId == "" || state.NodeUid == "" || state.NodeName == "" {
 				return fmt.Errorf("broker returned an incomplete identity binding")
 			}
 			break
@@ -90,23 +91,33 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 	if e = os.MkdirAll(dir, 0700); e != nil {
 		return e
 	}
-	if e = os.WriteFile(filepath.Join(data, "report-identity.json"), state.Identity, 0600); e != nil {
+	o.DataDir = data
+	o.StateDir = dir
+	o.ComponentID = state.NodeId
+	o.ParentID = state.ControllerId
+	o.NodeUID = state.NodeUid
+	o.NodeName = state.NodeName
+	o.Hostname = state.NodeName
+	key, e := prepareWorkload(ctx, "k8s-forwarder", &o)
+	if e != nil {
 		return e
 	}
-	s := &tsnet.Server{Dir: dir, Hostname: state.NodeName + "-" + state.NodeId, Store: &kubebroker.RemoteStore{Client: client, State: state.State}, AuthKey: state.AuthKey, Ephemeral: false}
+	native := &tsnet.Server{Dir: dir, Hostname: state.NodeName, AuthKey: key, Ephemeral: true}
+	var s tsconnection.Connection = tsconnection.Wrap(native)
 	defer s.Close()
 	upCtx, upCancel := context.WithTimeout(ctx, 60*time.Second)
 	defer upCancel()
 	if _, e = s.Up(upCtx); e != nil {
 		return e
 	}
-	s.AuthKey = ""
-	state.AuthKey = ""
-	httpClient := tsnetHTTPClient(s)
-	agent := report.Agent{NodeID: state.NodeId, ManagementURL: state.ManagementUrl, DataDir: data, HTTPClient: httpClient}
-	if e = agent.BindForwarder(ctx); e != nil {
+	native.AuthKey = ""
+	key = ""
+	s, e = registerRuntime(ctx, "k8s-forwarder", &o, s)
+	if e != nil {
 		return e
 	}
+	httpClient := tsnetHTTPClient(s)
+	agent := report.Agent{NodeID: state.NodeId, ManagementURL: state.ManagementUrl, DataDir: data, HTTPClient: httpClient}
 	listeners := gateway.NewListenerManager(s)
 	defer listeners.Close()
 	defer func() {
@@ -124,7 +135,7 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 		_ = client.ReleaseLease(release)
 	}()
 
-	resolver := gateway.RPCResolver{NodeID: state.NodeId, BaseURL: state.ManagementUrl, ControlKey: state.ControlKey, Client: httpClient}
+	resolver := gateway.RPCResolver{NodeID: state.NodeId, BaseURL: state.ManagementUrl, Client: httpClient}
 	session := gateway.Session{Resolver: resolver, Listeners: listeners, Agent: agent}
 	pools := map[string]*gateway.LocalPool{}
 	configExpires := time.Now()
@@ -134,7 +145,7 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 		envelope, err := client.GetConfig(ctx)
 		var config nodeconfig.Configuration
 		if err == nil {
-			config, err = nodeconfig.Verify(envelope, state.ControlKey, state.ControllerId, time.Now())
+			config, err = nodeconfig.Read(envelope, state.ControllerId, time.Now())
 		}
 		if err == nil {
 			configExpires = time.Unix(envelope.Timestamp, 0).Add(5 * time.Minute)
@@ -205,7 +216,7 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 			err = session.Publish(publishCtx, config, runtimes, services)
 			stopPublish()
 			// Local forwarding readiness does not depend on report delivery.
-			// The signed configuration and independently renewed owner lease bound it.
+			// The authenticated configuration and independently renewed assignment lease bound it.
 			ready.Store(true)
 		}
 		if err != nil {

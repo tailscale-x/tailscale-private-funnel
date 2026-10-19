@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +19,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tsconnection"
+
 	"connectrpc.com/connect"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1/funnelv1connect"
@@ -28,6 +29,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	dockerclient "github.com/docker/docker/client"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/gateway"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/identity"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
@@ -38,6 +40,24 @@ import (
 )
 
 func defaults(mode string, o Options) (Options, error) {
+	if o.Installation == "" {
+		o.Installation = "main"
+	}
+	if e := identity.ValidateInstallation(o.Installation); e != nil {
+		return o, e
+	}
+	if o.TailscaleConnection == "" {
+		o.TailscaleConnection = "embedded"
+	}
+	if e := tsconnection.ValidateMode(o.TailscaleConnection); e != nil {
+		return o, e
+	}
+	if mode == "control" && o.TailscaleConnection == "host" {
+		return o, tsconnection.ErrHostControlUnsupported
+	}
+	if o.KubeNamespace != "" && o.TailscaleConnection != "embedded" {
+		return o, errors.New("Kubernetes requires embedded tsnet")
+	}
 	if o.Hostname == "" {
 		o.Hostname, _ = os.Hostname()
 		if store.IsGateway(mode) || mode == "loadbalancer" {
@@ -76,27 +96,11 @@ func defaults(mode string, o Options) (Options, error) {
 	if o.LoginServer == "" {
 		o.LoginServer = "https://controlplane.tailscale.com"
 	}
-	requiredTag := map[string]string{
-		"control":         "tag:tailscale-private-funnel",
-		"loadbalancer":    "tag:tailscale-private-funnel",
-		"docker-gateway":  "tag:tailscale-private-funnel",
-		"tailnet-gateway": "tag:tailscale-private-funnel",
-		"k8s-gateway":     "tag:tailscale-private-funnel",
-	}[mode]
-	if requiredTag != "" {
-		if len(o.Tags) == 0 {
-			o.Tags = []string{requiredTag}
-		} else {
-			for _, tag := range o.Tags {
-				if tag != "tag:tailscale-private-funnel" && (!store.IsGateway(mode) || !strings.HasPrefix(tag, "tag:") || strings.ContainsAny(tag, " \t\n")) {
-					return o, fmt.Errorf("unsupported Tailscale tag %q; use tag:tailscale-private-funnel", tag)
-				}
-			}
-			if !containsString(o.Tags, requiredTag) {
-				return o, fmt.Errorf("%s requires %s", mode, requiredTag)
-			}
-		}
+	role := identity.Role(mode)
+	if mode == "k8s-forwarder" {
+		role = identity.KubernetesGateway
 	}
+	o.Tags = []string{identity.Tag(o.Installation, role)}
 	if mode != "control" && o.ManagementURL == "" && o.NonInteractive {
 		return o, errors.New("--management-url is required for loadbalancer and gateway deployment")
 	}
@@ -158,15 +162,17 @@ func controlWizard(o *Options) error {
 	}
 	fmt.Println("tailscale-private-funnel control setup")
 	fmt.Println()
-	fmt.Println("Tailscale OAuth client requirements:")
-	fmt.Println("  scopes: auth_keys, devices:core, services, users:read")
-	fmt.Println("  users:read verifies Owner/Admin roles for control UI access; no user write permission is needed")
-	fmt.Println("  permitted tag: tag:tailscale-private-funnel")
-	fmt.Println("  do not paste credentials; store each value in a protected 0600 file")
-	fmt.Println()
-	fmt.Println("Add this grants policy once in Tailscale Access controls:")
-	fmt.Println(`  {"grants":[{"src":["tag:tailscale-private-funnel"],"dst":["tag:tailscale-private-funnel"],"ip":["*"]}]}`)
-	fmt.Println()
+	if o.Installation == "" {
+		o.Installation = "main"
+	}
+	fmt.Println("Use one protected installation issuer: auth_keys restricted to " + identity.IssuerTag(o.Installation) + ". Keep services plus devices:core:read with the control-role tag owning both Service tags and users:read in separate clients.")
+	policy, e := identity.PolicyTemplate(o.Installation, 8080)
+	if e != nil {
+		return e
+	}
+	b, _ := json.MarshalIndent(policy, "", "  ")
+	fmt.Println(string(b))
+	fmt.Println("Review and merge this policy in Tailscale. Funnel never applies it. Existing broad grants remain effective.")
 	if o.Tailnet, err = read("Tailnet", o.Tailnet); err != nil {
 		return err
 	}
@@ -177,6 +183,18 @@ func controlWizard(o *Options) error {
 		return err
 	}
 	if o.Hostname, err = read("Control hostname", o.Hostname); err != nil {
+		return err
+	}
+	if o.ServicesClientIDFile, err = read("Service-management client ID file", o.ServicesClientIDFile); err != nil {
+		return err
+	}
+	if o.ServicesClientSecretFile, err = read("Service-management secret file", o.ServicesClientSecretFile); err != nil {
+		return err
+	}
+	if o.UsersClientIDFile, err = read("Users-read client ID file", o.UsersClientIDFile); err != nil {
+		return err
+	}
+	if o.UsersClientSecretFile, err = read("Users-read secret file", o.UsersClientSecretFile); err != nil {
 		return err
 	}
 	if o.StateDir, err = read("State directory", o.StateDir); err != nil {
@@ -197,20 +215,7 @@ func controlWizard(o *Options) error {
 	return nil
 }
 
-func bindSigningKey(ctx context.Context, mode string, o Options, publicKey string, client *http.Client) error {
-	if client == nil {
-		return errors.New("process-owned Tailscale HTTP client required")
-	}
-	base := o.ManagementURL
-	key, e := base64.RawStdEncoding.DecodeString(publicKey)
-	if e != nil {
-		return e
-	}
-	_, e = funnelv1connect.NewEnrollmentServiceClient(client, base).BindSigningKey(ctx, connect.NewRequest(&v1.BindSigningKeyRequest{EnrollmentId: o.EnrollmentID, Code: o.EnrollmentCode, PublicKey: key}))
-	return e
-}
-
-func tsnetHTTPClient(s *tsnet.Server) *http.Client {
+func tsnetHTTPClient(s tsconnection.Connection) *http.Client {
 	client := s.HTTPClient()
 	client.Timeout = 30 * time.Second
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
@@ -243,8 +248,7 @@ func controlOAuthAuthKey(ctx context.Context, o Options) (string, bool, error) {
 			return strings.TrimSpace(inline), nil
 		}
 		if file != "" {
-			b, err := os.ReadFile(file)
-			return strings.TrimSpace(string(b)), err
+			return readProtected(file, false)
 		}
 		if stdin {
 			b, err := io.ReadAll(os.Stdin)
@@ -261,10 +265,10 @@ func controlOAuthAuthKey(ctx context.Context, o Options) (string, bool, error) {
 		return "", true, err
 	}
 	if id == "" {
-		id, _ = st.GetSecret("tailscale_oauth_client_id")
+		id, _ = st.GetSecret("tailscale_issuer_client_id")
 	}
 	if secret == "" {
-		secret, _ = st.GetSecret("tailscale_oauth_client_secret")
+		secret, _ = st.GetSecret("tailscale_issuer_client_secret")
 	}
 	tailnet := strings.TrimSpace(o.Tailnet)
 	if tailnet == "" {
@@ -277,10 +281,7 @@ func controlOAuthAuthKey(ctx context.Context, o Options) (string, bool, error) {
 	if id == "" || secret == "" || tailnet == "" {
 		return "", true, errors.New("control requires OAuth client ID, secret, and --tailnet or stored tailnet")
 	}
-	if err := st.SetSecret("tailscale_oauth_client_id", id); err != nil {
-		return "", true, err
-	}
-	if err := st.SetSecret("tailscale_oauth_client_secret", secret); err != nil {
+	if err := st.SetSecrets(map[string]string{"tailscale_issuer_client_id": id, "tailscale_issuer_client_secret": secret}); err != nil {
 		return "", true, err
 	}
 	if len(o.Administrators) > 0 {
@@ -300,7 +301,7 @@ func controlOAuthAuthKey(ctx context.Context, o Options) (string, bool, error) {
 	if err := st.SetJSON("tailnet", settings); err != nil {
 		return "", true, err
 	}
-	key, err := (tailscaleclient.Client{ClientID: id, ClientSecret: secret, Tailnet: tailnet}).CreateAuthKey(ctx, "control", o.Hostname, []string{"tag:tailscale-private-funnel"})
+	key, err := (tailscaleclient.Client{ClientID: id, ClientSecret: secret, Tailnet: tailnet}).CreateAuthKey(ctx, "control", o.Hostname, []string{identity.Tag(o.Installation, identity.Control)})
 	return key, true, err
 }
 
@@ -338,24 +339,22 @@ func serveOptions(mode string, o Options) (Options, error) {
 }
 
 func Serve(ctx context.Context, mode string, o Options) error {
-	if _, e := os.Stat(filepath.Join(o.StateDir, "restore-incomplete")); e == nil {
-		return errors.New("control restore incomplete; refusing startup")
-	}
 	var err error
 	o, err = serveOptions(mode, o)
 	if err != nil {
 		return err
 	}
-	for _, f := range []string{"transfer-fenced", "restore-incomplete"} {
-		if _, e := os.Stat(filepath.Join(o.StateDir, f)); e == nil {
-			return errors.New("control state is fenced; refusing startup")
-		}
-	}
-	if o.RequireJoined {
-		if err := validatePersistentState(mode, o); err != nil {
+
+	if o.RequireJoined && o.KubeNamespace == "" {
+		if err = validatePersistentState(mode, o); err != nil {
 			return err
 		}
 	}
+	lock, err := lockRuntime(o.DataDir)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
 	var runtimeReady atomic.Bool
 	var databaseProbe atomic.Pointer[store.Store]
 	if !o.BootstrapOnly && (mode == "control" || mode == "loadbalancer") && o.ProbeListen != "" {
@@ -397,32 +396,23 @@ func Serve(ctx context.Context, mode string, o Options) error {
 			o.ManagementURL = strings.TrimSpace(string(b))
 		}
 	}
-	st, err := openRuntimeStore(o)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-	databaseProbe.Store(st)
+	var st *store.Store
 	if mode == "control" {
-		if _, _, err := st.ConfigurationKey(); err != nil {
+		st, err = openRuntimeStore(o)
+		if err != nil {
 			return err
 		}
+		defer st.Close()
+		databaseProbe.Store(st)
 	}
-	// A persistent node only needs its enrollment material during its first
-	// bind. Subsequent starts reuse the identity already stored in StateDir.
 	joinedMarker := filepath.Join(o.StateDir, "joined")
-	alreadyJoined := false
-	if _, statErr := os.Stat(joinedMarker); statErr == nil {
-		alreadyJoined = true
-	}
-	if mode != "control" && o.EnrollmentID != "" && o.EnrollmentCode == "" && !alreadyJoined {
-		return errors.New("enrollment code is required for the first start")
-	}
 	if err := os.MkdirAll(o.StateDir, 0700); err != nil {
 		return err
 	}
 	key := ""
-	if o.TSStore != nil {
+	if o.KubeNamespace != "" {
+		key, err = prepareWorkload(ctx, mode, &o)
+	} else if o.TailscaleConnection == "host" {
 		key = ""
 	} else if _, statErr := os.Stat(filepath.Join(o.StateDir, "tailscaled.state")); statErr == nil {
 		// Do not mint or persist another auth key for an already enrolled
@@ -440,41 +430,74 @@ func Serve(ctx context.Context, mode string, o Options) error {
 	if err != nil {
 		return err
 	}
-	s := &tsnet.Server{Hostname: o.Hostname, Dir: o.StateDir, Store: o.TSStore, AuthKey: key, Ephemeral: false}
-	defer s.Close()
-	if _, err := s.Up(ctx); err != nil {
-		return fmt.Errorf("start tsnet: %w", err)
+	var s tsconnection.Connection
+	var embedded *tsnet.Server
+	if o.TailscaleConnection == "host" {
+		s = tsconnection.NewHost(o.TailscaleSocket, o.DataDir)
+	} else {
+		embedded = &tsnet.Server{Hostname: o.Hostname, Dir: o.StateDir, AuthKey: key, Ephemeral: o.Ephemeral, AdvertiseTags: o.Tags}
+		s = tsconnection.Wrap(embedded)
 	}
-	if err := waitTSNetReady(ctx, s, 45*time.Second); err != nil {
+	defer s.Close()
+	status, err := s.Up(ctx)
+	if err != nil {
+		return fmt.Errorf("start Tailscale: %w", err)
+	}
+	if embedded != nil {
+		embedded.AuthKey = ""
+	}
+	key = ""
+	_ = os.Unsetenv("TS_AUTHKEY")
+	if status.Self == nil {
+		return errors.New("Tailscale identity unavailable")
+	}
+	var effectiveTags []string
+	if status.Self.Tags != nil {
+		effectiveTags = status.Self.Tags.AsSlice()
+	}
+	if err = identity.Authorize(o.Installation, identity.Role(mode), effectiveTags); err != nil {
 		return err
 	}
-	if mode != "control" && o.EnrollmentID != "" && !alreadyJoined {
-		pub, _, identityErr := report.LoadOrCreate(filepath.Join(o.DataDir, "report-identity.json"))
-		if identityErr != nil {
-			return identityErr
-		}
-		publicKey := base64.RawStdEncoding.EncodeToString(pub)
-		if err := bindSigningKey(ctx, mode, o, publicKey, tsnetHTTPClient(s)); err != nil {
+	if mode != "control" {
+		s, err = registerRuntime(ctx, mode, &o, s)
+		if err != nil {
 			return err
 		}
-		_ = os.WriteFile(filepath.Join(o.DataDir, "node-id"), []byte(o.EnrollmentID), 0600)
-		_ = os.Remove(filepath.Join(o.DataDir, "enrollment-code"))
 	}
 	if err := os.WriteFile(joinedMarker, []byte("persistent\n"), 0600); err != nil {
 		return err
 	}
 	if mode == "control" {
-		ip4, ip6 := s.TailscaleIPs()
-		address := ip4.String()
-		if !ip4.IsValid() {
-			address = ip6.String()
+		_, portText, _ := net.SplitHostPort(o.Listen)
+		port, e := strconv.ParseUint(portText, 10, 16)
+		if e != nil || port == 0 {
+			return errors.New("valid control TCP port required")
 		}
+		if e = ensureControlService(ctx, o, st, uint16(port)); e != nil {
+			return e
+		}
+	}
+	if mode == "control" {
+		if status.CurrentTailnet == nil || status.CurrentTailnet.MagicDNSSuffix == "" {
+			return errors.New("tailnet MagicDNS suffix unavailable")
+		}
+		address := strings.TrimPrefix(identity.ControlService(o.Installation), "svc:") + "." + status.CurrentTailnet.MagicDNSSuffix
 		if err := initializeControlManagement(st, address, o.Listen, BuildVersion); err != nil {
 			return err
 		}
+		var settings map[string]any
+		if err = st.GetJSON("tailnet", &settings); err != nil {
+			return err
+		}
+		if err = os.WriteFile(filepath.Join(o.DataDir, "management-url"), []byte(fmt.Sprint(settings["management_url"])), 0600); err != nil {
+			return err
+		}
+
 	}
-	s.AuthKey = ""
 	_ = os.Unsetenv("TS_AUTHKEY")
+	if mode != "control" {
+		defer func() { _ = notifyNodeShutdown(context.Background(), s, o) }()
+	}
 	if o.BootstrapOnly {
 		return nil
 	}
@@ -484,11 +507,14 @@ func Serve(ctx context.Context, mode string, o Options) error {
 			for _, ip := range current.TailscaleIPs {
 				ips = append(ips, ip.String())
 			}
-			_ = writeRuntimeStatus(o.DataDir, runtimeStatus{Mode: mode, Hostname: o.Hostname, State: current.BackendState, IPs: ips, Health: current.Health, DatabaseBackend: st.Backend(), DatabaseReady: func() bool {
-				ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-				defer cancel()
-				return st.Ping(ctx) == nil
-			}()})
+			status := runtimeStatus{Mode: mode, Hostname: o.Hostname, State: current.BackendState, IPs: ips, Health: current.Health}
+			if st != nil {
+				status.DatabaseBackend = st.Backend()
+				probe, cancel := context.WithTimeout(ctx, 2*time.Second)
+				status.DatabaseReady = st.Ping(probe) == nil
+				cancel()
+			}
+			_ = writeRuntimeStatus(o.DataDir, status)
 		}
 	}
 	defer os.Remove(filepath.Join(o.DataDir, "serve.pid"))
@@ -501,7 +527,7 @@ func Serve(ctx context.Context, mode string, o Options) error {
 			_ = os.Setenv("FUNNEL_CERT_EMAIL", o.CertEmail)
 		}
 		if o.ManagementURL != "" {
-			if config, fetchErr := fetchLoadBalancerConfig(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.ControlKey); fetchErr == nil {
+			if config, fetchErr := fetchLoadBalancerConfig(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir)); fetchErr == nil {
 				routes := config.Routes
 				if encoded, marshalErr := json.Marshal(routes); marshalErr == nil {
 					_ = os.Setenv("FUNNEL_ROUTES", string(encoded))
@@ -532,7 +558,7 @@ func Serve(ctx context.Context, mode string, o Options) error {
 					case <-ctx.Done():
 						return
 					case <-ticker.C:
-						config, fetchErr := fetchLoadBalancerConfig(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.ControlKey)
+						config, fetchErr := fetchLoadBalancerConfig(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir))
 						if fetchErr != nil {
 							slog.Warn("load balancer route refresh failed", "error", fetchErr)
 							reportLoadBalancerHealth(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.LoadBalancerHostname, o.DataDir)
@@ -568,12 +594,14 @@ func Serve(ctx context.Context, mode string, o Options) error {
 		<-ctx.Done()
 		return nil
 	}
-	ln, err := s.Listen("tcp", o.Listen)
+	_, controlPortText, _ := net.SplitHostPort(o.Listen)
+	controlPort, _ := strconv.ParseUint(controlPortText, 10, 16)
+	ln, err := tsconnection.ListenControl(ctx, s, identity.ControlService(o.Installation), uint16(controlPort))
 	if err != nil {
 		return err
 	}
 	defer ln.Close()
-	control := &web.Control{BuildVersion: BuildVersion, Store: st}
+	control := &web.Control{Installation: o.Installation, BuildVersion: BuildVersion, Store: st}
 	h := control.Handler()
 	startControlReconciliation(ctx, control, 15*time.Second, 45*time.Second)
 	localClient, err := s.LocalClient()
@@ -583,6 +611,7 @@ func Serve(ctx context.Context, mode string, o Options) error {
 	identityHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		who, err := localClient.WhoIs(r.Context(), r.RemoteAddr)
 		if err != nil {
+			slog.Warn("tailnet peer verification failed", "remote", r.RemoteAddr, "error", err)
 			http.Error(w, "tailnet identity required", http.StatusForbidden)
 			return
 		}
@@ -628,7 +657,7 @@ func Serve(ctx context.Context, mode string, o Options) error {
 	return err
 }
 
-func waitTSNetReady(ctx context.Context, s *tsnet.Server, timeout time.Duration) error {
+func waitTSNetReady(ctx context.Context, s tsconnection.Connection, timeout time.Duration) error {
 	local, err := s.LocalClient()
 	if err != nil {
 		return err
@@ -662,20 +691,20 @@ func waitTSNetReady(ctx context.Context, s *tsnet.Server, timeout time.Duration)
 
 type loadBalancerConfig = nodeconfig.Configuration
 
-func fetchLoadBalancerConfig(ctx context.Context, client *http.Client, managementURL, nodeID, controlKey string) (loadBalancerConfig, error) {
-	return (gateway.RPCResolver{Client: client, BaseURL: managementURL, NodeID: nodeID, ControlKey: controlKey}).Configuration(ctx)
+func fetchLoadBalancerConfig(ctx context.Context, client *http.Client, managementURL, nodeID string) (loadBalancerConfig, error) {
+	return (gateway.RPCResolver{Client: client, BaseURL: managementURL, NodeID: nodeID}).Configuration(ctx)
 }
 
-func reportLoadBalancerPeers(ctx context.Context, s *tsnet.Server, o Options) {
+func reportLoadBalancerPeers(ctx context.Context, s tsconnection.Connection, o Options) {
 	nodeID := loadBalancerNodeID(o.DataDir)
 	if nodeID == "" || o.ManagementURL == "" {
 		return
 	}
 	client := tsnetHTTPClient(s)
 	agent := report.Agent{NodeID: nodeID, ManagementURL: o.ManagementURL, DataDir: o.DataDir, HTTPClient: client}
-	config, err := fetchLoadBalancerConfig(ctx, client, o.ManagementURL, nodeID, o.ControlKey)
+	config, err := fetchLoadBalancerConfig(ctx, client, o.ManagementURL, nodeID)
 	if err != nil {
-		slog.Warn("load balancer signed config failed", "error", err)
+		slog.Warn("load balancer configuration failed", "error", err)
 		return
 	}
 	var exposures []report.Exposure
@@ -734,7 +763,7 @@ func reportLoadBalancerHealth(ctx context.Context, client *http.Client, manageme
 	}
 }
 
-func runGatewaySupervisor(ctx context.Context, o Options, s *tsnet.Server) error {
+func runGatewaySupervisor(ctx context.Context, o Options, s tsconnection.Connection) error {
 	var client *dockerclient.Client
 	var err error
 	client, err = dockerclient.NewClientWithOpts(dockerclient.FromEnv, dockerclient.WithAPIVersionNegotiation())
@@ -745,10 +774,10 @@ func runGatewaySupervisor(ctx context.Context, o Options, s *tsnet.Server) error
 	nodeIDBytes, _ := os.ReadFile(filepath.Join(o.DataDir, "node-id"))
 	nodeID := strings.TrimSpace(string(nodeIDBytes))
 	var configRevision string
-	resolver := gateway.RPCResolver{BaseURL: o.ManagementURL, NodeID: nodeID, ControlKey: o.ControlKey, Client: managementClient, Revision: &configRevision}
+	resolver := gateway.RPCResolver{BaseURL: o.ManagementURL, NodeID: nodeID, Client: managementClient, Revision: &configRevision}
 	listenerManager := gateway.NewListenerManager(s)
 	go func() { <-ctx.Done(); listenerManager.Close() }()
-	supervisor := gateway.Config{Docker: client, NodeID: nodeID, RelayImage: "ghcr.io/tailscale-x/tailscale-private-funnel:" + BuildVersion, LabelKeys: o.LabelKeys, DenyNetworks: o.DenyNetworks, Resolver: resolver, ListenerManager: listenerManager, DeferListenerCleanup: true}
+	supervisor := gateway.Config{Docker: client, NodeID: nodeID, LabelKeys: o.LabelKeys, DenyNetworks: o.DenyNetworks, Resolver: resolver, ListenerManager: listenerManager, DeferListenerCleanup: true}
 	var reconcileMu sync.Mutex
 	var lastDocker []gateway.Runtime
 	var lastDockerAt time.Time
@@ -793,6 +822,8 @@ func runGatewaySupervisor(ctx context.Context, o Options, s *tsnet.Server) error
 		session := gateway.Session{Resolver: resolver, Listeners: listenerManager, Agent: report.Agent{NodeID: nodeID, ManagementURL: o.ManagementURL, DataDir: o.DataDir, HTTPClient: managementClient}}
 		if err := session.Publish(ctx, config, runtimes, nil); err != nil {
 			slog.Warn("gateway publish failed", "error", err)
+		} else {
+			markRuntimeReady(o.DataDir)
 		}
 	}
 	// Docker discovery and Service listeners share the process-owned tsnet
@@ -838,9 +869,6 @@ func runGatewaySupervisor(ctx context.Context, o Options, s *tsnet.Server) error
 		}
 	}()
 	<-ctx.Done()
-	cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	supervisor.Cleanup(cleanup)
 
 	return nil
 }

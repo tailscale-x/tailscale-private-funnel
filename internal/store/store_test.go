@@ -2,13 +2,11 @@ package store
 
 import (
 	"database/sql"
-	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/libdns/libdns"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 )
 
 func TestProviderConfigIsEncryptedAndRoundTrips(t *testing.T) {
@@ -34,62 +32,6 @@ func TestProviderConfigIsEncryptedAndRoundTrips(t *testing.T) {
 	entries, err := s.Ledger("dev", "example.com", "owner")
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("entries=%v err=%v", entries, err)
-	}
-}
-
-func TestAcceptReportRequiresEnrolledSigningKey(t *testing.T) {
-	s, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	pub, priv, err := report.GenerateKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	e, err := report.NewEnvelope("gateway-1", map[string]any{"exposures": []any{}}, pub, priv, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, _ := json.Marshal(e)
-	if err := s.AcceptReport(e.NodeID, e.Nonce, b, e.PublicKey); err == nil {
-		t.Fatal("unknown node report was accepted")
-	}
-	if err := s.UpsertNode("gateway-1", "docker-gateway", "gateway-1"); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.BindNodeKey("gateway-1", e.PublicKey); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.AcceptReport(e.NodeID, e.Nonce, b, e.PublicKey); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.AcceptReport(e.NodeID, e.Nonce, b, e.PublicKey); err == nil {
-		t.Fatal("replayed report was accepted")
-	}
-}
-
-func TestEnrollmentIsReusableUntilRevoked(t *testing.T) {
-	s, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	e, code, err := s.CreateEnrollment("docker-gateway", "gateway-node")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.RedeemEnrollment(e.ID, code); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.RedeemEnrollment(e.ID, code); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.RevokeEnrollment(e.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.RedeemEnrollment(e.ID, code); err == nil {
-		t.Fatal("revoked enrollment was accepted")
 	}
 }
 
@@ -331,7 +273,7 @@ func TestNodeDeploymentMigrationPreservesSettingsAndCredentials(t *testing.T) {
 	_ = s.UpsertNode("docker-gateway", "in"+"gress", "docker-gateway")
 	_ = s.SetJSON("tailnet", map[string]any{"name": "example.ts.net", "loadbalancer_hostname": "edge.example.com", "loadbalancer_public_ipv4": "8.8.8.8", "cert_email": "admin@example.com", "label_keys": "vendor.expose", "deny_networks": "private-*"})
 	_ = s.SetJSON("node_health:edge", map[string]any{"public_ipv4": []string{"1.1.1.1"}, "received_at": 123})
-	_ = s.SetSecrets(map[string]string{"tailscale_oauth_client_id": "id", "tailscale_oauth_client_secret": "secret"})
+	_ = s.SetSecrets(map[string]string{"tailscale_services_client_id": "id", "tailscale_services_client_secret": "secret"})
 	_, err = s.db.Exec("DELETE FROM schema_migrations WHERE version IN ('006_node_deployment_settings.sql','007_tailscale_endpoint_discovery.sql')")
 	if err != nil {
 		t.Fatal(err)
@@ -357,7 +299,7 @@ func TestNodeDeploymentMigrationPreservesSettingsAndCredentials(t *testing.T) {
 	if _, exists := settings["loadbalancer_public_ipv4"]; exists {
 		t.Fatal("global override retained")
 	}
-	secret, err := s.GetSecret("tailscale_oauth_client_secret")
+	secret, err := s.GetSecret("tailscale_services_client_secret")
 	if err != nil || secret != "secret" {
 		t.Fatal("lost credential", err)
 	}
@@ -367,20 +309,20 @@ func TestNodeDeploymentMigrationPreservesSettingsAndCredentials(t *testing.T) {
 		t.Fatal("health migration changed freshness or retained IP", health)
 	}
 	var encrypted string
-	_ = s.db.QueryRow("SELECT value FROM settings WHERE name='tailscale_oauth_client_secret'").Scan(&encrypted)
+	_ = s.db.QueryRow("SELECT value FROM settings WHERE name='tailscale_services_client_secret'").Scan(&encrypted)
 	if encrypted == secret {
 		t.Fatal("plaintext stored")
 	}
 	// A failure midway through a credential-pair update must leave both unchanged.
-	_, err = s.db.Exec(`CREATE TRIGGER block_credentials BEFORE UPDATE ON settings WHEN NEW.name='tailscale_oauth_client_secret' BEGIN SELECT RAISE(ABORT,'fixture'); END`)
+	_, err = s.db.Exec(`CREATE TRIGGER block_credentials BEFORE UPDATE ON settings WHEN NEW.name='tailscale_services_client_secret' BEGIN SELECT RAISE(ABORT,'fixture'); END`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.SetSecrets(map[string]string{"tailscale_oauth_client_id": "changed", "tailscale_oauth_client_secret": "changed"}); err == nil {
+	if err = s.SetSecrets(map[string]string{"tailscale_services_client_id": "changed", "tailscale_services_client_secret": "changed"}); err == nil {
 		t.Fatal("expected failure")
 	}
-	id, _ := s.GetSecret("tailscale_oauth_client_id")
-	secret, _ = s.GetSecret("tailscale_oauth_client_secret")
+	id, _ := s.GetSecret("tailscale_services_client_id")
+	secret, _ = s.GetSecret("tailscale_services_client_secret")
 	if id != "id" || secret != "secret" {
 		t.Fatal("partial credential update")
 	}

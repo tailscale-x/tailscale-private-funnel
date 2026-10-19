@@ -31,7 +31,7 @@ func (s *issuerFixture) Authorize(_ context.Context, r *connect.Request[v1.Deplo
 	if err != nil {
 		return nil, err
 	}
-	p.Credentials = &v1.BootstrapCredentials{AuthKey: "tskey-fixture", EnrollmentId: "enrollment", EnrollmentCode: "code", ControlKey: "public-key", ExpiresAt: time.Now().Add(15 * time.Minute).Unix()}
+	p.Credentials = &v1.BootstrapCredentials{AuthKey: "tskey-fixture", ExpiresAt: time.Now().Add(15 * time.Minute).Unix()}
 	return connect.NewResponse(p), nil
 }
 func TestCreationOnlyGeneratesWithoutTargetAccess(t *testing.T) {
@@ -56,7 +56,7 @@ func TestCreationOnlyGeneratesWithoutTargetAccess(t *testing.T) {
 			if err := root.Execute(); err != nil {
 				t.Fatal(err)
 			}
-			if issuer.calls != 1 {
+			if issuer.calls != map[string]int{"native": 1, "kubernetes": 0}[target] {
 				t.Fatalf("authorization calls: %d", issuer.calls)
 			}
 			p, err := readInstallerBundle(bytes.NewReader(out.Bytes()), target)
@@ -69,7 +69,7 @@ func TestCreationOnlyGeneratesWithoutTargetAccess(t *testing.T) {
 			if !strings.Contains(p.Script, "runtime install") || strings.Contains(p.Script, "create-remote") {
 				t.Fatal("wrong installer")
 			}
-			if p.ManagementUrl != "http://private-control:8080" {
+			if p.ManagementUrl != map[string]string{"native": "http://private-control:8080", "kubernetes": server.URL}[target] {
 				t.Fatal("lost private control address")
 			}
 		})
@@ -82,7 +82,7 @@ func TestControlAndOperatorGenerationReadsNoTargetFiles(t *testing.T) {
 	}{
 		{"native", []string{"controls", "create", "main", "--tailnet", "example.ts.net", "--oauth-client-id-file", "/target/only/id", "--oauth-client-secret-file", "/target/only/secret", "--output", "json"}},
 		{"kubernetes", []string{"operator", "create", "--context", "remote-only", "--managed-namespace", "funnel-test", "--output", "json"}},
-		{"kubernetes", []string{"controls", "create", "main", "--context", "remote-only", "--tailnet", "example.ts.net", "--oauth-client-id-file", "/target/only/id", "--oauth-client-secret-file", "/target/only/secret", "--output", "json"}},
+		{"kubernetes", []string{"controls", "create", "main", "--context", "remote-only", "--tailnet", "example.ts.net", "--key-issuer-secret", "control-issuer", "--services-secret", "services", "--users-secret", "users", "--output", "json"}},
 	} {
 		t.Run(tc.target+tc.args[0], func(t *testing.T) {
 			t.Setenv("KUBECONFIG", "/does-not-exist")
@@ -107,7 +107,7 @@ func TestInstallerRejectsInvalidBundlesBeforeExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.Credentials = &v1.BootstrapCredentials{AuthKey: "secret", EnrollmentCode: "code", EnrollmentId: "id", ControlKey: "key", ExpiresAt: time.Now().Add(time.Minute).Unix()}
+	p.Credentials = &v1.BootstrapCredentials{AuthKey: "fixture", ExpiresAt: time.Now().Add(time.Minute).Unix()}
 	for _, tc := range []struct {
 		name   string
 		mutate func(*v1.DeploymentInstructions)
@@ -183,39 +183,10 @@ func TestPlacementTravelsInBundle(t *testing.T) {
 	}
 }
 
-type revocationFixture struct {
-	funnelv1connect.UnimplementedManagementServiceHandler
-	revoked string
-}
-
-func (s *revocationFixture) RevokeEnrollment(_ context.Context, r *connect.Request[v1.ResourceID]) (*connect.Response[v1.Empty], error) {
-	s.revoked = r.Msg.Id
-	return connect.NewResponse(&v1.Empty{}), nil
-}
-
 type failedWriter struct{}
 
 func (failedWriter) Write([]byte) (int, error) { return 0, fmt.Errorf("broken pipe") }
-func TestFailedInstallerDeliveryRevokesEnrollment(t *testing.T) {
-	issuer, revoker := new(issuerFixture), new(revocationFixture)
-	mux := http.NewServeMux()
-	p, h := funnelv1connect.NewDeploymentServiceHandler(issuer)
-	mux.Handle(p, h)
-	p, h = funnelv1connect.NewManagementServiceHandler(revoker)
-	mux.Handle(p, h)
-	server := httptest.NewServer(mux)
-	defer server.Close()
-	c := Native("dev-test")
-	c.SetArgs([]string{"gateways", "create", "site", "--type", "tailnet", "--control-url", server.URL, "--output", "script"})
-	c.SetOut(failedWriter{})
-	c.SetErr(&bytes.Buffer{})
-	if err := c.Execute(); err == nil {
-		t.Fatal("missing output failure")
-	}
-	if revoker.revoked != "enrollment" {
-		t.Fatal("left pending enrollment", revoker.revoked)
-	}
-}
+
 func TestControlDryRunJSONCannotBeInstalled(t *testing.T) {
 	c := Native("dev-test")
 	c.SetArgs([]string{"controls", "create", "main", "--dry-run", "--output", "json"})
@@ -250,7 +221,7 @@ func TestKubernetesInstallerPermissionFailureIsActionable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.Credentials = &v1.BootstrapCredentials{EnrollmentId: "id", EnrollmentCode: "proof", ControlKey: "public", AuthKey: "secret", ExpiresAt: time.Now().Add(time.Minute).Unix()}
+	p.Credentials = nil
 	b, _ := json.Marshal(p)
 	cmd := Installer("kubernetes")
 	cmd.SetIn(bytes.NewReader(b))

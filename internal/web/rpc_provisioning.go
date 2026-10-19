@@ -3,11 +3,12 @@ package web
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/identity"
 
 	"connectrpc.com/connect"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
@@ -32,6 +33,12 @@ func (s *deploymentRPC) Instructions(ctx context.Context, r *connect.Request[v1.
 	return connect.NewResponse(p), nil
 }
 func (c *Control) deploymentPlan(in *v1.DeploymentRequest) (*v1.DeploymentInstructions, error) {
+	if in.Mode != "control" && in.Mode != "operator" {
+		if in.Installation != "" && in.Installation != c.installation() {
+			return nil, rpcFailure(connect.CodePermissionDenied, errors.New("component installation must match this control"))
+		}
+		in.Installation = c.installation()
+	}
 	var settings map[string]any
 	e := c.Store.GetJSON("tailnet", &settings)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
@@ -63,60 +70,32 @@ func (s *deploymentRPC) Authorize(ctx context.Context, r *connect.Request[v1.Dep
 			return nil, rpcFailure(connect.CodeFailedPrecondition, e)
 		}
 	}
-	clientID, e := s.c.Store.GetSecret("tailscale_oauth_client_id")
-	if e != nil {
-		return nil, rpcFailure(connect.CodeFailedPrecondition, errors.New("configure Tailscale OAuth first"))
+	d := p.Deployment
+	if d.Installation != s.c.installation() {
+		return nil, rpcFailure(connect.CodePermissionDenied, errors.New("installer installation must match this control"))
 	}
-	secret, e := s.c.Store.GetSecret("tailscale_oauth_client_secret")
-	if e != nil {
-		return nil, rpcFailure(connect.CodeFailedPrecondition, errors.New("configure Tailscale OAuth first"))
+	if d.TailscaleConnection == "host" || d.Target == "kubernetes" {
+		return connect.NewResponse(p), nil
 	}
-	var settings map[string]any
-	if e = s.c.Store.GetJSON("tailnet", &settings); e != nil {
+	role := identity.Role(d.Mode)
+	id, e := s.c.Store.GetSecret("tailscale_issuer_client_id")
+	if e != nil {
+		return nil, rpcFailure(connect.CodeFailedPrecondition, errors.New("configure the installation auth-key issuer"))
+	}
+	secret, e := s.c.Store.GetSecret("tailscale_issuer_client_secret")
+	if e != nil {
 		return nil, rpcFailure(connect.CodeFailedPrecondition, e)
 	}
-	pub, _, e := s.c.Store.ConfigurationKey()
-	if e != nil {
-		return nil, rpcFailure(connect.CodeInternal, e)
+	var tailnet map[string]any
+	if e = s.c.Store.GetJSON("tailnet", &tailnet); e != nil {
+		return nil, rpcFailure(connect.CodeFailedPrecondition, e)
 	}
-	enrollment, code, e := s.c.Store.CreateEnrollment(p.Deployment.Mode, p.Deployment.Hostname)
-	if e != nil {
-		return nil, rpcFailure(connect.CodeInternal, e)
-	}
-	success := false
-	defer func() {
-		if !success {
-			_ = s.c.Store.RevokeEnrollment(enrollment.ID)
-		}
-	}()
-	if e = s.c.Store.RenameResource("enrollment", enrollment.ID, func() string {
-		if p.Deployment.DisplayName != "" {
-			return p.Deployment.DisplayName
-		}
-		return p.Deployment.ResourceName
-	}()); e != nil {
-		return nil, rpcFailure(connect.CodeInternal, e)
-	}
-	d := p.Deployment
-	selector, _ := json.Marshal(d.NodeSelector)
-	deployment := nodeDeployment{Version: p.Version, ContextHint: d.Context, DeploymentTarget: d.Target, InstallationName: d.Installation, ResourceName: d.ResourceName, StateDir: d.StateDir, DataDir: d.DataDir, CertEmail: d.CertificateEmail, LoadBalancerHostname: d.PublicHostname, LabelKeys: strings.Join(d.LabelKeys, ","), DenyNetworks: strings.Join(d.DenyNetworks, ","), WatchNamespaces: strings.Join(d.WatchNamespaces, ","), NodeSelector: string(selector), GatewayClass: d.GatewayClass, IngressClass: d.IngressClass, KubernetesNamespace: p.Namespace}
-	if d.Target == "kubernetes" && d.Mode == "loadbalancer" {
-		deployment.AddressSource = "kubernetes"
-		deployment.PublicService = d.ResourceName + "-public"
-	}
-	if e = s.c.Store.SetJSON("node_deployment:"+enrollment.ID, deployment); e != nil {
-		return nil, rpcFailure(connect.CodeInternal, e)
-	}
-	key, e := s.c.tsClient(clientID, secret, stringValue(settings, "name", "")).CreateAuthKey(ctx, d.Mode, d.Hostname, []string{requiredNodeTag(d.Mode)})
+	key, e := s.c.tsClient(id, secret, stringValue(tailnet, "name", "")).CreateAuthKey(ctx, d.Mode, d.Hostname, []string{identity.Tag(s.c.installation(), role)})
 	if e != nil {
 		return nil, rpcFailure(connect.CodeUnavailable, e)
 	}
-	p.Credentials = &v1.BootstrapCredentials{EnrollmentId: enrollment.ID, EnrollmentCode: code, AuthKey: key, ControlKey: base64.RawStdEncoding.EncodeToString(pub), ExpiresAt: enrollment.CreatedAt + 900}
-	p.Enrollment = &v1.Enrollment{Id: enrollment.ID, Name: d.Name, Mode: d.Mode, Hostname: d.Hostname, CreatedAt: enrollment.CreatedAt}
-	p.Example = selectedGatewayExample(d.Mode, deployment)
-
-	success = true
-	_ = s.c.Store.Audit("enrollment.create:"+enrollment.ID, rpcActor(ctx))
+	p.Credentials = &v1.BootstrapCredentials{AuthKey: key, ExpiresAt: time.Now().Add(15 * time.Minute).Unix()}
+	_ = s.c.Store.Audit("bootstrap.issue:"+d.Mode, rpcActor(ctx))
 	return connect.NewResponse(p), nil
 }
 

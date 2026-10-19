@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tailscale-x/tailscale-private-funnel/internal/identity"
+
 	"github.com/libdns/libdns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
@@ -21,6 +23,7 @@ import (
 )
 
 type Control struct {
+	Installation      string
 	PublicLookup      func(context.Context, string) ([]net.IPAddr, error)
 	BuildVersion      string
 	Store             *store.Store
@@ -322,11 +325,11 @@ func (c *Control) tailscaleRuntimeClient() (tailscale.Client, error) {
 	if err := c.Store.GetJSON("tailnet", &settings); err != nil || strings.TrimSpace(settings.Name) == "" {
 		return tailscale.Client{}, fmt.Errorf("tailnet is not configured")
 	}
-	id, err := c.Store.GetSecret("tailscale_oauth_client_id")
+	id, err := c.Store.GetSecret("tailscale_services_client_id")
 	if err != nil {
 		return tailscale.Client{}, err
 	}
-	secret, err := c.Store.GetSecret("tailscale_oauth_client_secret")
+	secret, err := c.Store.GetSecret("tailscale_services_client_secret")
 	if err != nil {
 		return tailscale.Client{}, err
 	}
@@ -385,7 +388,7 @@ func (c *Control) reconcileLoadBalancerNode(ctx context.Context, node store.Node
 		}
 		return c.reconcilePartitions(ctx, ownerID, map[store.LedgerPartition][]libdns.Record{{ZoneID: provider.ID, ProviderID: provider.ProviderID, Zone: provider.Zone, OwnerID: ownerID}: records})
 	}
-	client, err := c.tailscaleRuntimeClient()
+	client, err := c.tailscalePurposeClient("endpoints")
 	if err != nil {
 		return fmt.Errorf("load balancer endpoint lookup: %w; retaining the previous owned A record", err)
 	}
@@ -485,7 +488,7 @@ func selectServiceTarget(addresses []string, serviceName, tailnet string) string
 
 // ReconcileServiceApprovals is intentionally conservative. It only approves a
 // pending host when the Service is an application created in this control
-// store, the device is an enrolled non-revoked gateway node, and the
+// store, the device is an registered active gateway node, and the
 // application explicitly allows that node. Unknown advertisements are left
 // pending for an administrator to inspect.
 func (c *Control) ReconcileServiceApprovals(ctx context.Context) error {
@@ -554,13 +557,7 @@ func (c *Control) ReconcileServiceApprovals(ctx context.Context) error {
 				_ = c.Store.UpsertServiceHost(store.ServiceHostRecord{ServiceName: service, DeviceID: host.NodeID, Approved: approved, ApprovalState: "authorization-unavailable"})
 				continue
 			}
-			if allowed != approved {
-				if _, e := client.ApproveServiceDevice(ctx, service, host.NodeID, allowed); e != nil {
-					failures = append(failures, e.Error())
-					continue
-				}
-				approved = allowed
-			}
+
 			state := "pending"
 			if approved {
 				state = "approved"
@@ -609,65 +606,43 @@ func (c *Control) ReconcileServiceApprovals(ctx context.Context) error {
 	return nil
 }
 
-// Service advertisements belong to the enrolled gateway device itself.
-func (c *Control) serviceHostAllowed(ctx context.Context, client tailscale.Client, app store.ApplicationRecord, deviceID string) (bool, error) {
-	node, err := c.Store.NodeByTailnetID(deviceID)
-	if err != nil || !applicationAllows(app, node) {
-		return false, nil
+// Service advertisements belong to the registered gateway device itself.
+func (c *Control) serviceHostAllowed(ctx context.Context, _ tailscale.Client, app store.ApplicationRecord, deviceID string) (bool, error) {
+	nodes, e := c.Store.Nodes("")
+	if e != nil {
+		return false, e
 	}
-	if node.Mode == "k8s-gateway" {
-		children, e := c.Store.Forwarders(node.ID)
-		if e != nil || len(children) > 0 {
-			return false, nil
+	for _, item := range nodes {
+		n, e := c.Store.Node(item["id"].(string))
+		if e != nil {
+			return false, e
+		}
+		if n.TailnetID != deviceID || !applicationAllows(app, n) {
+			continue
+		}
+		reg, e := c.Store.ComponentRegistration(n.ID)
+		if e != nil {
+			continue
+		}
+		var tags []string
+		_ = c.Store.GetJSON("node_policy_roles:"+n.ID, &tags)
+		if identity.Authorize(c.installation(), reg.Role(), tags) != nil {
+			continue
+		}
+		var ack struct {
+			Services []string `json:"services"`
+			At       int64    `json:"at"`
+		}
+		if c.Store.GetJSON("node_config_ack:"+n.ID, &ack) != nil || !contains(ack.Services, app.ServiceName) || ack.At < time.Now().Add(-5*time.Minute).Unix() {
+			continue
+		}
+		for _, exposure := range c.freshReport(n) {
+			if exposure.ApplicationID == app.ID {
+				return true, nil
+			}
 		}
 	}
-	if node.ParentID != "" {
-		parent, e := c.Store.Node(node.ParentID)
-		if e != nil || parent.Revoked {
-			return false, nil
-		}
-	}
-	active := false
-	for _, exposure := range c.freshReport(node) {
-		if exposure.ApplicationID == app.ID {
-			active = true
-			break
-		}
-	}
-	if !active {
-		return false, nil
-	}
-	var ack struct {
-		Services []string `json:"services"`
-		At       int64    `json:"at"`
-	}
-	if c.Store.GetJSON("node_config_ack:"+node.ID, &ack) != nil || !contains(ack.Services, app.ServiceName) || ack.At < time.Now().Add(-5*time.Minute).Unix() {
-		return false, nil
-	}
-	var roles []string
-	if c.Store.GetJSON("node_policy_roles:"+node.ID, &roles) == nil {
-		policyAllowed := false
-		for _, host := range app.PublicHostnames {
-			policyAllowed = policyAllowed || c.anyEdgeAllows(c.loadExposurePolicy(), host, []string{node.ID, node.TailnetID, node.ParentID}, roles)
-		}
-		if !policyAllowed || !contains(roles, "tag:tailscale-private-funnel") {
-			return false, nil
-		}
-	}
-	device, err := client.GetDevice(ctx, deviceID)
-	if err != nil {
-		return false, fmt.Errorf("device authorization unavailable for %s: %w", deviceID, err)
-	}
-	if err == nil {
-		allowed := false
-		for _, host := range app.PublicHostnames {
-			allowed = allowed || c.anyEdgeAllows(c.loadExposurePolicy(), host, []string{node.ID, node.TailnetID, node.ParentID}, device.Tags)
-		}
-		if !allowed {
-			return false, nil
-		}
-	}
-	return device.Authorized && (device.NodeID == "" || device.NodeID == deviceID) && contains(device.Tags, "tag:tailscale-private-funnel"), nil
+	return false, nil
 }
 
 func contains(values []string, wanted string) bool {
@@ -706,7 +681,7 @@ func (c *Control) ExpireReports(ctx context.Context, maxAge time.Duration) (int,
 	return removed, nil
 }
 
-// CleanupStaleNodes removes runtime enrollments that stopped heartbeating.
+// CleanupStaleNodes removes runtime instances that stopped heartbeating.
 // The control node is never selected by Store.StaleNodes.
 func (c *Control) CleanupStaleNodes(ctx context.Context, maxAge time.Duration) (int, error) {
 	before := time.Now().Add(-maxAge).Unix()
@@ -751,11 +726,6 @@ func approvedApplication(applications []store.ApplicationRecord, exposure dns.Ga
 	}
 	return store.ApplicationRecord{}, false
 }
-
-func requiredNodeTag(mode string) string {
-	return "tag:tailscale-private-funnel"
-}
-
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }

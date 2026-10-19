@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"io"
 	"net"
 	"regexp"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 )
 
 // ExposureLabel is the only Docker label understood by the gateway supervisor.

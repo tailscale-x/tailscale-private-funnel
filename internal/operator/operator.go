@@ -3,13 +3,23 @@ package operator
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/go-logr/logr"
 	"log/slog"
+	"net/http"
+	"os"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/go-logr/logr"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/kubebroker"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/workload"
+	"k8s.io/client-go/kubernetes"
+	managerpkg "sigs.k8s.io/controller-runtime/pkg/manager"
 
 	funnel "github.com/tailscale-x/tailscale-private-funnel/api/kubernetes/v1alpha1"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/dns"
@@ -73,9 +83,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.
 		}
 		return ctrl.Result{RequeueAfter: time.Millisecond}, nil
 	}
-	if control, ok := object.(*funnel.FunnelControl); ok && control.Spec.Transfer != nil {
-		return r.reconcileTransfer(ctx, control)
-	}
 	_, spec, _ := component(object)
 	if spec.Image == "" || strings.HasSuffix(spec.Image, ":latest") || strings.HasSuffix(spec.Image, ":dev") {
 		return r.condition(ctx, object, false, "InvalidConfiguration", "A pinned component image is required")
@@ -83,6 +90,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.
 	if spec.ControlRef != nil && spec.ManagementURL != "" {
 		return r.condition(ctx, object, false, "InvalidConfiguration", "Choose controlRef or managementURL")
 	}
+	renderObject := object.DeepCopyObject().(client.Object)
 	if spec.ControlRef != nil {
 		var control funnel.FunnelControl
 		if e := r.Get(ctx, types.NamespacedName{Namespace: object.GetNamespace(), Name: spec.ControlRef.Name}, &control); e != nil {
@@ -91,92 +99,85 @@ func (r *Reconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.
 		if control.Status.SetupURL == "" {
 			return r.condition(ctx, object, false, "ControlUnavailable", "Referenced control has not published its setup URL")
 		}
+		_, resolved, _ := component(renderObject)
+		resolved.ManagementURL = control.Status.SetupURL
+		resolved.ControlRef = nil
 	}
-	desired, e := Render(object)
+	desired, e := Render(renderObject)
 	if e != nil {
 		return r.condition(ctx, object, false, "InvalidConfiguration", e.Error())
 	}
 	mode, _, _ := component(object)
 	// Reserve the durable Secret without overwriting any runtime-written data.
 	_, _, previous := component(object)
-	if previous.Initialized {
-		var durable core.Secret
-		if err := r.Get(ctx, types.NamespacedName{Namespace: object.GetNamespace(), Name: identityName(object)}, &durable); apierrors.IsNotFound(err) {
-			return r.condition(ctx, object, false, "IdentityMissing", "Durable identity is missing; restore it or explicitly delete and recreate this component")
-		} else if err != nil {
-			return ctrl.Result{}, err
-		}
+	if spec.KeyIssuerRef.Name == "" {
+		return r.condition(ctx, object, false, "KeyIssuerRequired", "Reference an auth_keys OAuth issuer restricted to this installation issuer tag")
 	}
-	secret := &core.Secret{ObjectMeta: metav1.ObjectMeta{Name: identityName(object), Namespace: object.GetNamespace(), Labels: labels(object)}}
-	if spec.IdentitySecretRef != nil {
-		var external core.Secret
-		if e = r.Get(ctx, client.ObjectKeyFromObject(secret), &external); e != nil {
-			return r.condition(ctx, object, false, "IdentityUnavailable", "Referenced identity Secret is unavailable")
-		}
-	} else if e = r.ensure(ctx, object, secret); e != nil {
-		return r.condition(ctx, object, false, "OwnershipConflict", e.Error())
-	}
-	// A gateway with initialized identity does not need to rerun first-time bootstrap.
-	var identity core.Secret
-	_ = r.Get(ctx, client.ObjectKeyFromObject(secret), &identity)
-	if !previous.Initialized && len(identity.Data["initialized"]) == 0 && len(identity.Data["node-id"]) == 0 {
-		if spec.BootstrapSecretRef == nil {
-			return r.condition(ctx, object, false, "BootstrapRequired", "An existing bootstrap Secret is required for first initialization")
-		}
-		var bootstrap core.Secret
-		if err := r.Get(ctx, types.NamespacedName{Namespace: object.GetNamespace(), Name: spec.BootstrapSecretRef.Name}, &bootstrap); apierrors.IsNotFound(err) {
-			return r.condition(ctx, object, false, "BootstrapRequired", "Waiting for the referenced bootstrap Secret")
-		} else if err != nil {
-			return ctrl.Result{}, err
-		}
-	}
-	failedBootstrap := ""
-	for _, resource := range desired {
-		kind := resource.GetObjectKind().GroupVersionKind().Kind
-		if mode == "k8s-gateway" {
-			if (kind == "Deployment" || kind == "DaemonSet") && len(identity.Data["node-id"]) == 0 {
-				continue
+	if mode == "control" {
+		control := object.(*funnel.FunnelControl)
+		key := types.NamespacedName{Namespace: object.GetNamespace(), Name: materialName(object)}
+		var material core.Secret
+		err := r.Get(ctx, key, &material)
+		if apierrors.IsNotFound(err) && control.Spec.EncryptionSecretRef == nil {
+			if previous.Initialized {
+				return r.condition(ctx, object, false, "EncryptionMaterialMissing", "Restore matching encryption material; never replace it for an existing database")
 			}
-			if kind == "DaemonSet" {
-				var ca core.Secret
-				if err := r.Get(ctx, types.NamespacedName{Namespace: object.GetNamespace(), Name: object.GetName() + "-broker-tls"}, &ca); apierrors.IsNotFound(err) || len(ca.Data["ca.crt"]) == 0 {
-					continue
-				} else if err != nil {
+			master := make([]byte, 32)
+			marker := make([]byte, 16)
+			if _, err = rand.Read(master); err != nil {
+				return ctrl.Result{}, err
+			}
+			if _, err = rand.Read(marker); err != nil {
+				return ctrl.Result{}, err
+			}
+			material = core.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: key.Namespace, Name: key.Name, Labels: labels(object)}, Data: map[string][]byte{"master.key": master, "storage-marker": []byte(hex.EncodeToString(marker))}}
+			if err = controllerutil.SetControllerReference(object, &material, r.Scheme); err != nil {
+				return ctrl.Result{}, err
+			}
+			err = r.Create(ctx, &material)
+		}
+		if err != nil {
+			return r.condition(ctx, object, false, "EncryptionMaterialUnavailable", "Matching control encryption material is required")
+		}
+		if len(material.Data["master.key"]) != 32 || len(material.Data["storage-marker"]) == 0 {
+			return r.condition(ctx, object, false, "EncryptionMaterialInvalid", "Control material must contain master.key and storage-marker")
+		}
+	}
+	if mode == "k8s-gateway" {
+		dns := object.GetName() + "-broker." + object.GetNamespace() + ".svc"
+		if _, _, err := kubebroker.EnsureTLS(ctx, r.Client, object.GetNamespace(), object.GetName()+"-broker-tls", dns, string(object.GetUID())); err != nil {
+			return ctrl.Result{}, err
+		}
+		var secret core.Secret
+		if err := r.Get(ctx, types.NamespacedName{Namespace: object.GetNamespace(), Name: object.GetName() + "-broker-tls"}, &secret); err == nil {
+			if len(secret.OwnerReferences) == 0 {
+				if err = controllerutil.SetControllerReference(object, &secret, r.Scheme); err != nil {
+					return ctrl.Result{}, err
+				}
+				secret.Labels = labels(object)
+				if err = r.Update(ctx, &secret); err != nil {
 					return ctrl.Result{}, err
 				}
 			}
 		}
-		if resource.GetObjectKind().GroupVersionKind().Kind == "Job" && mode == "k8s-gateway" && len(identity.Data["node-id"]) > 0 {
-			continue
-		}
+	}
+	for _, resource := range desired {
 		if e = r.ensure(ctx, object, resource); e != nil {
 			return r.condition(ctx, object, false, "ReconciliationFailed", e.Error())
 		}
-		if kind == "Job" {
-			var job batch.Job
-			if e := r.Get(ctx, client.ObjectKeyFromObject(resource), &job); e != nil {
-				return ctrl.Result{}, e
-			}
-			for _, condition := range job.Status.Conditions {
-				if condition.Type == batch.JobFailed && condition.Status == core.ConditionTrue {
-					failedBootstrap = job.Name
-				}
-			}
-		}
-	}
-	if failedBootstrap != "" {
-		return r.condition(ctx, object, false, "BootstrapFailed", "Bootstrap Job "+failedBootstrap+" failed. Inspect its logs, correct the reported prerequisite or replace expired bootstrap credentials, then retry bootstrap.")
 	}
 	_, _, status := component(object)
-	status.Initialized = status.Initialized || len(identity.Data["initialized"]) > 0 || len(identity.Data["node-id"]) > 0
-	if status.Initialized && spec.BootstrapSecretRef != nil {
-		var bootstrap core.Secret
-		if r.Get(ctx, types.NamespacedName{Namespace: object.GetNamespace(), Name: spec.BootstrapSecretRef.Name}, &bootstrap) == nil && bootstrap.Labels[OwnerLabel] == string(object.GetUID()) {
-			_ = r.deleteOwned(ctx, &bootstrap)
+	status.NodeID = spec.ComponentID
+	if status.NodeID == "" {
+		status.NodeID = string(object.GetUID())
+	}
+	if mode == "control" {
+		control := object.(*funnel.FunnelControl)
+		suffix := strings.TrimSuffix(control.Spec.Tailnet, ".")
+		if strings.HasSuffix(suffix, ".ts.net") {
+			status.SetupURL = "http://tailscale-private-funnel-" + spec.Installation + "-control." + suffix + ":8080"
 		}
 	}
-	status.NodeID = string(identity.Data["node-id"])
-	status.SetupURL = string(identity.Data["setup-url"])
 	workload := object.GetName() + "-" + mode
 	if mode == "k8s-gateway" {
 		workload = object.GetName() + "-agent"
@@ -193,6 +194,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.
 			ready = false
 		}
 	}
+	status.Initialized = status.Initialized || ready
 	if mode == "loadbalancer" {
 		var service core.Service
 		if r.Get(ctx, types.NamespacedName{Namespace: object.GetNamespace(), Name: object.GetName() + "-public"}, &service) == nil {
@@ -204,7 +206,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.
 					status.PublicAddresses = append(status.PublicAddresses, a.Hostname)
 				}
 			}
-			publicStatus, reason, message := metav1.ConditionFalse, "AddressPending", "Waiting for a public Service address; control validates signed endpoint reports before DNS publication"
+			publicStatus, reason, message := metav1.ConditionFalse, "AddressPending", "Waiting for a public Service address; control validates authenticated endpoint reports before DNS publication"
 			if len(dns.PublicIPv4Endpoints(status.PublicAddresses)) > 0 {
 				publicStatus = metav1.ConditionTrue
 				reason = "PublicIPv4Allocated"
@@ -295,23 +297,7 @@ func (r *Reconciler) cleanup(ctx context.Context, o client.Object) (ctrl.Result,
 	if !controllerutil.ContainsFinalizer(o, Finalizer) {
 		return ctrl.Result{}, nil
 	}
-	if control, ok := o.(*funnel.FunnelControl); ok && control.Spec.Transfer != nil {
-		return r.cleanupTransferred(ctx, control)
-	}
-	mode, _, status := component(o)
-	var durable core.Secret
-	if err := r.Get(ctx, types.NamespacedName{Namespace: o.GetNamespace(), Name: identityName(o)}, &durable); err != nil && (status.Initialized || !apierrors.IsNotFound(err)) {
-		return r.condition(ctx, o, false, "CleanupBlocked", "Durable identity is unavailable; cleanup cannot safely complete")
-	}
-	if mode == "control" {
-		var s core.Secret
-		if e := r.Get(ctx, types.NamespacedName{Namespace: o.GetNamespace(), Name: identityName(o)}, &s); e != nil && !apierrors.IsNotFound(e) {
-			return ctrl.Result{}, e
-		}
-		if len(s.Data) > 0 && (string(s.Data["active-components"]) != "0" || string(s.Data["pending-node-cleanups"]) != "0") {
-			return r.condition(ctx, o, false, "DeletionBlocked", "Control must report zero active enrolled components and zero pending node cleanups before deletion")
-		}
-	}
+	_, _, status := component(o)
 	// Stop identity owners before creating a cleanup Job with the same durable identity.
 	var deployments apps.DeploymentList
 	if e := r.List(ctx, &deployments, client.InNamespace(o.GetNamespace()), client.MatchingLabels{OwnerLabel: string(o.GetUID())}); e != nil {
@@ -345,12 +331,9 @@ func (r *Reconciler) cleanup(ctx context.Context, o client.Object) (ctrl.Result,
 			return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
 		}
 	}
-	var identity core.Secret
-	e := r.Get(ctx, types.NamespacedName{Namespace: o.GetNamespace(), Name: identityName(o)}, &identity)
-	if e != nil && !apierrors.IsNotFound(e) {
-		return ctrl.Result{}, e
-	}
-	if len(identity.Data) > 0 {
+	var e error
+
+	if status.Initialized {
 		job, e := r.cleanupJob(o)
 		if e != nil {
 			return ctrl.Result{}, e
@@ -361,7 +344,7 @@ func (r *Reconciler) cleanup(ctx context.Context, o client.Object) (ctrl.Result,
 			if e = r.ensure(ctx, o, job); e != nil {
 				return ctrl.Result{}, e
 			}
-			return r.condition(ctx, o, false, "CleanupPending", "Revoking node identities, advertisements, and owned DNS")
+			return r.condition(ctx, o, false, "CleanupPending", "Removing owned component assignments and DNS; role authority remains in Tailscale")
 		}
 		if e != nil {
 			return ctrl.Result{}, e
@@ -439,7 +422,7 @@ func (r *Reconciler) cleanupJob(o client.Object) (*batch.Job, error) {
 		pod.Spec.Containers[0].LivenessProbe = nil
 		pod.Spec.Containers[0].StartupProbe = nil
 		zero := int32(0)
-		return &batch.Job{ObjectMeta: metav1.ObjectMeta{Name: o.GetName() + "-cleanup", Namespace: o.GetNamespace(), Labels: labels(o)}, Spec: batch.JobSpec{BackoffLimit: &zero, Template: pod}}, nil
+		return &batch.Job{ObjectMeta: metav1.ObjectMeta{Name: o.GetName() + "-cleanup", Namespace: o.GetNamespace(), Labels: map[string]string{OwnerLabel: string(o.GetUID()), "tailscale-private-funnel.io/cleanup": "true"}}, Spec: batch.JobSpec{BackoffLimit: &zero, Template: pod}}, nil
 	}
 	return nil, errors.New("cleanup workload unavailable")
 }
@@ -466,6 +449,58 @@ func Run(ctx context.Context, namespaces []string, probe string) error {
 	}
 	manager, e := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{Scheme: scheme, Cache: cache.Options{DefaultNamespaces: scoped}, HealthProbeBindAddress: probe, Metrics: metrics.Options{BindAddress: "0"}})
 	if e != nil {
+		return e
+	}
+	direct, e := client.New(manager.GetConfig(), client.Options{Scheme: scheme})
+	if e != nil {
+		return e
+	}
+	tokens, e := kubernetes.NewForConfig(manager.GetConfig())
+	if e != nil {
+		return e
+	}
+	operatorNS := os.Getenv("POD_NAMESPACE")
+	if operatorNS == "" {
+		operatorNS = "tailscale-private-funnel-k8s-operator-system"
+	}
+	dns := "tailscale-private-funnel-k8s-operator-bootstrap." + operatorNS + ".svc"
+	cert, ca, e := kubebroker.EnsureTLS(ctx, direct, operatorNS, "tailscale-private-funnel-operator-bootstrap-tls", dns)
+	if e != nil {
+		return e
+	}
+	for _, ns := range namespaces {
+		name := types.NamespacedName{Namespace: ns, Name: "tailscale-private-funnel-operator-ca"}
+		var cm core.ConfigMap
+		e = direct.Get(ctx, name, &cm)
+		if apierrors.IsNotFound(e) {
+			cm = core.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name.Name, Labels: map[string]string{"app.kubernetes.io/managed-by": "tailscale-private-funnel-k8s-operator"}}, Data: map[string]string{"ca.crt": string(ca)}}
+			e = direct.Create(ctx, &cm)
+		} else if e == nil {
+			if cm.Labels["app.kubernetes.io/managed-by"] != "tailscale-private-funnel-k8s-operator" {
+				return errors.New("operator CA ConfigMap has foreign ownership")
+			}
+			cm.Data = map[string]string{"ca.crt": string(ca)}
+			e = direct.Update(ctx, &cm)
+		}
+		if e != nil {
+			return e
+		}
+	}
+	issuer := &workload.Issuer{Kube: direct, Tokens: tokens, Namespaces: allowed}
+	if e = manager.Add(managerpkg.RunnableFunc(func(ctx context.Context) error {
+		srv := &http.Server{Addr: ":9444", Handler: issuer.Handler(), ReadHeaderTimeout: 5 * time.Second, TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13}}
+		go func() {
+			<-ctx.Done()
+			stop, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = srv.Shutdown(stop)
+		}()
+		e := srv.ListenAndServeTLS("", "")
+		if errors.Is(e, http.ErrServerClosed) {
+			return nil
+		}
+		return e
+	})); e != nil {
 		return e
 	}
 	for _, kind := range []string{"FunnelControl", "FunnelLoadBalancer", "FunnelGateway"} {

@@ -1,9 +1,10 @@
 package provision
 
 import (
-	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"strings"
 	"testing"
+
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 )
 
 func TestDatabaseInstructions(t *testing.T) {
@@ -38,5 +39,12 @@ func TestDatabaseInstructions(t *testing.T) {
 		if _, e := Resolve(d, "", "v3.1.0"); e == nil {
 			t.Fatal("invalid database settings accepted")
 		}
+	}
+}
+
+func TestHostControlInstructionsFailClosed(t *testing.T) {
+	_, err := Resolve(&v1.DeploymentRequest{Mode: "control", Target: "native", ResourceName: "control", TailscaleConnection: "host"}, "", "v4.0.0")
+	if err == nil || !strings.Contains(err.Error(), "use embedded") {
+		t.Fatal(err)
 	}
 }

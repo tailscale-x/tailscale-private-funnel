@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	kubescheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -22,12 +21,13 @@ import (
 func testScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	core.AddToScheme(s)
+	batch.AddToScheme(s)
 	apps.AddToScheme(s)
 	funnel.AddToScheme(s)
 	return s
 }
 func testControl() *funnel.FunnelControl {
-	return &funnel.FunnelControl{ObjectMeta: metav1.ObjectMeta{Name: "control", Namespace: "installation", UID: "unique-id", Finalizers: []string{Finalizer}}, Spec: funnel.ControlSpec{ComponentSpec: funnel.ComponentSpec{Image: "ghcr.io/tailscale-x/tailscale-private-funnel:dev-test", Installation: "main", Hostname: "control"}, Tailnet: "example.ts.net"}}
+	return &funnel.FunnelControl{ObjectMeta: metav1.ObjectMeta{Name: "control", Namespace: "installation", UID: "unique-id", Finalizers: []string{Finalizer}}, Spec: funnel.ControlSpec{ComponentSpec: funnel.ComponentSpec{Image: "ghcr.io/tailscale-x/tailscale-private-funnel:dev-test", Installation: "main", Hostname: "control", KeyIssuerRef: funnel.KeyIssuerReference{Name: "issuer"}}, UsersRef: core.LocalObjectReference{Name: "users"}, ServicesRef: core.LocalObjectReference{Name: "services"}, Tailnet: "example.ts.net"}}
 }
 func TestRenderComponentContracts(t *testing.T) {
 	c := testControl()
@@ -55,6 +55,15 @@ func TestRenderComponentContracts(t *testing.T) {
 				}
 				containers, _, _ := unstructured.NestedSlice(u.Object, "spec", "template", "spec", "containers")
 				for _, raw := range containers {
+					env, _, _ := unstructured.NestedSlice(raw.(map[string]any), "env")
+					seen := map[string]bool{}
+					for _, item := range env {
+						name := item.(map[string]any)["name"].(string)
+						if seen[name] {
+							t.Fatalf("duplicate workload environment variable %s", name)
+						}
+						seen[name] = true
+					}
 					args := raw.(map[string]any)["args"].([]any)
 					if len(args) < 4 || args[0] != "k8s" || args[1] != "runtime" {
 						t.Fatal("old runtime", args)
@@ -104,6 +113,7 @@ func TestReservedSecretPreservesRuntimeData(t *testing.T) {
 }
 func TestMissingIdentityFailsClosed(t *testing.T) {
 	o := testControl()
+	o.Spec.KeyIssuerRef = funnel.KeyIssuerReference{Name: "issuer"}
 	o.Status.Initialized = true
 	s := testScheme()
 	c := fake.NewClientBuilder().WithScheme(s).WithStatusSubresource(o).WithObjects(o).Build()
@@ -113,11 +123,11 @@ func TestMissingIdentityFailsClosed(t *testing.T) {
 	}
 	var got funnel.FunnelControl
 	c.Get(t.Context(), client.ObjectKeyFromObject(o), &got)
-	if len(got.Status.Conditions) == 0 || got.Status.Conditions[0].Reason != "IdentityMissing" {
+	if len(got.Status.Conditions) == 0 || got.Status.Conditions[0].Reason != "EncryptionMaterialMissing" {
 		t.Fatal(got.Status)
 	}
 	var secret core.Secret
-	if e := c.Get(t.Context(), types.NamespacedName{Namespace: o.Namespace, Name: identityName(o)}, &secret); e == nil {
+	if e := c.Get(t.Context(), types.NamespacedName{Namespace: o.Namespace, Name: materialName(o)}, &secret); e == nil {
 		t.Fatal("identity recreated")
 	}
 }
@@ -130,60 +140,37 @@ func TestUnmanagedNamespaceDoesNothing(t *testing.T) {
 	}
 }
 
-func TestCleanupRetainsMissingInitializedIdentity(t *testing.T) {
-	o := testControl()
-	o.Status.Initialized = true
-	now := metav1.Now()
-	o.DeletionTimestamp = &now
-	s := testScheme()
-	c := fake.NewClientBuilder().WithScheme(s).WithStatusSubresource(o).WithObjects(o).Build()
-	r := Reconciler{Client: c, Scheme: s, Kind: "FunnelControl", Namespaces: map[string]bool{o.Namespace: true}}
-	if _, e := r.cleanup(t.Context(), o); e != nil {
-		t.Fatal(e)
-	}
-	var got funnel.FunnelControl
-	c.Get(t.Context(), client.ObjectKeyFromObject(o), &got)
-	if len(got.Finalizers) == 0 || got.Status.Conditions[0].Reason != "CleanupBlocked" {
-		t.Fatal("lost finalizer", got.Status)
-	}
-}
-
-func TestFailedGatewayBootstrapHasActionableCondition(t *testing.T) {
-	s := testScheme()
-	if err := kubescheme.AddToScheme(s); err != nil {
-		t.Fatal(err)
-	}
-	base := testControl()
-	o := &funnel.FunnelGateway{ObjectMeta: base.ObjectMeta, Spec: funnel.GatewaySpec{ComponentSpec: base.Spec.ComponentSpec, GatewayClass: "bootstrap-test", IngressClass: "bootstrap-test"}}
-	o.Spec.BootstrapSecretRef = &core.LocalObjectReference{Name: "bootstrap"}
-	o.Generation = 1
-	secret := &core.Secret{ObjectMeta: metav1.ObjectMeta{Name: "bootstrap", Namespace: o.Namespace}}
-	c := fake.NewClientBuilder().WithScheme(s).WithStatusSubresource(o, &batch.Job{}).WithObjects(o, secret).Build()
-	r := Reconciler{Client: c, Scheme: s, Kind: "FunnelGateway", Namespaces: map[string]bool{o.Namespace: true}}
-	key := client.ObjectKeyFromObject(o)
-	if _, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: key}); err != nil {
-		t.Fatal(err)
-	}
-	var jobs batch.JobList
-	if err := c.List(t.Context(), &jobs, client.InNamespace(o.Namespace)); err != nil {
-		t.Fatal(err)
-	}
-	if len(jobs.Items) != 1 {
-		t.Fatalf("jobs=%d", len(jobs.Items))
-	}
-	job := &jobs.Items[0]
-	job.Status.Conditions = []batch.JobCondition{{Type: batch.JobFailed, Status: core.ConditionTrue, Reason: "BackoffLimitExceeded"}}
-	if err := c.Status().Update(t.Context(), job); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := r.Reconcile(t.Context(), ctrl.Request{NamespacedName: key}); err != nil {
-		t.Fatal(err)
-	}
-	var got funnel.FunnelGateway
-	if err := c.Get(t.Context(), key, &got); err != nil {
-		t.Fatal(err)
-	}
-	if len(got.Status.Conditions) != 1 || got.Status.Conditions[0].Reason != "BootstrapFailed" || !strings.Contains(got.Status.Conditions[0].Message, "Inspect its logs") {
-		t.Fatalf("status=%+v", got.Status)
+func TestLogicalIdentitySurvivesResourceAndPodReplacement(t *testing.T) {
+	c := testControl()
+	c.Spec.ComponentID = "logical-gateway"
+	g := &funnel.FunnelGateway{ObjectMeta: c.ObjectMeta, Spec: funnel.GatewaySpec{ComponentSpec: c.Spec.ComponentSpec, RoutingID: "routing-installation", GatewayClass: "test"}}
+	for _, uid := range []types.UID{"first-cr", "replacement-cr"} {
+		g.UID = uid
+		objects, err := Render(g)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, object := range objects {
+			u := object.(*unstructured.Unstructured)
+			if u.GetKind() != "Deployment" {
+				continue
+			}
+			var d apps.Deployment
+			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(u.Object, &d); err != nil {
+				t.Fatal(err)
+			}
+			vars := map[string]string{}
+			for _, e := range d.Spec.Template.Spec.Containers[0].Env {
+				vars[e.Name] = e.Value
+			}
+			if vars["FUNNEL_COMPONENT_ID"] != "logical-gateway" || vars["FUNNEL_ROUTING_ID"] != "routing-installation" {
+				t.Fatal("logical routing changed with infrastructure identity", vars)
+			}
+			found = true
+		}
+		if !found {
+			t.Fatal("no deployment")
+		}
 	}
 }

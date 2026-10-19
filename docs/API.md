@@ -20,7 +20,7 @@ Connect over verified Tailscale identity or broker-scoped tokens.
 Use standard help/completion offline. Kubernetes operations require explicit
 `--context`. Use `--output json`, mutation `--dry-run`, deployment `--wait` and
 `--timeout`, and `--yes` for deletion. Stop preserves native state and identity;
-delete revokes and removes owned state. Runtime commands are hidden infrastructure
+delete withdraws owned state; Tailscale tag/device removal revokes role authority. Runtime commands are hidden infrastructure
 entrypoints and are not a public deployment API.
 
 Public `create` generates an installer; it never installs, invokes SSH, or contacts
@@ -30,13 +30,11 @@ Kubernetes. Other lifecycle operations execute their action. See
 ## Instructions versus execution
 
 `DeploymentService.Instructions` is pure: it resolves settings and returns typed
-commands, prerequisites and diagnostics. It never creates enrollment or keys.
+commands, prerequisites and diagnostics. It never creates keys.
 Both React and CLI use shared Go renderers. The browser does not build command
 strings, upload kubeconfigs, or execute host/cluster commands.
 
-`DeploymentService.Authorize` begins enrollment when an authorized CLI runs
-create. One-use bootstrap enters the target over protected stdin or a dedicated
-Kubernetes Secret. OAuth stays server-side; creating an independent control uses
+`DeploymentService.Authorize` issues an exact-role, one-use key for embedded native installers. Bootstrap enters the target through protected stdin. Host reuse has no join secret; Kubernetes references one shared installation issuer Secret and receives fresh ephemeral keys through the operator TLS endpoint. OAuth stays server-side; creating an independent control uses
 protected OAuth files on the target. UI instruction generation does not start
 bootstrap expiry.
 
@@ -60,8 +58,10 @@ print-command, import/adoption/resume, or compatibility alias remains.
 ## Authorization and ownership
 
 Management uses WhoIs and server-verified Tailscale roles/capabilities. Node
-operations resolve the caller, rather than trusting client node IDs. Signed
-reports bind keys, timestamps, nonces and configuration revisions to enrollment.
+operations bind verified WhoIs roles to logical component instances; selectors
+never supply identity or authority. Report freshness, inventory revisions and
+configuration generations prevent stale writers. No component signatures or
+client signing keys are required.
 DNS mutations pass through control, preserving exact ledger ownership and
 preview-bound overwrite approval. Revoking access does not prove deployment
 resources were removed; deletion is a separate infrastructure action.

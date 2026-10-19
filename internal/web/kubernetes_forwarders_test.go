@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"testing"
 	"time"
@@ -18,20 +17,19 @@ func TestForwarderBindingAndReportAggregation(t *testing.T) {
 	if e := s.UpsertNode("parent", "k8s-gateway", "controller"); e != nil {
 		t.Fatal(e)
 	}
-	pub, priv, _ := report.GenerateKey()
-	public := base64.RawStdEncoding.EncodeToString(pub)
-	a, e := s.ReserveForwarder("parent", "node-a", "a", public)
+
+	a, e := reserveTestForwarder(s, "parent", "node-a", "a")
 	if e != nil {
 		t.Fatal(e)
 	}
-	b, e := s.ReserveForwarder("parent", "node-b", "b", public)
+	b, e := reserveTestForwarder(s, "parent", "node-b", "b")
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = s.BindNodeIdentity(a.ID, public, "tail-a", nil); e != nil {
+	if e = bindTestNode(s, a.ID, "tail-a", nil); e != nil {
 		t.Fatal(e)
 	}
-	if e = s.BindNodeIdentity(b.ID, public, "tail-b", nil); e != nil {
+	if e = bindTestNode(s, b.ID, "tail-b", nil); e != nil {
 		t.Fatal(e)
 	}
 	a, _ = s.Node(a.ID)
@@ -45,12 +43,12 @@ func TestForwarderBindingAndReportAggregation(t *testing.T) {
 	}
 	send := func(id string, exposures []dns.GatewayExposure) {
 		t.Helper()
-		env, e := report.NewEnvelope(id, map[string]any{"exposures": exposures, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, priv, time.Now())
+		env, e := report.NewSnapshot("report", id, map[string]any{"exposures": exposures, "expires_at": time.Now().Add(time.Minute).Unix()}, time.Now())
 		if e != nil {
 			t.Fatal(e)
 		}
 		raw, _ := json.Marshal(env)
-		if e = s.AcceptReport(id, env.Nonce, raw, env.PublicKey); e != nil {
+		if e = s.AcceptReport(id, env.Nonce, raw); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -77,22 +75,16 @@ func TestForwarderReservationRejectsRebinding(t *testing.T) {
 	_, s := testControl(t)
 	_ = s.UpsertNode("p", "k8s-gateway", "p")
 	_ = s.UpsertNode("wrong", "docker-gateway", "w")
-	n, e := s.ReserveForwarder("p", "uid", "node", "key")
+	n, e := reserveTestForwarder(s, "p", "uid", "node")
 	if e != nil {
 		t.Fatal(e)
 	}
-	again, e := s.ReserveForwarder("p", "uid", "node", "key")
+	again, e := reserveTestForwarder(s, "p", "uid", "node")
 	if e != nil || again.ID != n.ID {
 		t.Fatal("reservation not idempotent", e)
 	}
-	if _, e = s.ReserveForwarder("p", "uid", "node", "other-key"); e == nil {
-		t.Fatal("signing key rebound")
-	}
-	if _, e = s.ReserveForwarder("wrong", "uid", "node", "key"); e == nil {
-		t.Fatal("Docker gateway delegated enrollment")
-	}
 	_ = s.RevokeNode(n.ID)
-	if _, e = s.ReserveForwarder("p", "uid", "node", "key"); e == nil {
+	if _, e = reserveTestForwarder(s, "p", "uid", "node"); e == nil {
 		t.Fatal("revoked child reenrolled")
 	}
 }
@@ -102,12 +94,11 @@ func TestAuthorizedReportsUseLogicalInstallationAndHealthySiblings(t *testing.T)
 	installDNSFixture(t, s, "example.com")
 	_ = s.UpsertNode("parent", "k8s-gateway", "controller")
 	_ = s.UpsertNode("other", "k8s-gateway", "other")
-	pub, priv, _ := report.GenerateKey()
-	public := base64.RawStdEncoding.EncodeToString(pub)
-	a, _ := s.ReserveForwarder("parent", "node-a", "a", public)
-	b, _ := s.ReserveForwarder("parent", "node-b", "b", public)
+
+	a, _ := reserveTestForwarder(s, "parent", "node-a", "a")
+	b, _ := reserveTestForwarder(s, "parent", "node-b", "b")
 	for _, n := range []store.NodeRecord{a, b} {
-		if err := s.BindNodeIdentity(n.ID, public, "tail-"+n.ID, nil); err != nil {
+		if err := bindTestNode(s, n.ID, "tail-"+n.ID, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -117,9 +108,9 @@ func TestAuthorizedReportsUseLogicalInstallationAndHealthySiblings(t *testing.T)
 	}
 	send := func(id string, es []dns.GatewayExposure) {
 		t.Helper()
-		env, _ := report.NewEnvelope(id, map[string]any{"exposures": es, "expires_at": time.Now().Add(time.Minute).Unix()}, pub, priv, time.Now())
+		env, _ := report.NewSnapshot("report", id, map[string]any{"exposures": es, "expires_at": time.Now().Add(time.Minute).Unix()}, time.Now())
 		raw, _ := json.Marshal(env)
-		if err := s.AcceptReport(id, env.Nonce, raw, public); err != nil {
+		if err := s.AcceptReport(id, env.Nonce, raw); err != nil {
 			t.Fatal(err)
 		}
 	}

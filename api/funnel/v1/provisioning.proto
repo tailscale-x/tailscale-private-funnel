@@ -2,17 +2,16 @@ syntax = "proto3";
 package funnel.v1;
 
 import "buf/validate/validate.proto";
-import "funnel/v1/management.proto";
 import "funnel/v1/options.proto";
 
 option go_package = "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1;funnelv1";
 // DeploymentService authorizes deployments. Execution is performed by a generated installer on the target.
 service DeploymentService {
-  // Resolve deployment choices without creating enrollment or bootstrap keys.
+  // Resolve deployment choices without creating bootstrap keys.
   rpc Instructions(DeploymentRequest) returns (DeploymentInstructions) {
     option (permission) = PERMISSION_ADMIN;
   }
-  // Create one-use enrollment and return credentials once, without server-side execution.
+  // Mint one-use Tailscale bootstrap credentials, without server-side execution.
   rpc Authorize(DeploymentRequest) returns (DeploymentInstructions) {
     option (permission) = PERMISSION_ADMIN;
     option (sensitive) = true;
@@ -68,13 +67,20 @@ message DeploymentRequest {
   bytes placement_json = 33;
   bytes forwarder_placement_json = 34;
   DatabaseConfiguration database = 35;
+  string tailscale_connection = 36;
+  string tailscale_socket = 37;
+  string key_issuer_secret = 38;
+  string services_secret = 39;
+  string services_client_id_file = 40;
+  string services_client_secret_file = 41;
+  string users_secret = 42;
+  string users_client_id_file = 43;
+  string users_client_secret_file = 44;
 }
 // Bootstrap credentials must not be persisted in plans, logs or receipts.
 message BootstrapCredentials {
-  string enrollment_id = 1;
-  string enrollment_code = 2;
   string auth_key = 3;
-  string control_key = 4;
+
   int64 expires_at = 5;
 }
 message DeploymentInstructions {
@@ -90,7 +96,7 @@ message DeploymentInstructions {
   BootstrapCredentials credentials = 10;
   string script = 11;
   string example = 12;
-  Enrollment enrollment = 13;
+
   map<string, string> commands = 14;
   // Preview-only bundles are rejected by hidden installers.
   bool dry_run = 15;
@@ -103,12 +109,12 @@ message DeploymentStep {
 
 // Control database settings contain file paths or Secret references, never credentials.
 message DatabaseConfiguration {
- string type = 1;
- string url_file = 2;
- string ca_file = 3;
- string tls_mode = 4;
- string connection_secret = 5;
- string connection_secret_key = 6;
- string ca_secret = 7;
- string ca_secret_key = 8;
+  string type = 1;
+  string url_file = 2;
+  string ca_file = 3;
+  string tls_mode = 4;
+  string connection_secret = 5;
+  string connection_secret_key = 6;
+  string ca_secret = 7;
+  string ca_secret_key = 8;
 }

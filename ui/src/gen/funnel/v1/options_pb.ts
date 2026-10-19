@@ -11,7 +11,7 @@ import { file_google_protobuf_descriptor } from "@bufbuild/protobuf/wkt";
  * Describes the file funnel/v1/options.proto.
  */
 export const file_funnel_v1_options: GenFile = /*@__PURE__*/
-  fileDesc("ChdmdW5uZWwvdjEvb3B0aW9ucy5wcm90bxIJZnVubmVsLnYxKrUBCgpQZXJtaXNzaW9uEhoKFlBFUk1JU1NJT05fVU5TUEVDSUZJRUQQABIVChFQRVJNSVNTSU9OX1ZJRVdFUhABEhcKE1BFUk1JU1NJT05fT1BFUkFUT1IQAhIUChBQRVJNSVNTSU9OX0FETUlOEAMSEwoPUEVSTUlTU0lPTl9OT0RFEAQSGQoVUEVSTUlTU0lPTl9FTlJPTExNRU5UEAUSFQoRUEVSTUlTU0lPTl9CUk9LRVIQBjpXCgpwZXJtaXNzaW9uEh4uZ29vZ2xlLnByb3RvYnVmLk1ldGhvZE9wdGlvbnMY0YYDIAEoDjIVLmZ1bm5lbC52MS5QZXJtaXNzaW9uUgpwZXJtaXNzaW9uOjIKA2NsaRIeLmdvb2dsZS5wcm90b2J1Zi5NZXRob2RPcHRpb25zGNKGAyABKAlSA2NsaTo+CglzZW5zaXRpdmUSHi5nb29nbGUucHJvdG9idWYuTWV0aG9kT3B0aW9ucxjThgMgASgIUglzZW5zaXRpdmU6QwoMcGF5bG9hZF90eXBlEh4uZ29vZ2xlLnByb3RvYnVmLk1ldGhvZE9wdGlvbnMY1IYDIAEoCVILcGF5bG9hZFR5cGU6NgoFYXVkaXQSHi5nb29nbGUucHJvdG9idWYuTWV0aG9kT3B0aW9ucxjVhgMgASgIUgVhdWRpdDo3CgZzZWNyZXQSHS5nb29nbGUucHJvdG9idWYuRmllbGRPcHRpb25zGNuGAyABKAhSBnNlY3JldEJRWk9naXRodWIuY29tL3RhaWxzY2FsZS14L3RhaWxzY2FsZS1wcml2YXRlLWZ1bm5lbC9pbnRlcm5hbC9nZW4vZnVubmVsL3YxO2Z1bm5lbHYxYgZwcm90bzM", [file_google_protobuf_descriptor]);
+  fileDesc("ChdmdW5uZWwvdjEvb3B0aW9ucy5wcm90bxIJZnVubmVsLnYxKpoBCgpQZXJtaXNzaW9uEhoKFlBFUk1JU1NJT05fVU5TUEVDSUZJRUQQABIVChFQRVJNSVNTSU9OX1ZJRVdFUhABEhcKE1BFUk1JU1NJT05fT1BFUkFUT1IQAhIUChBQRVJNSVNTSU9OX0FETUlOEAMSEwoPUEVSTUlTU0lPTl9OT0RFEAQSFQoRUEVSTUlTU0lPTl9CUk9LRVIQBjpXCgpwZXJtaXNzaW9uEh4uZ29vZ2xlLnByb3RvYnVmLk1ldGhvZE9wdGlvbnMY0YYDIAEoDjIVLmZ1bm5lbC52MS5QZXJtaXNzaW9uUgpwZXJtaXNzaW9uOjIKA2NsaRIeLmdvb2dsZS5wcm90b2J1Zi5NZXRob2RPcHRpb25zGNKGAyABKAlSA2NsaTo+CglzZW5zaXRpdmUSHi5nb29nbGUucHJvdG9idWYuTWV0aG9kT3B0aW9ucxjThgMgASgIUglzZW5zaXRpdmU6QwoMcGF5bG9hZF90eXBlEh4uZ29vZ2xlLnByb3RvYnVmLk1ldGhvZE9wdGlvbnMY1IYDIAEoCVILcGF5bG9hZFR5cGU6NgoFYXVkaXQSHi5nb29nbGUucHJvdG9idWYuTWV0aG9kT3B0aW9ucxjVhgMgASgIUgVhdWRpdDo3CgZzZWNyZXQSHS5nb29nbGUucHJvdG9idWYuRmllbGRPcHRpb25zGNuGAyABKAhSBnNlY3JldEJRWk9naXRodWIuY29tL3RhaWxzY2FsZS14L3RhaWxzY2FsZS1wcml2YXRlLWZ1bm5lbC9pbnRlcm5hbC9nZW4vZnVubmVsL3YxO2Z1bm5lbHYxYgZwcm90bzM", [file_google_protobuf_descriptor]);
 
 /**
  * Permission is checked against verified transport identity, never client metadata.
@@ -43,11 +43,6 @@ export enum Permission {
    * @generated from enum value: PERMISSION_NODE = 4;
    */
   NODE = 4,
-
-  /**
-   * @generated from enum value: PERMISSION_ENROLLMENT = 5;
-   */
-  ENROLLMENT = 5,
 
   /**
    * @generated from enum value: PERMISSION_BROKER = 6;
@@ -82,7 +77,7 @@ export const sensitive: GenExtension<MethodOptions, boolean> = /*@__PURE__*/
   extDesc(file_funnel_v1_options, 2);
 
 /**
- * Fully qualified protobuf model carried in signed payload bytes.
+ * Fully qualified protobuf model carried by this method.
  *
  * @generated from extension: string payload_type = 50004;
  */

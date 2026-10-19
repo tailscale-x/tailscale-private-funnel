@@ -1,12 +1,13 @@
 package web
 
 import (
-	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tailscale"
 )
 
 func TestInstallationCleanupOwnershipAndActiveNodeGuard(t *testing.T) {
@@ -17,8 +18,8 @@ func TestInstallationCleanupOwnershipAndActiveNodeGuard(t *testing.T) {
 	}
 	s.RevokeNode("active")
 	s.SetJSON("tailnet", map[string]string{"name": "test"})
-	s.SetSecret("tailscale_oauth_client_id", "test")
-	s.SetSecret("tailscale_oauth_client_secret", "test")
+	s.SetSecret("tailscale_services_client_id", "test")
+	s.SetSecret("tailscale_services_client_secret", "test")
 	s.UpsertApplication(store.ApplicationRecord{ID: "app", ServiceName: "svc:tailscale-private-funnel-app-app", ServicePort: 8080, BackendPort: 8080})
 	deleted := false
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

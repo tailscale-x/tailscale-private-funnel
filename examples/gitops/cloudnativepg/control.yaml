@@ -1,5 +1,5 @@
 # Apply after the Funnel and CloudNativePG operators and the OAuth Secret exist.
-# v3.2.1 includes PostgreSQL support; pin its image digest for production GitOps.
+# Development role-native contract; replace the pinned development image with your verified artifact.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -31,12 +31,16 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
-  image: ghcr.io/tailscale-x/tailscale-private-funnel:v3.2.1
+  image: ghcr.io/tailscale-x/tailscale-private-funnel:dev-role-native
   installation: main
   hostname: funnel-control
   tailnet: REPLACE_WITH_TAILNET
-  bootstrapSecretRef:
-    name: funnel-control-oauth
+  keyIssuerRef:
+    name: installation-issuer
+  servicesRef:
+    name: service-manager
+  usersRef:
+    name: human-role-reader
   database:
     type: postgres
     postgres:

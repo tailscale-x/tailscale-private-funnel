@@ -21,7 +21,16 @@ func providerMessage(p store.ProviderRecord) *v1.Provider {
 }
 func (c *Control) nodeMessage(n store.NodeRecord) *v1.Node {
 	d, _ := c.nodeDeployment(n.ID)
-	out := &v1.Node{Id: n.ID, Name: n.Name, Mode: n.Mode, Hostname: n.Hostname, TailnetId: n.TailnetID, Revoked: n.Revoked, LastReport: n.LastReport, ParentId: n.ParentID}
+	out := &v1.Node{Id: n.ID, Name: n.Name, Mode: n.Mode, Hostname: n.Hostname, TailnetId: n.TailnetID, Disabled: n.Revoked, LastReport: n.LastReport, ParentId: n.ParentID}
+	if reg, e := c.Store.ComponentRegistration(n.ID); e == nil {
+		out.Installation = reg.Installation
+		out.TailscaleConnection = reg.Connection
+	}
+	if instance, e := c.Store.CurrentInstance(n.ID); e == nil {
+		out.InstanceId = instance.InstanceID
+		out.Generation = instance.Generation
+		out.LeaseUntil = instance.LeaseUntil
+	}
 	if d.ResourceName != "" {
 		out.Deployment = &v1.DeploymentMetadata{Target: d.DeploymentTarget, ResourceName: d.ResourceName, Namespace: d.KubernetesNamespace, Version: d.Version, StateDir: d.StateDir, DataDir: d.DataDir, ContextHint: d.ContextHint}
 	}
@@ -250,17 +259,7 @@ func (s *managementRPC) RenameNode(ctx context.Context, r *connect.Request[v1.Re
 	}
 	return connect.NewResponse(&v1.Empty{}), rpcFailure(connect.CodeInternal, s.c.Store.RenameResource("node", r.Msg.Id, name))
 }
-func (s *managementRPC) ListEnrollments(ctx context.Context, r *connect.Request[v1.ListNodesRequest]) (*connect.Response[v1.Enrollments], error) {
-	items, e := s.c.Store.Enrollments(r.Msg.Mode)
-	if e != nil {
-		return nil, rpcFailure(connect.CodeInternal, e)
-	}
-	out := &v1.Enrollments{}
-	for _, n := range items {
-		out.Items = append(out.Items, &v1.Enrollment{Id: n.ID, Name: n.Name, Mode: n.Mode, Hostname: n.Hostname, Revoked: n.Revoked, CreatedAt: n.CreatedAt})
-	}
-	return connect.NewResponse(out), nil
-}
+
 func (s *managementRPC) GetPolicy(ctx context.Context, _ *connect.Request[v1.Empty]) (*connect.Response[v1.Policy], error) {
 	d := s.c.loadExposurePolicy()
 	out := &v1.Policy{Revision: d.Revision}
@@ -308,9 +307,9 @@ func (s *managementRPC) GetSettings(ctx context.Context, _ *connect.Request[v1.E
 	if e := s.c.Store.GetJSON("tailnet", &settings); e != nil {
 		return nil, rpcFailure(connect.CodeFailedPrecondition, e)
 	}
-	_, idErr := s.c.Store.GetSecret("tailscale_oauth_client_id")
-	_, secretErr := s.c.Store.GetSecret("tailscale_oauth_client_secret")
-	return connect.NewResponse(&v1.Settings{Tailnet: stringValue(settings, "name", ""), ManagementUrl: stringValue(settings, "management_url", ""), ReleaseVersion: stringValue(settings, "release_version", ""), OauthConfigured: idErr == nil && secretErr == nil}), nil
+	_, idErr := s.c.Store.GetSecret("tailscale_services_client_id")
+	_, secretErr := s.c.Store.GetSecret("tailscale_services_client_secret")
+	return connect.NewResponse(&v1.Settings{Installation: s.c.installation(), Tailnet: stringValue(settings, "name", ""), ManagementUrl: stringValue(settings, "management_url", ""), ReleaseVersion: stringValue(settings, "release_version", ""), OauthConfigured: idErr == nil && secretErr == nil}), nil
 }
 func (s *managementRPC) ListApplications(ctx context.Context, _ *connect.Request[v1.Empty]) (*connect.Response[v1.Applications], error) {
 	items, e := s.c.Store.Applications()

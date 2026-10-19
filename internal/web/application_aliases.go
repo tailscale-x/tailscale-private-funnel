@@ -13,7 +13,7 @@ import (
 )
 
 // An alias shares a Docker application's Service, backend and freshness lease.
-// It is derived from a validated signed backend report, never a second backend.
+// It is derived from a validated authenticated backend report, never a second backend.
 func (c *Control) expandDockerAliases(exposures []dns.GatewayExposure, apps []store.ApplicationRecord, node store.NodeRecord, roles []string) []dns.GatewayExposure {
 	return c.expandDockerAliasesForPolicy(exposures, apps, node, roles, c.loadExposurePolicy())
 }

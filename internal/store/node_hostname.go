@@ -28,9 +28,6 @@ func (s *Store) RefreshNodeHostname(id, tailnetID, hostname string) error {
 	if count != 1 {
 		return fmt.Errorf("unknown or revoked device identity")
 	}
-	_, err = tx.Exec(`UPDATE enrollments SET name=CASE WHEN mode='docker-gateway' OR name=hostname THEN ? ELSE name END,hostname=? WHERE id=(SELECT enrollment_id FROM nodes WHERE id=?)`, hostname, hostname, id)
-	if err != nil {
-		return err
-	}
+
 	return tx.Commit()
 }

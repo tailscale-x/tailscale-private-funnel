@@ -2,11 +2,9 @@
 
 Generated from protobuf/Cobra metadata. Do not edit.
 
-Use `native` for this Linux machine, `k8s` with an explicit `--context` for operator-backed deployment, and `manage` for the Tailscale-authorized installation API. Public `native ... create` and `k8s ... create` generate installers; they never install locally, connect by SSH or contact Kubernetes. Non-control component generation needs authorized control connectivity. Use `--output script` and transfer its secret output to the execution machine; bootstrap expires after 15 minutes. The target uses embedded tsnet and needs no host Tailscale.
+Use `native` for this Linux machine, `k8s` with an explicit `--context` for operator-backed deployment, and `manage` for the Tailscale-authorized installation API. Public `native ... create` and `k8s ... create` generate installers; they never install locally, connect by SSH or contact Kubernetes. Embedded native key issuance needs authorized control connectivity; host reuse has no join secret and Kubernetes references protected issuer Secrets. Use `--output script` and transfer its secret output to the execution machine; bootstrap expires after 15 minutes. The target uses embedded tsnet and needs no host Tailscale.
 
-Use `--output json`, mutation `--dry-run`, target-side deployment `--wait` and `--timeout`, and `--yes` for destructive deletion. UI instruction generation is read-only; CLI create issues enrollment credentials, while hidden installers execute deployment. Stop preserves identity and data; delete revokes and removes owned state.
-
-Control transfer: `tailscale-private-funnel transfer-remote NAME native|k8s --source native|k8s --out FILE --yes` stops/fences the source, saves a private installer, then removes owned source state without revocation. Execute the saved installer on the destination. See docs/CONTROL_TRANSFER.md.
+Use `--output json`, mutation `--dry-run`, target-side deployment `--wait` and `--timeout`, and `--yes` for destructive deletion. UI instruction generation is read-only; embedded native CLI create issues temporary role-tagged join keys, while hidden installers execute deployment. Native stop preserves identity/data. Delete removes owned application state; remove role tags in Tailscale to revoke authority.
 
 Management uses `--control-url` or XDG client.json. Secret inputs are file/stdin only. Exit codes: 0 success, 1 failure, 2 invalid input, 3 authorization, 4 transport unavailable, 5 conflict, 6 timeout.
 
@@ -160,17 +158,6 @@ Required permission: `PERMISSION_ADMIN`. Request: `funnel.v1.RenameRequest`.
 | `id` | string |  |
 | `name` | string |  |
 
-## manage enrollments rename
-
-
-
-Required permission: `PERMISSION_ADMIN`. Request: `funnel.v1.RenameRequest`.
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | string |  |
-| `name` | string |  |
-
 ## manage applications rename
 
 
@@ -181,16 +168,6 @@ Required permission: `PERMISSION_ADMIN`. Request: `funnel.v1.RenameRequest`.
 |---|---|---|
 | `id` | string |  |
 | `name` | string |  |
-
-## manage enrollments list
-
-
-
-Required permission: `PERMISSION_VIEWER`. Request: `funnel.v1.ListNodesRequest`.
-
-| Field | Type | Notes |
-|---|---|---|
-| `mode` | string |  |
 
 ## manage policies get
 
@@ -230,6 +207,16 @@ Required permission: `PERMISSION_VIEWER`. Request: `funnel.v1.PolicyTestRequest`
 Required permission: `PERMISSION_VIEWER`. Request: `funnel.v1.Empty`.
 
 No input fields.
+
+## manage settings role-policy
+
+
+
+Required permission: `PERMISSION_VIEWER`. Request: `funnel.v1.RolePolicyRequest`.
+
+| Field | Type | Notes |
+|---|---|---|
+| `controlPort` | uint32 |  |
 
 ## manage settings get
 
@@ -341,7 +328,7 @@ Required permission: `PERMISSION_ADMIN`. Request: `funnel.v1.AccessSettings`.
 
 
 
-Required permission: `PERMISSION_ADMIN`. Request: `funnel.v1.EnrollmentDefaults`.
+Required permission: `PERMISSION_ADMIN`. Request: `funnel.v1.DeploymentDefaults`.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -356,6 +343,7 @@ Required permission: `PERMISSION_ADMIN`. Request: `funnel.v1.OAuthRequest`.
 
 | Field | Type | Notes |
 |---|---|---|
+| `purpose` | string |  |
 | `clientId` | string | Secret; file/stdin only.  |
 | `clientSecret` | string | Secret; file/stdin only.  |
 
@@ -367,6 +355,7 @@ Required permission: `PERMISSION_ADMIN`. Request: `funnel.v1.OAuthRequest`.
 
 | Field | Type | Notes |
 |---|---|---|
+| `purpose` | string |  |
 | `clientId` | string | Secret; file/stdin only.  |
 | `clientSecret` | string | Secret; file/stdin only.  |
 
@@ -378,7 +367,7 @@ Required permission: `PERMISSION_VIEWER`. Request: `funnel.v1.Empty`.
 
 No input fields.
 
-## manage nodes revoke
+## manage nodes disable
 
 
 
@@ -389,16 +378,6 @@ Required permission: `PERMISSION_ADMIN`. Request: `funnel.v1.ResourceID`.
 | `id` | string |  |
 
 ## manage nodes cleanup
-
-
-
-Required permission: `PERMISSION_ADMIN`. Request: `funnel.v1.ResourceID`.
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | string |  |
-
-## manage enrollments revoke
 
 
 
@@ -513,32 +492,33 @@ Usage:
   tailscale-private-funnel k8s controls create NAME [flags]
 
 Flags:
-      --administrator stringArray         additional first-bootstrap administrator selector; default autogroup:owner remains
-      --context string                    explicit Kubernetes context (required)
-      --control-url string                Funnel control URL
-      --database string                   control database: sqlite or postgres (default "sqlite")
-      --database-ca-secret string         existing PostgreSQL CA Secret
-      --database-ca-secret-key string     CA Secret key (default "ca.crt")
-      --database-secret string            existing PostgreSQL connection Secret
-      --database-secret-key string        connection Secret key (default "uri")
-      --database-tls-mode string          PostgreSQL TLS mode (default verify-full)
-      --display-name string               editable display label
-      --dry-run                           validate and render without mutation
-  -h, --help                              help for create
-      --hostname string                   Tailscale hostname; defaults to resource name
-      --installation string               installation trust boundary (default "main")
-      --namespace string                  installation namespace (default "tailscale-private-funnel-main-system")
-      --node-selector stringToString      component placement (gateway: forwarders); key=value pairs (default [])
-      --oauth-client-id-file string       protected OAuth client ID file
-      --oauth-client-secret-file string   protected OAuth client secret file
-      --output string                     output: instructions, script, or json (installer generation) (default "instructions")
-      --placement-file string             component Pod placement JSON (nodeSelector, affinity, tolerations)
-      --storage-class string              PVC StorageClass; omit only when the cluster has a default
-      --storage-size string               persistent volume size (default "1Gi")
-      --tailnet string                    Tailscale tailnet name
-      --timeout duration                  target execution timeout; generation does not wait for deployment (default 10m0s)
-      --version string                    pinned component version (default "VERSION")
-      --wait                              wait for readiness during target-side execution
+      --administrator stringArray       additional first-bootstrap administrator selector; default autogroup:owner remains
+      --context string                  explicit Kubernetes context (required)
+      --control-url string              Funnel control URL
+      --database string                 control database: sqlite or postgres (default "sqlite")
+      --database-ca-secret string       existing PostgreSQL CA Secret
+      --database-ca-secret-key string   CA Secret key (default "ca.crt")
+      --database-secret string          existing PostgreSQL connection Secret
+      --database-secret-key string      connection Secret key (default "uri")
+      --database-tls-mode string        PostgreSQL TLS mode (default verify-full)
+      --display-name string             editable display label
+      --dry-run                         validate and render without mutation
+  -h, --help                            help for create
+      --hostname string                 Tailscale hostname; defaults to resource name
+      --installation string             immutable installation trust boundary (default "main")
+      --key-issuer-secret string        existing installation auth_keys OAuth Secret (client_id/client_secret)
+      --namespace string                installation namespace (default "tailscale-private-funnel-main-system")
+      --node-selector stringToString    component placement (gateway: forwarders); key=value pairs (default [])
+      --output string                   output: instructions, script, or json (installer generation) (default "instructions")
+      --placement-file string           component Pod placement JSON (nodeSelector, affinity, tolerations)
+      --services-secret string          existing separate services OAuth Secret (client_id/client_secret)
+      --storage-class string            PVC StorageClass; omit only when the cluster has a default
+      --storage-size string             persistent volume size (default "1Gi")
+      --tailnet string                  Tailscale tailnet name
+      --timeout duration                target execution timeout; generation does not wait for deployment (default 10m0s)
+      --users-secret string             existing separate users:read OAuth Secret
+      --version string                  pinned component version (default "VERSION")
+      --wait                            wait for readiness during target-side execution
 ```
 
 ## tailscale-private-funnel k8s controls delete
@@ -643,7 +623,8 @@ Flags:
   -h, --help                              help for create
       --hostname string                   Tailscale hostname; defaults to resource name
       --ingress-class string              IngressClass name
-      --installation string               installation trust boundary (default "main")
+      --installation string               immutable installation trust boundary (default "main")
+      --key-issuer-secret string          existing installation auth_keys OAuth Secret (client_id/client_secret)
       --namespace string                  installation namespace (default "tailscale-private-funnel-main-system")
       --node-selector stringToString      component placement (gateway: forwarders); key=value pairs (default [])
       --output string                     output: instructions, script, or json (installer generation) (default "instructions")
@@ -754,7 +735,8 @@ Flags:
       --dry-run                        validate and render without mutation
   -h, --help                           help for create
       --hostname string                Tailscale hostname; defaults to resource name
-      --installation string            installation trust boundary (default "main")
+      --installation string            immutable installation trust boundary (default "main")
+      --key-issuer-secret string       existing installation auth_keys OAuth Secret (client_id/client_secret)
       --namespace string               installation namespace (default "tailscale-private-funnel-main-system")
       --node-selector stringToString   component placement (gateway: forwarders); key=value pairs (default [])
       --output string                  output: instructions, script, or json (installer generation) (default "instructions")
@@ -1084,62 +1066,6 @@ Global Flags:
       --timeout duration     RPC timeout (default 30s)
 ```
 
-## tailscale-private-funnel manage enrollments list
-
-```text
-Usage:
-  tailscale-private-funnel manage enrollments list [flags]
-
-Flags:
-      --dry-run       validate input without sending a mutation
-      --file string   protobuf JSON input file; - reads stdin
-  -h, --help          help for list
-      --mode string   mode
-
-Global Flags:
-      --control-url string   tailnet control URL (or XDG client.json)
-      --output string        output: table or json (default "table")
-      --timeout duration     RPC timeout (default 30s)
-```
-
-## tailscale-private-funnel manage enrollments rename
-
-```text
-Usage:
-  tailscale-private-funnel manage enrollments rename [flags]
-
-Flags:
-      --dry-run       validate input without sending a mutation
-      --file string   protobuf JSON input file; - reads stdin
-  -h, --help          help for rename
-      --id string     id
-      --name string   name
-
-Global Flags:
-      --control-url string   tailnet control URL (or XDG client.json)
-      --output string        output: table or json (default "table")
-      --timeout duration     RPC timeout (default 30s)
-```
-
-## tailscale-private-funnel manage enrollments revoke
-
-```text
-Usage:
-  tailscale-private-funnel manage enrollments revoke [flags]
-
-Flags:
-      --dry-run       validate input without sending a mutation
-      --file string   protobuf JSON input file; - reads stdin
-  -h, --help          help for revoke
-      --id string     id
-      --yes           explicitly confirm this mutation
-
-Global Flags:
-      --control-url string   tailnet control URL (or XDG client.json)
-      --output string        output: table or json (default "table")
-      --timeout duration     RPC timeout (default 30s)
-```
-
 ## tailscale-private-funnel manage exposures aliases add
 
 ```text
@@ -1258,6 +1184,24 @@ Global Flags:
       --timeout duration     RPC timeout (default 30s)
 ```
 
+## tailscale-private-funnel manage nodes disable
+
+```text
+Usage:
+  tailscale-private-funnel manage nodes disable [flags]
+
+Flags:
+      --dry-run       validate input without sending a mutation
+      --file string   protobuf JSON input file; - reads stdin
+  -h, --help          help for disable
+      --id string     id
+
+Global Flags:
+      --control-url string   tailnet control URL (or XDG client.json)
+      --output string        output: table or json (default "table")
+      --timeout duration     RPC timeout (default 30s)
+```
+
 ## tailscale-private-funnel manage nodes get
 
 ```text
@@ -1344,25 +1288,6 @@ Flags:
   -h, --help          help for rename
       --id string     id
       --name string   name
-
-Global Flags:
-      --control-url string   tailnet control URL (or XDG client.json)
-      --output string        output: table or json (default "table")
-      --timeout duration     RPC timeout (default 30s)
-```
-
-## tailscale-private-funnel manage nodes revoke
-
-```text
-Usage:
-  tailscale-private-funnel manage nodes revoke [flags]
-
-Flags:
-      --dry-run       validate input without sending a mutation
-      --file string   protobuf JSON input file; - reads stdin
-  -h, --help          help for revoke
-      --id string     id
-      --yes           explicitly confirm this mutation
 
 Global Flags:
       --control-url string   tailnet control URL (or XDG client.json)
@@ -1688,9 +1613,10 @@ Usage:
   tailscale-private-funnel manage settings oauth save [flags]
 
 Flags:
-      --dry-run       validate input without sending a mutation
-      --file string   protobuf JSON input file; - reads stdin
-  -h, --help          help for save
+      --dry-run          validate input without sending a mutation
+      --file string      protobuf JSON input file; - reads stdin
+  -h, --help             help for save
+      --purpose string   purpose
 
 Global Flags:
       --control-url string   tailnet control URL (or XDG client.json)
@@ -1705,9 +1631,28 @@ Usage:
   tailscale-private-funnel manage settings oauth test [flags]
 
 Flags:
-      --dry-run       validate input without sending a mutation
-      --file string   protobuf JSON input file; - reads stdin
-  -h, --help          help for test
+      --dry-run          validate input without sending a mutation
+      --file string      protobuf JSON input file; - reads stdin
+  -h, --help             help for test
+      --purpose string   purpose
+
+Global Flags:
+      --control-url string   tailnet control URL (or XDG client.json)
+      --output string        output: table or json (default "table")
+      --timeout duration     RPC timeout (default 30s)
+```
+
+## tailscale-private-funnel manage settings role-policy
+
+```text
+Usage:
+  tailscale-private-funnel manage settings role-policy [flags]
+
+Flags:
+      --control-port uint   control_port
+      --dry-run             validate input without sending a mutation
+      --file string         protobuf JSON input file; - reads stdin
+  -h, --help                help for role-policy
 
 Global Flags:
       --control-url string   tailnet control URL (or XDG client.json)
@@ -1830,25 +1775,32 @@ Usage:
   tailscale-private-funnel native controls create NAME [flags]
 
 Flags:
-      --administrator stringArray         additional first-bootstrap administrator selector; default autogroup:owner remains
-      --control-url string                Funnel control URL
-      --data-dir string                   persistent application path
-      --database string                   control database: sqlite or postgres (default "sqlite")
-      --database-ca-file string           target-side PostgreSQL CA file
-      --database-tls-mode string          PostgreSQL TLS mode (default verify-full)
-      --database-url-file string          protected target-side PostgreSQL connection file
-      --display-name string               editable display label
-      --dry-run                           validate and render without mutation
-  -h, --help                              help for create
-      --hostname string                   Tailscale hostname; defaults to resource name
-      --oauth-client-id-file string       protected OAuth client ID file
-      --oauth-client-secret-file string   protected OAuth client secret file
-      --output string                     output: instructions, script, or json (installer generation) (default "instructions")
-      --state-dir string                  persistent identity path
-      --tailnet string                    Tailscale tailnet name
-      --timeout duration                  target execution timeout; generation does not wait for deployment (default 10m0s)
-      --version string                    pinned component version (default "VERSION")
-      --wait                              wait for readiness during target-side execution
+      --administrator stringArray            additional first-bootstrap administrator selector; default autogroup:owner remains
+      --control-url string                   Funnel control URL
+      --data-dir string                      persistent application path
+      --database string                      control database: sqlite or postgres (default "sqlite")
+      --database-ca-file string              target-side PostgreSQL CA file
+      --database-tls-mode string             PostgreSQL TLS mode (default verify-full)
+      --database-url-file string             protected target-side PostgreSQL connection file
+      --display-name string                  editable display label
+      --dry-run                              validate and render without mutation
+  -h, --help                                 help for create
+      --hostname string                      Tailscale hostname; defaults to resource name
+      --installation string                  immutable installation trust boundary (default "main")
+      --oauth-client-id-file string          protected OAuth client ID file
+      --oauth-client-secret-file string      protected OAuth client secret file
+      --output string                        output: instructions, script, or json (installer generation) (default "instructions")
+      --services-client-id-file string       protected Service-management OAuth client ID file
+      --services-client-secret-file string   protected Service-management OAuth secret file
+      --state-dir string                     persistent identity path
+      --tailnet string                       Tailscale tailnet name
+      --tailscale string                     Tailscale connection: embedded or host (default "embedded")
+      --tailscale-socket string              existing host LocalAPI socket
+      --timeout duration                     target execution timeout; generation does not wait for deployment (default 10m0s)
+      --users-client-id-file string          protected users:read OAuth ID file
+      --users-client-secret-file string      protected users:read OAuth secret file
+      --version string                       pinned component version (default "VERSION")
+      --wait                                 wait for readiness during target-side execution
 ```
 
 ## tailscale-private-funnel native controls delete
@@ -2010,9 +1962,12 @@ Flags:
       --dry-run                    validate and render without mutation
   -h, --help                       help for create
       --hostname string            Tailscale hostname; defaults to resource name
+      --installation string        immutable installation trust boundary (default "main")
       --label-key stringArray      additional Docker label alias
       --output string              output: instructions, script, or json (installer generation) (default "instructions")
       --state-dir string           persistent identity path
+      --tailscale string           Tailscale connection: embedded or host (default "embedded")
+      --tailscale-socket string    existing host LocalAPI socket
       --timeout duration           target execution timeout; generation does not wait for deployment (default 10m0s)
       --type string                gateway type: docker or tailnet
       --version string             pinned component version (default "VERSION")
@@ -2178,9 +2133,12 @@ Flags:
       --dry-run                    validate and render without mutation
   -h, --help                       help for create
       --hostname string            Tailscale hostname; defaults to resource name
+      --installation string        immutable installation trust boundary (default "main")
       --output string              output: instructions, script, or json (installer generation) (default "instructions")
       --public-hostname string     public DNS hostname
       --state-dir string           persistent identity path
+      --tailscale string           Tailscale connection: embedded or host (default "embedded")
+      --tailscale-socket string    existing host LocalAPI socket
       --timeout duration           target execution timeout; generation does not wait for deployment (default 10m0s)
       --version string             pinned component version (default "VERSION")
       --wait                       wait for readiness during target-side execution
@@ -2329,47 +2287,4 @@ Flags:
       --timeout duration      operation timeout (default 10m0s)
       --version string        pinned component version (default "VERSION")
       --wait                  wait for reconciliation and readiness
-```
-
-## tailscale-private-funnel transfer-remote
-
-```text
-Usage:
-  tailscale-private-funnel transfer-remote NAME <native|k8s> [flags]
-
-Flags:
-      --context string                    destination Kubernetes context; used only by the installer
-      --data-dir string                   destination native data path
-      --database string                   control database: sqlite or postgres (default "sqlite")
-      --database-ca-file string           destination PostgreSQL CA file
-      --database-ca-secret string         existing PostgreSQL CA Secret
-      --database-ca-secret-key string     CA Secret key (default "ca.crt")
-      --database-secret string            existing PostgreSQL connection Secret
-      --database-secret-key string        connection Secret key (default "uri")
-      --database-tls-mode string          PostgreSQL TLS mode (default verify-full)
-      --database-url-file string          protected destination PostgreSQL connection file
-      --display-name string               editable display label
-      --dry-run                           validate and render without mutation
-  -h, --help                              help for transfer-remote
-      --hostname string                   Tailscale hostname; defaults to resource name
-      --installation string               installation trust boundary (default "main")
-      --namespace string                  destination Kubernetes namespace; required for k8s
-      --node-selector stringToString      component placement (gateway: forwarders); key=value pairs (default [])
-      --oauth-client-id-file string       protected OAuth client ID file
-      --oauth-client-secret-file string   protected OAuth client secret file
-      --out string                        new private installer file, outside source storage (required)
-      --output string                     output: table or json (default "table")
-      --placement-file string             component Pod placement JSON (nodeSelector, affinity, tolerations)
-      --source string                     source deployment: native or k8s (required)
-      --source-context string             explicit source Kubernetes context
-      --source-kubeconfig string          source kubeconfig file
-      --source-namespace string           explicit source Kubernetes namespace
-      --state-dir string                  destination native identity path
-      --storage-class string              PVC StorageClass; omit only when the cluster has a default
-      --storage-size string               persistent volume size (default "1Gi")
-      --tailnet string                    Tailscale tailnet name
-      --timeout duration                  operation timeout (default 10m0s)
-      --version string                    pinned component version (default "VERSION")
-      --wait                              wait for reconciliation and readiness
-      --yes                               confirm source shutdown and removal after verified export
 ```

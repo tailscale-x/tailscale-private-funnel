@@ -16,7 +16,7 @@ import {
   auditLabel,
 } from "./components";
 import { ProvidersPage, ZonesPage } from "./providers";
-import { NodesPage, EnrollmentPage } from "./nodes";
+import { NodesPage, RegistrationPage } from "./nodes";
 import { PolicyPage, SettingsPage, AccessPage } from "./settings";
 import { ExposuresPage, TailnetPage } from "./exposures";
 import { ControlsPage } from "./installation";
@@ -89,13 +89,13 @@ function Dashboard() {
               (n) =>
                 n.mode !== "loadbalancer" &&
                 n.mode !== "k8s-forwarder" &&
-                !n.revoked,
+                !n.disabled,
             ).length,
           ],
           [
             "Load balancers",
             nodes.data?.items.filter(
-              (n) => n.mode === "loadbalancer" && !n.revoked,
+              (n) => n.mode === "loadbalancer" && !n.disabled,
             ).length,
           ],
           ["Applications", health.data?.applications],
@@ -131,7 +131,7 @@ function Dashboard() {
       <div className="pf-react-two">
         <Panel title="Next step">
           <p>
-            Authorize a hostname rule, enroll a gateway, then verify its backend
+            Authorize a hostname rule, register a role-tagged gateway, then verify its backend
             and public readiness.
           </p>
           {admin ? (
@@ -172,7 +172,7 @@ function Route() {
   if (path === "/gateways" || path === "/loadbalancers")
     return <NodesPage loadbalancers={path === "/loadbalancers"} />;
   if (path.startsWith("/deploy/") && path.endsWith("/create") || path === "/k8s/operator" || path === "/deploy/loadbalancers/create")
-    return <EnrollmentPage />;
+    return <RegistrationPage />;
   if (path === "/policies") return <PolicyPage />;
   if (path === "/deploy/actions") return <DeploymentActions />;
   if (path === "/controls") return <ControlsPage />;

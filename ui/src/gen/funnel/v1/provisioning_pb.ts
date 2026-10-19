@@ -5,8 +5,6 @@
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import { file_buf_validate_validate } from "../../buf/validate/validate_pb";
-import type { Enrollment } from "./management_pb";
-import { file_funnel_v1_management } from "./management_pb";
 import { file_funnel_v1_options } from "./options_pb";
 import type { Message } from "@bufbuild/protobuf";
 
@@ -14,7 +12,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file funnel/v1/provisioning.proto.
  */
 export const file_funnel_v1_provisioning: GenFile = /*@__PURE__*/
-  fileDesc("ChxmdW5uZWwvdjEvcHJvdmlzaW9uaW5nLnByb3RvEglmdW5uZWwudjEiiggKEURlcGxveW1lbnRSZXF1ZXN0EmUKBG1vZGUYASABKAlCV7pIVNgBAXJPUghvcGVyYXRvclIHY29udHJvbFIMbG9hZGJhbGFuY2VyUg5kb2NrZXItZ2F0ZXdheVIPdGFpbG5ldC1nYXRld2F5UgtrOHMtZ2F0ZXdheRIsCgZ0YXJnZXQYAiABKAlCHLpIGdgBAXIUUgZuYXRpdmVSCmt1YmVybmV0ZXMSDwoHcnVudGltZRgDIAEoCRIMCgRuYW1lGAQgASgJEhAKCGhvc3RuYW1lGAUgASgJEhEKCXN0YXRlX2RpchgGIAEoCRIQCghkYXRhX2RpchgHIAEoCRIUCgxpbnN0YWxsYXRpb24YCCABKAkSFQoNcmVzb3VyY2VfbmFtZRgJIAEoCRIVCg1nYXRld2F5X2NsYXNzGAogASgJEhUKDWluZ3Jlc3NfY2xhc3MYCyABKAkSGAoQd2F0Y2hfbmFtZXNwYWNlcxgMIAMoCRJFCg1ub2RlX3NlbGVjdG9yGA0gAygLMi4uZnVubmVsLnYxLkRlcGxveW1lbnRSZXF1ZXN0Lk5vZGVTZWxlY3RvckVudHJ5EhkKEWNlcnRpZmljYXRlX2VtYWlsGA4gASgJEhcKD3B1YmxpY19ob3N0bmFtZRgPIAEoCRISCgpsYWJlbF9rZXlzGBAgAygJEhUKDWRlbnlfbmV0d29ya3MYESADKAkSEQoJbmFtZXNwYWNlGBIgASgJEg8KB2NvbnRleHQYEyABKAkSDwoHdmVyc2lvbhgUIAEoCRIUCgxkaXNwbGF5X25hbWUYFSABKAkSDwoHdGFpbG5ldBgWIAEoCRIcChRvYXV0aF9jbGllbnRfaWRfZmlsZRgXIAEoCRIgChhvYXV0aF9jbGllbnRfc2VjcmV0X2ZpbGUYGCABKAkSDwoHbm9kZV9pZBgZIAEoCRIaChJtYW5hZ2VkX25hbWVzcGFjZXMYGiADKAkSDAoEd2FpdBgbIAEoCBIXCg90aW1lb3V0X3NlY29uZHMYHCABKA0SFwoPY3VycmVudF9jb250cm9sGB0gASgIEhYKDmFkbWluaXN0cmF0b3JzGB4gAygJEhUKDXN0b3JhZ2VfY2xhc3MYHyABKAkSFAoMc3RvcmFnZV9zaXplGCAgASgJEhYKDnBsYWNlbWVudF9qc29uGCEgASgMEiAKGGZvcndhcmRlcl9wbGFjZW1lbnRfanNvbhgiIAEoDBIyCghkYXRhYmFzZRgjIAEoCzIgLmZ1bm5lbC52MS5EYXRhYmFzZUNvbmZpZ3VyYXRpb24aMwoRTm9kZVNlbGVjdG9yRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASKBAQoUQm9vdHN0cmFwQ3JlZGVudGlhbHMSFQoNZW5yb2xsbWVudF9pZBgBIAEoCRIXCg9lbnJvbGxtZW50X2NvZGUYAiABKAkSEAoIYXV0aF9rZXkYAyABKAkSEwoLY29udHJvbF9rZXkYBCABKAkSEgoKZXhwaXJlc19hdBgFIAEoAyKDBAoWRGVwbG95bWVudEluc3RydWN0aW9ucxIwCgpkZXBsb3ltZW50GAEgASgLMhwuZnVubmVsLnYxLkRlcGxveW1lbnRSZXF1ZXN0EhYKDm1hbmFnZW1lbnRfdXJsGAIgASgJEg8KB3ZlcnNpb24YAyABKAkSDQoFaW1hZ2UYBCABKAkSDQoFY2hhcnQYBSABKAkSFQoNY2hhcnRfdmVyc2lvbhgGIAEoCRIRCgluYW1lc3BhY2UYByABKAkSKAoFc3RlcHMYCCADKAsyGS5mdW5uZWwudjEuRGVwbG95bWVudFN0ZXASFQoNcHJlcmVxdWlzaXRlcxgJIAMoCRI0CgtjcmVkZW50aWFscxgKIAEoCzIfLmZ1bm5lbC52MS5Cb290c3RyYXBDcmVkZW50aWFscxIOCgZzY3JpcHQYCyABKAkSDwoHZXhhbXBsZRgMIAEoCRIpCgplbnJvbGxtZW50GA0gASgLMhUuZnVubmVsLnYxLkVucm9sbG1lbnQSQQoIY29tbWFuZHMYDiADKAsyLy5mdW5uZWwudjEuRGVwbG95bWVudEluc3RydWN0aW9ucy5Db21tYW5kc0VudHJ5Eg8KB2RyeV9ydW4YDyABKAgaLwoNQ29tbWFuZHNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIkAKDkRlcGxveW1lbnRTdGVwEgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEhMKC2Rlc2NyaXB0aW9uGAMgASgJIr4BChVEYXRhYmFzZUNvbmZpZ3VyYXRpb24SDAoEdHlwZRgBIAEoCRIQCgh1cmxfZmlsZRgCIAEoCRIPCgdjYV9maWxlGAMgASgJEhAKCHRsc19tb2RlGAQgASgJEhkKEWNvbm5lY3Rpb25fc2VjcmV0GAUgASgJEh0KFWNvbm5lY3Rpb25fc2VjcmV0X2tleRgGIAEoCRIRCgljYV9zZWNyZXQYByABKAkSFQoNY2Ffc2VjcmV0X2tleRgIIAEoCTLGAQoRRGVwbG95bWVudFNlcnZpY2USVQoMSW5zdHJ1Y3Rpb25zEhwuZnVubmVsLnYxLkRlcGxveW1lbnRSZXF1ZXN0GiEuZnVubmVsLnYxLkRlcGxveW1lbnRJbnN0cnVjdGlvbnMiBIi1GAMSWgoJQXV0aG9yaXplEhwuZnVubmVsLnYxLkRlcGxveW1lbnRSZXF1ZXN0GiEuZnVubmVsLnYxLkRlcGxveW1lbnRJbnN0cnVjdGlvbnMiDIi1GAOYtRgBqLUYAUJRWk9naXRodWIuY29tL3RhaWxzY2FsZS14L3RhaWxzY2FsZS1wcml2YXRlLWZ1bm5lbC9pbnRlcm5hbC9nZW4vZnVubmVsL3YxO2Z1bm5lbHYxYgZwcm90bzM", [file_buf_validate_validate, file_funnel_v1_management, file_funnel_v1_options]);
+  fileDesc("ChxmdW5uZWwvdjEvcHJvdmlzaW9uaW5nLnByb3RvEglmdW5uZWwudjEikgoKEURlcGxveW1lbnRSZXF1ZXN0EmUKBG1vZGUYASABKAlCV7pIVNgBAXJPUghvcGVyYXRvclIHY29udHJvbFIMbG9hZGJhbGFuY2VyUg5kb2NrZXItZ2F0ZXdheVIPdGFpbG5ldC1nYXRld2F5UgtrOHMtZ2F0ZXdheRIsCgZ0YXJnZXQYAiABKAlCHLpIGdgBAXIUUgZuYXRpdmVSCmt1YmVybmV0ZXMSDwoHcnVudGltZRgDIAEoCRIMCgRuYW1lGAQgASgJEhAKCGhvc3RuYW1lGAUgASgJEhEKCXN0YXRlX2RpchgGIAEoCRIQCghkYXRhX2RpchgHIAEoCRIUCgxpbnN0YWxsYXRpb24YCCABKAkSFQoNcmVzb3VyY2VfbmFtZRgJIAEoCRIVCg1nYXRld2F5X2NsYXNzGAogASgJEhUKDWluZ3Jlc3NfY2xhc3MYCyABKAkSGAoQd2F0Y2hfbmFtZXNwYWNlcxgMIAMoCRJFCg1ub2RlX3NlbGVjdG9yGA0gAygLMi4uZnVubmVsLnYxLkRlcGxveW1lbnRSZXF1ZXN0Lk5vZGVTZWxlY3RvckVudHJ5EhkKEWNlcnRpZmljYXRlX2VtYWlsGA4gASgJEhcKD3B1YmxpY19ob3N0bmFtZRgPIAEoCRISCgpsYWJlbF9rZXlzGBAgAygJEhUKDWRlbnlfbmV0d29ya3MYESADKAkSEQoJbmFtZXNwYWNlGBIgASgJEg8KB2NvbnRleHQYEyABKAkSDwoHdmVyc2lvbhgUIAEoCRIUCgxkaXNwbGF5X25hbWUYFSABKAkSDwoHdGFpbG5ldBgWIAEoCRIcChRvYXV0aF9jbGllbnRfaWRfZmlsZRgXIAEoCRIgChhvYXV0aF9jbGllbnRfc2VjcmV0X2ZpbGUYGCABKAkSDwoHbm9kZV9pZBgZIAEoCRIaChJtYW5hZ2VkX25hbWVzcGFjZXMYGiADKAkSDAoEd2FpdBgbIAEoCBIXCg90aW1lb3V0X3NlY29uZHMYHCABKA0SFwoPY3VycmVudF9jb250cm9sGB0gASgIEhYKDmFkbWluaXN0cmF0b3JzGB4gAygJEhUKDXN0b3JhZ2VfY2xhc3MYHyABKAkSFAoMc3RvcmFnZV9zaXplGCAgASgJEhYKDnBsYWNlbWVudF9qc29uGCEgASgMEiAKGGZvcndhcmRlcl9wbGFjZW1lbnRfanNvbhgiIAEoDBIyCghkYXRhYmFzZRgjIAEoCzIgLmZ1bm5lbC52MS5EYXRhYmFzZUNvbmZpZ3VyYXRpb24SHAoUdGFpbHNjYWxlX2Nvbm5lY3Rpb24YJCABKAkSGAoQdGFpbHNjYWxlX3NvY2tldBglIAEoCRIZChFrZXlfaXNzdWVyX3NlY3JldBgmIAEoCRIXCg9zZXJ2aWNlc19zZWNyZXQYJyABKAkSHwoXc2VydmljZXNfY2xpZW50X2lkX2ZpbGUYKCABKAkSIwobc2VydmljZXNfY2xpZW50X3NlY3JldF9maWxlGCkgASgJEhQKDHVzZXJzX3NlY3JldBgqIAEoCRIcChR1c2Vyc19jbGllbnRfaWRfZmlsZRgrIAEoCRIgChh1c2Vyc19jbGllbnRfc2VjcmV0X2ZpbGUYLCABKAkaMwoRTm9kZVNlbGVjdG9yRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASI8ChRCb290c3RyYXBDcmVkZW50aWFscxIQCghhdXRoX2tleRgDIAEoCRISCgpleHBpcmVzX2F0GAUgASgDItgDChZEZXBsb3ltZW50SW5zdHJ1Y3Rpb25zEjAKCmRlcGxveW1lbnQYASABKAsyHC5mdW5uZWwudjEuRGVwbG95bWVudFJlcXVlc3QSFgoObWFuYWdlbWVudF91cmwYAiABKAkSDwoHdmVyc2lvbhgDIAEoCRINCgVpbWFnZRgEIAEoCRINCgVjaGFydBgFIAEoCRIVCg1jaGFydF92ZXJzaW9uGAYgASgJEhEKCW5hbWVzcGFjZRgHIAEoCRIoCgVzdGVwcxgIIAMoCzIZLmZ1bm5lbC52MS5EZXBsb3ltZW50U3RlcBIVCg1wcmVyZXF1aXNpdGVzGAkgAygJEjQKC2NyZWRlbnRpYWxzGAogASgLMh8uZnVubmVsLnYxLkJvb3RzdHJhcENyZWRlbnRpYWxzEg4KBnNjcmlwdBgLIAEoCRIPCgdleGFtcGxlGAwgASgJEkEKCGNvbW1hbmRzGA4gAygLMi8uZnVubmVsLnYxLkRlcGxveW1lbnRJbnN0cnVjdGlvbnMuQ29tbWFuZHNFbnRyeRIPCgdkcnlfcnVuGA8gASgIGi8KDUNvbW1hbmRzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASJACg5EZXBsb3ltZW50U3RlcBIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRITCgtkZXNjcmlwdGlvbhgDIAEoCSK+AQoVRGF0YWJhc2VDb25maWd1cmF0aW9uEgwKBHR5cGUYASABKAkSEAoIdXJsX2ZpbGUYAiABKAkSDwoHY2FfZmlsZRgDIAEoCRIQCgh0bHNfbW9kZRgEIAEoCRIZChFjb25uZWN0aW9uX3NlY3JldBgFIAEoCRIdChVjb25uZWN0aW9uX3NlY3JldF9rZXkYBiABKAkSEQoJY2Ffc2VjcmV0GAcgASgJEhUKDWNhX3NlY3JldF9rZXkYCCABKAkyxgEKEURlcGxveW1lbnRTZXJ2aWNlElUKDEluc3RydWN0aW9ucxIcLmZ1bm5lbC52MS5EZXBsb3ltZW50UmVxdWVzdBohLmZ1bm5lbC52MS5EZXBsb3ltZW50SW5zdHJ1Y3Rpb25zIgSItRgDEloKCUF1dGhvcml6ZRIcLmZ1bm5lbC52MS5EZXBsb3ltZW50UmVxdWVzdBohLmZ1bm5lbC52MS5EZXBsb3ltZW50SW5zdHJ1Y3Rpb25zIgyItRgDmLUYAai1GAFCUVpPZ2l0aHViLmNvbS90YWlsc2NhbGUteC90YWlsc2NhbGUtcHJpdmF0ZS1mdW5uZWwvaW50ZXJuYWwvZ2VuL2Z1bm5lbC92MTtmdW5uZWx2MWIGcHJvdG8z", [file_buf_validate_validate, file_funnel_v1_options]);
 
 /**
  * @generated from message funnel.v1.DeploymentRequest
@@ -196,6 +194,51 @@ export type DeploymentRequest = Message<"funnel.v1.DeploymentRequest"> & {
    * @generated from field: funnel.v1.DatabaseConfiguration database = 35;
    */
   database?: DatabaseConfiguration | undefined;
+
+  /**
+   * @generated from field: string tailscale_connection = 36;
+   */
+  tailscaleConnection: string;
+
+  /**
+   * @generated from field: string tailscale_socket = 37;
+   */
+  tailscaleSocket: string;
+
+  /**
+   * @generated from field: string key_issuer_secret = 38;
+   */
+  keyIssuerSecret: string;
+
+  /**
+   * @generated from field: string services_secret = 39;
+   */
+  servicesSecret: string;
+
+  /**
+   * @generated from field: string services_client_id_file = 40;
+   */
+  servicesClientIdFile: string;
+
+  /**
+   * @generated from field: string services_client_secret_file = 41;
+   */
+  servicesClientSecretFile: string;
+
+  /**
+   * @generated from field: string users_secret = 42;
+   */
+  usersSecret: string;
+
+  /**
+   * @generated from field: string users_client_id_file = 43;
+   */
+  usersClientIdFile: string;
+
+  /**
+   * @generated from field: string users_client_secret_file = 44;
+   */
+  usersClientSecretFile: string;
 };
 
 /**
@@ -212,24 +255,9 @@ export const DeploymentRequestSchema: GenMessage<DeploymentRequest> = /*@__PURE_
  */
 export type BootstrapCredentials = Message<"funnel.v1.BootstrapCredentials"> & {
   /**
-   * @generated from field: string enrollment_id = 1;
-   */
-  enrollmentId: string;
-
-  /**
-   * @generated from field: string enrollment_code = 2;
-   */
-  enrollmentCode: string;
-
-  /**
    * @generated from field: string auth_key = 3;
    */
   authKey: string;
-
-  /**
-   * @generated from field: string control_key = 4;
-   */
-  controlKey: string;
 
   /**
    * @generated from field: int64 expires_at = 5;
@@ -307,11 +335,6 @@ export type DeploymentInstructions = Message<"funnel.v1.DeploymentInstructions">
    * @generated from field: string example = 12;
    */
   example: string;
-
-  /**
-   * @generated from field: funnel.v1.Enrollment enrollment = 13;
-   */
-  enrollment?: Enrollment | undefined;
 
   /**
    * @generated from field: map<string, string> commands = 14;
@@ -421,7 +444,7 @@ export const DatabaseConfigurationSchema: GenMessage<DatabaseConfiguration> = /*
  */
 export const DeploymentService: GenService<{
   /**
-   * Resolve deployment choices without creating enrollment or bootstrap keys.
+   * Resolve deployment choices without creating bootstrap keys.
    *
    * @generated from rpc funnel.v1.DeploymentService.Instructions
    */
@@ -431,7 +454,7 @@ export const DeploymentService: GenService<{
     output: typeof DeploymentInstructionsSchema;
   },
   /**
-   * Create one-use enrollment and return credentials once, without server-side execution.
+   * Mint one-use Tailscale bootstrap credentials, without server-side execution.
    *
    * @generated from rpc funnel.v1.DeploymentService.Authorize
    */

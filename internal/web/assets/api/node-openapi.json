@@ -278,46 +278,12 @@
         "title": "AuditRequest",
         "type": "object"
       },
-      "funnel.v1.BindSigningKeyRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "title": "code",
-            "type": "string"
-          },
-          "enrollmentId": {
-            "title": "enrollment_id",
-            "type": "string"
-          },
-          "publicKey": {
-            "format": "byte",
-            "maxLength": 32,
-            "minLength": 32,
-            "title": "public_key",
-            "type": "string"
-          }
-        },
-        "title": "BindSigningKeyRequest",
-        "type": "object"
-      },
       "funnel.v1.BootstrapCredentials": {
         "additionalProperties": false,
         "description": "Bootstrap credentials must not be persisted in plans, logs or receipts.",
         "properties": {
           "authKey": {
             "title": "auth_key",
-            "type": "string"
-          },
-          "controlKey": {
-            "title": "control_key",
-            "type": "string"
-          },
-          "enrollmentCode": {
-            "title": "enrollment_code",
-            "type": "string"
-          },
-          "enrollmentId": {
-            "title": "enrollment_id",
             "type": "string"
           },
           "expiresAt": {
@@ -332,21 +298,8 @@
       "funnel.v1.BrokerSession": {
         "additionalProperties": false,
         "properties": {
-          "authKey": {
-            "title": "auth_key",
-            "type": "string"
-          },
-          "controlKey": {
-            "title": "control_key",
-            "type": "string"
-          },
           "controllerId": {
             "title": "controller_id",
-            "type": "string"
-          },
-          "identity": {
-            "format": "byte",
-            "title": "identity",
             "type": "string"
           },
           "managementUrl": {
@@ -364,15 +317,6 @@
           "nodeUid": {
             "title": "node_uid",
             "type": "string"
-          },
-          "state": {
-            "additionalProperties": {
-              "format": "byte",
-              "title": "value",
-              "type": "string"
-            },
-            "title": "state",
-            "type": "object"
           }
         },
         "title": "BrokerSession",
@@ -632,6 +576,21 @@
         "title": "DeleteRuleRequest",
         "type": "object"
       },
+      "funnel.v1.DeploymentDefaults": {
+        "additionalProperties": false,
+        "properties": {
+          "managementUrl": {
+            "title": "management_url",
+            "type": "string"
+          },
+          "releaseVersion": {
+            "title": "release_version",
+            "type": "string"
+          }
+        },
+        "title": "DeploymentDefaults",
+        "type": "object"
+      },
       "funnel.v1.DeploymentInstructions": {
         "additionalProperties": false,
         "properties": {
@@ -671,14 +630,6 @@
             "description": "Preview-only bundles are rejected by hidden installers.",
             "title": "dry_run",
             "type": "boolean"
-          },
-          "enrollment": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/funnel.v1.Enrollment"
-              }
-            ],
-            "title": "enrollment"
           },
           "example": {
             "title": "example",
@@ -834,6 +785,10 @@
             "title": "installation",
             "type": "string"
           },
+          "keyIssuerSecret": {
+            "title": "key_issuer_secret",
+            "type": "string"
+          },
           "labelKeys": {
             "items": {
               "type": "string"
@@ -906,6 +861,18 @@
             "title": "runtime",
             "type": "string"
           },
+          "servicesClientIdFile": {
+            "title": "services_client_id_file",
+            "type": "string"
+          },
+          "servicesClientSecretFile": {
+            "title": "services_client_secret_file",
+            "type": "string"
+          },
+          "servicesSecret": {
+            "title": "services_secret",
+            "type": "string"
+          },
           "stateDir": {
             "title": "state_dir",
             "type": "string"
@@ -922,6 +889,14 @@
             "title": "tailnet",
             "type": "string"
           },
+          "tailscaleConnection": {
+            "title": "tailscale_connection",
+            "type": "string"
+          },
+          "tailscaleSocket": {
+            "title": "tailscale_socket",
+            "type": "string"
+          },
           "target": {
             "enum": [
               "native",
@@ -933,6 +908,18 @@
           "timeoutSeconds": {
             "title": "timeout_seconds",
             "type": "integer"
+          },
+          "usersClientIdFile": {
+            "title": "users_client_id_file",
+            "type": "string"
+          },
+          "usersClientSecretFile": {
+            "title": "users_client_secret_file",
+            "type": "string"
+          },
+          "usersSecret": {
+            "title": "users_secret",
+            "type": "string"
           },
           "version": {
             "title": "version",
@@ -1119,67 +1106,6 @@
         "title": "EnableRequest",
         "type": "object"
       },
-      "funnel.v1.Enrollment": {
-        "additionalProperties": false,
-        "properties": {
-          "createdAt": {
-            "format": "int64",
-            "title": "created_at",
-            "type": "string"
-          },
-          "hostname": {
-            "title": "hostname",
-            "type": "string"
-          },
-          "id": {
-            "title": "id",
-            "type": "string"
-          },
-          "mode": {
-            "title": "mode",
-            "type": "string"
-          },
-          "name": {
-            "title": "name",
-            "type": "string"
-          },
-          "revoked": {
-            "title": "revoked",
-            "type": "boolean"
-          }
-        },
-        "title": "Enrollment",
-        "type": "object"
-      },
-      "funnel.v1.EnrollmentDefaults": {
-        "additionalProperties": false,
-        "properties": {
-          "managementUrl": {
-            "title": "management_url",
-            "type": "string"
-          },
-          "releaseVersion": {
-            "title": "release_version",
-            "type": "string"
-          }
-        },
-        "title": "EnrollmentDefaults",
-        "type": "object"
-      },
-      "funnel.v1.Enrollments": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/funnel.v1.Enrollment"
-            },
-            "title": "items",
-            "type": "array"
-          }
-        },
-        "title": "Enrollments",
-        "type": "object"
-      },
       "funnel.v1.Exposure": {
         "additionalProperties": false,
         "properties": {
@@ -1241,51 +1167,6 @@
           }
         },
         "title": "Exposures",
-        "type": "object"
-      },
-      "funnel.v1.ForwarderBindingPayload": {
-        "additionalProperties": false,
-        "properties": {
-          "bind": {
-            "title": "bind",
-            "type": "boolean"
-          }
-        },
-        "title": "ForwarderBindingPayload",
-        "type": "object"
-      },
-      "funnel.v1.ForwarderEnrollment": {
-        "additionalProperties": false,
-        "properties": {
-          "authKey": {
-            "title": "auth_key",
-            "type": "string"
-          },
-          "nodeId": {
-            "title": "node_id",
-            "type": "string"
-          }
-        },
-        "title": "ForwarderEnrollment",
-        "type": "object"
-      },
-      "funnel.v1.ForwarderEnrollmentPayload": {
-        "additionalProperties": false,
-        "properties": {
-          "hostname": {
-            "title": "hostname",
-            "type": "string"
-          },
-          "nodeUid": {
-            "title": "node_uid",
-            "type": "string"
-          },
-          "publicKey": {
-            "title": "public_key",
-            "type": "string"
-          }
-        },
-        "title": "ForwarderEnrollmentPayload",
         "type": "object"
       },
       "funnel.v1.HTTPBackend": {
@@ -1693,12 +1574,21 @@
             "title": "diagnostics",
             "type": "array"
           },
+          "disabled": {
+            "title": "disabled",
+            "type": "boolean"
+          },
           "effectiveTags": {
             "items": {
               "type": "string"
             },
             "title": "effective_tags",
             "type": "array"
+          },
+          "generation": {
+            "format": "int64",
+            "title": "generation",
+            "type": "string"
           },
           "hostname": {
             "title": "hostname",
@@ -1708,9 +1598,22 @@
             "title": "id",
             "type": "string"
           },
+          "installation": {
+            "title": "installation",
+            "type": "string"
+          },
+          "instanceId": {
+            "title": "instance_id",
+            "type": "string"
+          },
           "lastReport": {
             "format": "int64",
             "title": "last_report",
+            "type": "string"
+          },
+          "leaseUntil": {
+            "format": "int64",
+            "title": "lease_until",
             "type": "string"
           },
           "listeners": {
@@ -1740,12 +1643,12 @@
             "title": "public_ready",
             "type": "boolean"
           },
-          "revoked": {
-            "title": "revoked",
-            "type": "boolean"
-          },
           "tailnetId": {
             "title": "tailnet_id",
+            "type": "string"
+          },
+          "tailscaleConnection": {
+            "title": "tailscale_connection",
             "type": "string"
           }
         },
@@ -1885,6 +1788,10 @@
           "clientSecret": {
             "title": "client_secret",
             "type": "string"
+          },
+          "purpose": {
+            "title": "purpose",
+            "type": "string"
           }
         },
         "title": "OAuthRequest",
@@ -1987,7 +1894,6 @@
           "PERMISSION_OPERATOR",
           "PERMISSION_ADMIN",
           "PERMISSION_NODE",
-          "PERMISSION_ENROLLMENT",
           "PERMISSION_BROKER"
         ],
         "title": "Permission",
@@ -2299,6 +2205,66 @@
         "title": "PublicIngress",
         "type": "object"
       },
+      "funnel.v1.RegisterComponentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "componentId": {
+            "title": "component_id",
+            "type": "string"
+          },
+          "deployment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.DeploymentRequest"
+              }
+            ],
+            "title": "deployment"
+          },
+          "instanceId": {
+            "title": "instance_id",
+            "type": "string"
+          },
+          "nodeUid": {
+            "title": "node_uid",
+            "type": "string"
+          },
+          "parentId": {
+            "title": "parent_id",
+            "type": "string"
+          }
+        },
+        "title": "RegisterComponentRequest",
+        "type": "object"
+      },
+      "funnel.v1.RegisteredComponent": {
+        "additionalProperties": false,
+        "properties": {
+          "componentId": {
+            "title": "component_id",
+            "type": "string"
+          },
+          "deviceId": {
+            "title": "device_id",
+            "type": "string"
+          },
+          "generation": {
+            "format": "int64",
+            "title": "generation",
+            "type": "string"
+          },
+          "instanceId": {
+            "title": "instance_id",
+            "type": "string"
+          },
+          "leaseUntil": {
+            "format": "int64",
+            "title": "lease_until",
+            "type": "string"
+          }
+        },
+        "title": "RegisteredComponent",
+        "type": "object"
+      },
       "funnel.v1.RenameRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2452,6 +2418,39 @@
           }
         },
         "title": "ResourceRevision",
+        "type": "object"
+      },
+      "funnel.v1.RolePolicyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "controlPort": {
+            "title": "control_port",
+            "type": "integer"
+          }
+        },
+        "title": "RolePolicyRequest",
+        "type": "object"
+      },
+      "funnel.v1.RolePolicyTemplate": {
+        "additionalProperties": false,
+        "properties": {
+          "installation": {
+            "title": "installation",
+            "type": "string"
+          },
+          "policyJson": {
+            "title": "policy_json",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "warnings",
+            "type": "array"
+          }
+        },
+        "title": "RolePolicyTemplate",
         "type": "object"
       },
       "funnel.v1.Rule": {
@@ -2696,6 +2695,10 @@
       "funnel.v1.Settings": {
         "additionalProperties": false,
         "properties": {
+          "installation": {
+            "title": "installation",
+            "type": "string"
+          },
           "managementUrl": {
             "title": "management_url",
             "type": "string"
@@ -2720,69 +2723,12 @@
         "additionalProperties": false,
         "description": "Shutdown first withdraws owned state; confirm acknowledges receipt before device deletion.",
         "properties": {
-          "confirm": {
-            "title": "confirm",
+          "remove": {
+            "title": "remove",
             "type": "boolean"
           }
         },
         "title": "ShutdownRequest",
-        "type": "object"
-      },
-      "funnel.v1.SignedEnvelope": {
-        "additionalProperties": false,
-        "description": "SignedEnvelope carries exact signed bytes. Decode only after verification.",
-        "properties": {
-          "nodeId": {
-            "title": "node_id",
-            "type": "string"
-          },
-          "nonce": {
-            "title": "nonce",
-            "type": "string"
-          },
-          "payload": {
-            "format": "byte",
-            "title": "payload",
-            "type": "string"
-          },
-          "publicKey": {
-            "format": "byte",
-            "title": "public_key",
-            "type": "string"
-          },
-          "purpose": {
-            "title": "purpose",
-            "type": "string"
-          },
-          "signature": {
-            "format": "byte",
-            "title": "signature",
-            "type": "string"
-          },
-          "timestamp": {
-            "format": "int64",
-            "title": "timestamp",
-            "type": "string"
-          }
-        },
-        "title": "SignedEnvelope",
-        "type": "object"
-      },
-      "funnel.v1.StateUpdate": {
-        "additionalProperties": false,
-        "properties": {
-          "key": {
-            "description": "string.prefix = \"tsnet.\"\n",
-            "title": "key",
-            "type": "string"
-          },
-          "value": {
-            "format": "byte",
-            "title": "value",
-            "type": "string"
-          }
-        },
-        "title": "StateUpdate",
         "type": "object"
       },
       "funnel.v1.TailnetExposureRequest": {
@@ -2882,6 +2828,50 @@
         "title": "Vendors",
         "type": "object"
       },
+      "funnel.v1.WorkloadBootstrap": {
+        "additionalProperties": false,
+        "properties": {
+          "authKey": {
+            "title": "auth_key",
+            "type": "string"
+          },
+          "componentId": {
+            "title": "component_id",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "int64",
+            "title": "expires_at",
+            "type": "string"
+          },
+          "installation": {
+            "title": "installation",
+            "type": "string"
+          },
+          "instanceId": {
+            "title": "instance_id",
+            "type": "string"
+          },
+          "mode": {
+            "title": "mode",
+            "type": "string"
+          },
+          "nodeName": {
+            "title": "node_name",
+            "type": "string"
+          },
+          "nodeUid": {
+            "title": "node_uid",
+            "type": "string"
+          },
+          "parentId": {
+            "title": "parent_id",
+            "type": "string"
+          }
+        },
+        "title": "WorkloadBootstrap",
+        "type": "object"
+      },
       "funnel.v1.Zone": {
         "additionalProperties": false,
         "properties": {
@@ -2951,71 +2941,6 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/funnel.v1.EnrollmentService/BindSigningKey": {
-      "post": {
-        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_ENROLLMENT authorization.",
-        "operationId": "funnel.v1.EnrollmentService.BindSigningKey",
-        "parameters": [
-          {
-            "description": "Define the version of the Connect protocol",
-            "example": 1,
-            "in": "header",
-            "name": "Connect-Protocol-Version",
-            "schema": {
-              "$ref": "#/components/schemas/connect-protocol-version"
-            }
-          },
-          {
-            "description": "Define the timeout, in ms",
-            "example": 1000,
-            "in": "header",
-            "name": "Connect-Timeout-Ms",
-            "schema": {
-              "$ref": "#/components/schemas/connect-timeout-header"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/funnel.v1.BindSigningKeyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/funnel.v1.Empty"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/connect.error"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "BindSigningKey",
-        "tags": [
-          "funnel.v1.EnrollmentService"
-        ],
-        "x-funnel-audit": false,
-        "x-funnel-permission": "ENROLLMENT",
-        "x-funnel-sensitive": true
-      }
-    },
     "/funnel.v1.NodeService/Acknowledge": {
       "post": {
         "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
@@ -3080,137 +3005,6 @@
         "x-funnel-permission": "NODE"
       }
     },
-    "/funnel.v1.NodeService/BindForwarder": {
-      "post": {
-        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_ENROLLMENT authorization.",
-        "operationId": "funnel.v1.NodeService.BindForwarder",
-        "parameters": [
-          {
-            "description": "Define the version of the Connect protocol",
-            "example": 1,
-            "in": "header",
-            "name": "Connect-Protocol-Version",
-            "schema": {
-              "$ref": "#/components/schemas/connect-protocol-version"
-            }
-          },
-          {
-            "description": "Define the timeout, in ms",
-            "example": 1000,
-            "in": "header",
-            "name": "Connect-Timeout-Ms",
-            "schema": {
-              "$ref": "#/components/schemas/connect-timeout-header"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/funnel.v1.Empty"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/connect.error"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "BindForwarder",
-        "tags": [
-          "funnel.v1.NodeService"
-        ],
-        "x-funnel-audit": false,
-        "x-funnel-permission": "ENROLLMENT",
-        "x-funnel-signed-payload": "funnel.v1.ForwarderBindingPayload"
-      }
-    },
-    "/funnel.v1.NodeService/EnrollForwarder": {
-      "post": {
-        "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
-        "operationId": "funnel.v1.NodeService.EnrollForwarder",
-        "parameters": [
-          {
-            "description": "Define the version of the Connect protocol",
-            "example": 1,
-            "in": "header",
-            "name": "Connect-Protocol-Version",
-            "schema": {
-              "$ref": "#/components/schemas/connect-protocol-version"
-            }
-          },
-          {
-            "description": "Define the timeout, in ms",
-            "example": 1000,
-            "in": "header",
-            "name": "Connect-Timeout-Ms",
-            "schema": {
-              "$ref": "#/components/schemas/connect-timeout-header"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/funnel.v1.ForwarderEnrollment"
-                }
-              }
-            },
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/connect.error"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "EnrollForwarder",
-        "tags": [
-          "funnel.v1.NodeService"
-        ],
-        "x-funnel-audit": false,
-        "x-funnel-permission": "NODE",
-        "x-funnel-sensitive": true,
-        "x-funnel-signed-payload": "funnel.v1.ForwarderEnrollmentPayload"
-      }
-    },
     "/funnel.v1.NodeService/GetConfig": {
       "post": {
         "description": "Requires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
@@ -3250,7 +3044,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+                  "$ref": "#/components/schemas/funnel.v1.ConfigurationPayload"
                 }
               }
             },
@@ -3272,8 +3066,8 @@
           "funnel.v1.NodeService"
         ],
         "x-funnel-audit": false,
-        "x-funnel-permission": "NODE",
-        "x-funnel-signed-payload": "funnel.v1.ConfigurationPayload"
+        "x-funnel-payload": "funnel.v1.ConfigurationPayload",
+        "x-funnel-permission": "NODE"
       }
     },
     "/funnel.v1.NodeService/ListForwarders": {
@@ -3333,6 +3127,70 @@
           }
         },
         "summary": "ListForwarders",
+        "tags": [
+          "funnel.v1.NodeService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "NODE"
+      }
+    },
+    "/funnel.v1.NodeService/RegisterComponent": {
+      "post": {
+        "description": "Role-authorized registration. Identity and role come only from WhoIs.\nRequires verified Tailscale WhoIs identity and PERMISSION_NODE authorization.",
+        "operationId": "funnel.v1.NodeService.RegisterComponent",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.RegisterComponentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.RegisteredComponent"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "RegisterComponent",
         "tags": [
           "funnel.v1.NodeService"
         ],
@@ -3443,7 +3301,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+                  "$ref": "#/components/schemas/funnel.v1.ConfigurationPayload"
                 }
               }
             },
@@ -3465,8 +3323,8 @@
           "funnel.v1.NodeService"
         ],
         "x-funnel-audit": false,
-        "x-funnel-permission": "NODE",
-        "x-funnel-signed-payload": "funnel.v1.ConfigurationPayload"
+        "x-funnel-payload": "funnel.v1.ConfigurationPayload",
+        "x-funnel-permission": "NODE"
       }
     },
     "/funnel.v1.NodeService/Shutdown": {
@@ -3561,7 +3419,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+                "$ref": "#/components/schemas/funnel.v1.DockerInventoryPayload"
               }
             }
           },
@@ -3594,8 +3452,8 @@
           "funnel.v1.NodeService"
         ],
         "x-funnel-audit": false,
-        "x-funnel-permission": "NODE",
-        "x-funnel-signed-payload": "funnel.v1.DockerInventoryPayload"
+        "x-funnel-payload": "funnel.v1.DockerInventoryPayload",
+        "x-funnel-permission": "NODE"
       }
     },
     "/funnel.v1.NodeService/SubmitKubernetes": {
@@ -3626,7 +3484,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+                "$ref": "#/components/schemas/funnel.v1.KubernetesPayload"
               }
             }
           },
@@ -3659,8 +3517,8 @@
           "funnel.v1.NodeService"
         ],
         "x-funnel-audit": false,
-        "x-funnel-permission": "NODE",
-        "x-funnel-signed-payload": "funnel.v1.KubernetesPayload"
+        "x-funnel-payload": "funnel.v1.KubernetesPayload",
+        "x-funnel-permission": "NODE"
       }
     },
     "/funnel.v1.NodeService/SubmitPeers": {
@@ -3691,7 +3549,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+                "$ref": "#/components/schemas/funnel.v1.PeerSnapshot"
               }
             }
           },
@@ -3724,8 +3582,8 @@
           "funnel.v1.NodeService"
         ],
         "x-funnel-audit": false,
-        "x-funnel-permission": "NODE",
-        "x-funnel-signed-payload": "funnel.v1.PeerSnapshot"
+        "x-funnel-payload": "funnel.v1.PeerSnapshot",
+        "x-funnel-permission": "NODE"
       }
     },
     "/funnel.v1.NodeService/SubmitPublicEndpoint": {
@@ -3756,7 +3614,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+                "$ref": "#/components/schemas/funnel.v1.PublicEndpointPayload"
               }
             }
           },
@@ -3789,8 +3647,8 @@
           "funnel.v1.NodeService"
         ],
         "x-funnel-audit": false,
-        "x-funnel-permission": "NODE",
-        "x-funnel-signed-payload": "funnel.v1.PublicEndpointPayload"
+        "x-funnel-payload": "funnel.v1.PublicEndpointPayload",
+        "x-funnel-permission": "NODE"
       }
     },
     "/funnel.v1.NodeService/SubmitReport": {
@@ -3821,7 +3679,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/funnel.v1.SignedEnvelope"
+                "$ref": "#/components/schemas/funnel.v1.ExposureReport"
               }
             }
           },
@@ -3854,8 +3712,8 @@
           "funnel.v1.NodeService"
         ],
         "x-funnel-audit": false,
-        "x-funnel-permission": "NODE",
-        "x-funnel-signed-payload": "funnel.v1.ExposureReport"
+        "x-funnel-payload": "funnel.v1.ExposureReport",
+        "x-funnel-permission": "NODE"
       }
     }
   },
@@ -3863,9 +3721,6 @@
   "tags": [
     {
       "name": "funnel.v1.NodeService"
-    },
-    {
-      "name": "funnel.v1.EnrollmentService"
     }
   ]
 }

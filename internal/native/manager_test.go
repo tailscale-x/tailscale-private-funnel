@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,6 +12,9 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 )
 
 func manager(t *testing.T) *Manager {
@@ -104,7 +105,7 @@ func TestControlDeletionRefusesBeforeStoppingLiveManagement(t *testing.T) {
 		}
 		return []byte("active"), nil
 	}
-	if e = m.Delete(t.Context(), "controls", "main"); e == nil || !strings.Contains(e.Error(), "active enrolled") {
+	if e = m.Delete(t.Context(), "controls", "main"); e == nil || !strings.Contains(e.Error(), "registered components") {
 		t.Fatal(e)
 	}
 	if stopped {
@@ -221,6 +222,7 @@ func TestControlInspectionReturnsPrivateSetupURL(t *testing.T) {
 	r, _ := m.Resolve("controls", "main", "control", "", "main", "dev-test", "", "")
 	os.MkdirAll(r.DataDir, 0700)
 	m.save(&r)
+	os.WriteFile(filepath.Join(r.DataDir, "management-url"), []byte("http://tailscale-private-funnel-main-control.example.ts.net:8080"), 0600)
 	os.WriteFile(filepath.Join(r.DataDir, "serve.pid"), []byte("42"), 0600)
 	os.WriteFile(filepath.Join(r.DataDir, "runtime-status.json"), []byte(`{"ready":true,"state":"Running","ips":["100.64.0.10"]}`), 0600)
 	m.Run = func(_ context.Context, _ string, args []string, _ io.Reader, _ []string) ([]byte, error) {
@@ -230,7 +232,7 @@ func TestControlInspectionReturnsPrivateSetupURL(t *testing.T) {
 		return []byte("42"), nil
 	}
 	got, e := m.Get(t.Context(), "controls", "main")
-	if e != nil || got.SetupURL != "http://100.64.0.10:8080" {
+	if e != nil || got.SetupURL != "http://tailscale-private-funnel-main-control.example.ts.net:8080" {
 		t.Fatal(got, e)
 	}
 }

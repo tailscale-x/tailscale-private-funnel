@@ -3,8 +3,9 @@ package web
 import (
 	"context"
 	"fmt"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	"strings"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 )
 
 // Service deletion is external work. Never run it inside inventory acceptance.
@@ -79,11 +80,8 @@ func (c *Control) ReconcileDockerRetirements(ctx context.Context) error {
 				break
 			}
 			if h.ApprovalLevel == "approved:auto" || h.ApprovalLevel == "approved:manual" {
-				if _, e = client.ApproveServiceDevice(ctx, r.ServiceName, h.NodeID, false); e != nil {
-					failures = append(failures, e.Error())
-					unsafe = true
-					break
-				}
+				// Advertisement withdrawal belongs to the component; role-tag auto-approval is not mutated here.
+
 				withdrawn = true
 				_ = c.Store.UpsertServiceHost(store.ServiceHostRecord{ServiceName: r.ServiceName, DeviceID: h.NodeID, ApprovalState: "retired", Approved: false})
 			}

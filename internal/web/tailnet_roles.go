@@ -21,8 +21,8 @@ func (c *Control) tailnetRole(ctx context.Context, p Principal) string {
 			Name string `json:"name"`
 		}
 		_ = c.Store.GetJSON("tailnet", &settings)
-		id, e1 := c.Store.GetSecret("tailscale_oauth_client_id")
-		secret, e2 := c.Store.GetSecret("tailscale_oauth_client_secret")
+		id, e1 := c.Store.GetSecret("tailscale_users_client_id")
+		secret, e2 := c.Store.GetSecret("tailscale_users_client_secret")
 		if e1 != nil || e2 != nil || settings.Name == "" {
 			return ""
 		}
@@ -51,7 +51,7 @@ func (c *Control) verifyOwnerAdministration(ctx context.Context, settings Access
 	if !contains(settings.Roles["admin"], "autogroup:owner") {
 		return fmt.Errorf("self-removal requires autogroup:owner to remain an administrator")
 	}
-	ts, err := c.tailscaleRuntimeClient()
+	ts, err := c.tailscalePurposeClient("users")
 	if err != nil {
 		return fmt.Errorf("verify remaining Owner: %w", err)
 	}

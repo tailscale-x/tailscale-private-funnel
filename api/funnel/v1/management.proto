@@ -78,11 +78,7 @@ service ManagementService {
     option (cli) = "nodes rename";
     option (audit) = true;
   }
-  rpc RenameEnrollment(RenameRequest) returns (Empty) {
-    option (permission) = PERMISSION_ADMIN;
-    option (cli) = "enrollments rename";
-    option (audit) = true;
-  }
+
   rpc RenameApplication(RenameRequest) returns (Empty) {
     option (permission) = PERMISSION_ADMIN;
     option (cli) = "applications rename";
@@ -92,10 +88,6 @@ service ManagementService {
   // Rebind an existing stopped load balancer to its exact Kubernetes public Service.
   // Generate bootstrap instructions without accepting or returning OAuth secrets.
 
-  rpc ListEnrollments(ListNodesRequest) returns (Enrollments) {
-    option (permission) = PERMISSION_VIEWER;
-    option (cli) = "enrollments list";
-  }
   rpc GetPolicy(Empty) returns (Policy) {
     option (permission) = PERMISSION_VIEWER;
     option (cli) = "policies get";
@@ -111,6 +103,10 @@ service ManagementService {
   rpc GetAccess(Empty) returns (AccessSettings) {
     option (permission) = PERMISSION_VIEWER;
     option (cli) = "access get";
+  }
+  rpc RolePolicy(RolePolicyRequest) returns (RolePolicyTemplate) {
+    option (permission) = PERMISSION_VIEWER;
+    option (cli) = "settings role-policy";
   }
   rpc GetSettings(Empty) returns (Settings) {
     option (permission) = PERMISSION_VIEWER;
@@ -162,7 +158,7 @@ service ManagementService {
     option (cli) = "access save";
     option (audit) = true;
   }
-  rpc SaveDefaults(EnrollmentDefaults) returns (Settings) {
+  rpc SaveDefaults(DeploymentDefaults) returns (Settings) {
     option (permission) = PERMISSION_ADMIN;
     option (cli) = "settings defaults save";
     option (audit) = true;
@@ -183,9 +179,9 @@ service ManagementService {
     option (permission) = PERMISSION_VIEWER;
     option (cli) = "exposures list";
   }
-  rpc RevokeNode(ResourceID) returns (TestResult) {
+  rpc DisableNode(ResourceID) returns (TestResult) {
     option (permission) = PERMISSION_ADMIN;
-    option (cli) = "nodes revoke";
+    option (cli) = "nodes disable";
     option (audit) = true;
   }
   rpc CleanupNode(ResourceID) returns (TestResult) {
@@ -193,11 +189,7 @@ service ManagementService {
     option (cli) = "nodes cleanup";
     option (audit) = true;
   }
-  rpc RevokeEnrollment(ResourceID) returns (Empty) {
-    option (permission) = PERMISSION_ADMIN;
-    option (cli) = "enrollments revoke";
-    option (audit) = true;
-  }
+
   rpc GetPeers(ResourceID) returns (PeerSnapshot) {
     option (permission) = PERMISSION_ADMIN;
     option (cli) = "nodes peers";
@@ -321,7 +313,7 @@ message Node {
   string mode = 3;
   string hostname = 4;
   string tailnet_id = 5;
-  bool revoked = 6;
+  bool disabled = 6;
   int64 last_report = 7;
   string parent_id = 8;
   repeated string effective_tags = 9;
@@ -332,6 +324,11 @@ message Node {
   bool public_ready = 14;
   repeated string diagnostics = 15;
   DeploymentMetadata deployment = 16;
+  string installation = 17;
+  string tailscale_connection = 18;
+  string instance_id = 19;
+  int64 generation = 20;
+  int64 lease_until = 21;
 }
 message Nodes {
   repeated Node items = 1;
@@ -339,17 +336,7 @@ message Nodes {
 message ListNodesRequest {
   string mode = 1;
 }
-message Enrollment {
-  string id = 1;
-  string name = 2;
-  string mode = 3;
-  string hostname = 4;
-  bool revoked = 5;
-  int64 created_at = 6;
-}
-message Enrollments {
-  repeated Enrollment items = 1;
-}
+
 message Rule {
   string id = 1;
   string name = 2;
@@ -385,6 +372,7 @@ message Settings {
   string management_url = 2;
   string release_version = 3;
   bool oauth_configured = 4;
+  string installation = 5;
 }
 message Application {
   string path_prefix = 13;
@@ -440,11 +428,20 @@ message DeleteRuleRequest {
   uint64 revision = 1;
   string id = 2;
 }
-message EnrollmentDefaults {
+message DeploymentDefaults {
   string management_url = 1;
   string release_version = 2;
 }
+message RolePolicyRequest {
+  uint32 control_port = 1;
+}
+message RolePolicyTemplate {
+  string installation = 1;
+  string policy_json = 2;
+  repeated string warnings = 3;
+}
 message OAuthRequest {
+  string purpose = 3;
   string client_id = 1 [(secret) = true];
   string client_secret = 2 [(secret) = true];
 }
@@ -564,7 +561,6 @@ message ResourceRevision {
   int64 revision = 2;
 }
 
-
 message ExposureReport {
   repeated ReportedExposure exposures = 1;
   int64 expires_at = 2;
@@ -612,13 +608,13 @@ message ServiceHosts {
 }
 
 message DeploymentMetadata {
- string target = 1;
- string resource_name = 2;
- string namespace = 3;
- string version = 4;
- string state_dir = 5;
- string data_dir = 6;
- string context_hint = 7;
- bool conditions_reported = 8;
- repeated string conditions = 9;
+  string target = 1;
+  string resource_name = 2;
+  string namespace = 3;
+  string version = 4;
+  string state_dir = 5;
+  string data_dir = 6;
+  string context_hint = 7;
+  bool conditions_reported = 8;
+  repeated string conditions = 9;
 }

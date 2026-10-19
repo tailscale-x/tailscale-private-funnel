@@ -17,10 +17,10 @@ func encodePublicKey(key []byte) string {
 	return base64.RawStdEncoding.EncodeToString(key)
 }
 
-func enrollmentTestControl(t *testing.T, s *store.Store) *Control {
+func registrationTestControl(t *testing.T, s *store.Store) *Control {
 	installTestEdge(t, s)
 	t.Helper()
-	for key, value := range map[string]string{"tailscale_oauth_client_id": "test-id", "tailscale_oauth_client_secret": "test-secret"} {
+	for key, value := range map[string]string{"tailscale_services_client_id": "test-id", "tailscale_services_client_secret": "test-secret"} {
 		if err := s.SetSecret(key, value); err != nil {
 			t.Fatal(err)
 		}

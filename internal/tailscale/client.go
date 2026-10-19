@@ -5,11 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/oauth2"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"golang.org/x/oauth2"
 )
 
 type Client struct {
@@ -29,6 +30,9 @@ type authKeyResponse struct {
 }
 
 func (c Client) CreateAuthKey(ctx context.Context, mode, hostname string, tags []string) (string, error) {
+	return c.CreateWorkloadAuthKey(ctx, mode, hostname, tags, false)
+}
+func (c Client) CreateWorkloadAuthKey(ctx context.Context, mode, hostname string, tags []string, ephemeral bool) (string, error) {
 	accessToken, err := c.oauthToken(ctx)
 	if err != nil {
 		return "", err
@@ -39,7 +43,7 @@ func (c Client) CreateAuthKey(ctx context.Context, mode, hostname string, tags [
 		Capabilities: map[string]any{
 			"devices": map[string]any{
 				"create": map[string]any{
-					"reusable": false, "ephemeral": false, "preauthorized": true, "tags": tags,
+					"reusable": false, "ephemeral": ephemeral, "preauthorized": true, "tags": tags,
 				},
 			},
 		},
@@ -406,3 +410,6 @@ func (c Client) DeleteService(ctx context.Context, name string) error {
 	}
 	return nil
 }
+
+// ValidateCredentials checks client authentication without requiring unrelated API scopes.
+func (c Client) ValidateCredentials(ctx context.Context) error { _, e := c.oauthToken(ctx); return e }

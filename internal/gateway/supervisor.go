@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -20,7 +21,6 @@ type Assignment struct {
 	ApplicationID string
 	ServiceName   string
 	ServicePort   uint16
-	PublicKey     string
 	Enabled       bool
 }
 
@@ -40,7 +40,6 @@ func (r StaticResolver) Resolve(_ context.Context, spec Spec) (Assignment, error
 }
 
 type Config struct {
-	RelayImage           string
 	NodeID               string
 	Docker               *dockerclient.Client
 	LabelKeys            []string
@@ -92,7 +91,6 @@ func (c Config) Reconcile(ctx context.Context) ([]Runtime, error) {
 	}
 	activeListeners := map[string]struct{}{}
 	controlUnavailable := false
-	targets := map[string]bool{}
 	var out []Runtime
 	for _, item := range containers {
 		if item.State != "running" {
@@ -111,12 +109,24 @@ func (c Config) Reconcile(ctx context.Context) ([]Runtime, error) {
 			slog.Warn("gateway target inspect failed", "container", item.ID, "error", err)
 			continue
 		}
+		if inspect.ContainerJSONBase == nil || inspect.ID != item.ID {
+			slog.Warn("Docker container identity changed during discovery", "container", item.ID)
+			continue
+		}
+		if inspect.Config != nil {
+			current, e := ParseLabels(inspect.Config.Labels, c.LabelKeys)
+			if e != nil || !reflect.DeepEqual(current, specs) {
+				slog.Warn("Docker declarations changed during discovery; retrying", "container", item.ID)
+				continue
+			}
+		}
 		networks, err := c.targetNetworks(ctx, inspect)
 		if err != nil {
 			slog.Warn("gateway target network inspect failed", "container", item.ID, "error", err)
 			continue
 		}
 		if len(networks) == 0 {
+			slog.Warn("Docker backend requires an allowed user-defined network; published ports are not used", "container", item.ID)
 			continue
 		}
 		for _, spec := range specs {
@@ -137,8 +147,7 @@ func (c Config) Reconcile(ctx context.Context) ([]Runtime, error) {
 				backendHostname = strings.TrimPrefix(item.Names[0], "/")
 			}
 			runtime := Runtime{ContainerID: item.ID, BackendHostname: backendHostname, Spec: spec, Assignment: assignment, Networks: networks}
-			backendIP := networks[0].IPAddress
-			backendAddress, probeErr := c.ensureRelay(ctx, runtime)
+			backendIP, backendAddress, probeErr := backendEndpoint(ctx, networks, spec.Port)
 			if probeErr != nil {
 				slog.Warn("gateway backend unavailable", "container", item.ID, "port", spec.Port, "error", probeErr)
 				runtime.Reachable = false
@@ -151,7 +160,6 @@ func (c Config) Reconcile(ctx context.Context) ([]Runtime, error) {
 				}
 			}
 			if runtime.Reachable {
-				targets[c.relayName(runtime)] = true
 				activeListeners[fmt.Sprintf("%s:%d", assignment.ServiceName, assignment.ServicePort)] = struct{}{}
 			}
 			out = append(out, runtime)
@@ -160,11 +168,10 @@ func (c Config) Reconcile(ctx context.Context) ([]Runtime, error) {
 	if controlUnavailable {
 		// A transient control outage must not drain already-approved listeners.
 		// They retain their persistent identities and will be reconciled after
-		// the signed control configuration becomes available again.
+		// the authenticated control configuration becomes available again.
 		return out, ErrControlUnavailable
 	}
 	// Drain Service listeners whose approved assignment disappeared.
-	c.cleanupRelays(ctx, targets)
 	if !c.DeferListenerCleanup {
 		c.ListenerManager.Reconcile(activeListeners)
 	}

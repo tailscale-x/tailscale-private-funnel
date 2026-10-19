@@ -4,24 +4,20 @@ package funnel.v1;
 import "buf/validate/validate.proto";
 import "funnel/v1/management.proto";
 import "funnel/v1/options.proto";
+import "funnel/v1/provisioning.proto";
 
 option go_package = "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1;funnelv1";
-// SignedEnvelope carries exact signed bytes. Decode only after verification.
-message SignedEnvelope {
-  string node_id = 1;
-  int64 timestamp = 2;
-  string nonce = 3;
-  bytes public_key = 4;
-  bytes payload = 5;
-  bytes signature = 6;
-  string purpose = 7;
-}
 service NodeService {
-  rpc GetConfig(Empty) returns (SignedEnvelope) {
+  // Role-authorized registration. Identity and role come only from WhoIs.
+  rpc RegisterComponent(RegisterComponentRequest) returns (RegisteredComponent) {
+    option (permission) = PERMISSION_NODE;
+  }
+
+  rpc GetConfig(Empty) returns (ConfigurationPayload) {
     option (permission) = PERMISSION_NODE;
     option (payload_type) = "funnel.v1.ConfigurationPayload";
   }
-  rpc ResolveApplication(ResolveApplicationRequest) returns (SignedEnvelope) {
+  rpc ResolveApplication(ResolveApplicationRequest) returns (ConfigurationPayload) {
     option (permission) = PERMISSION_NODE;
     option (payload_type) = "funnel.v1.ConfigurationPayload";
   }
@@ -34,54 +30,37 @@ service NodeService {
   }
   // Accept authenticated desired state durably. Success acknowledges storage,
   // not completed DNS or Service publication; bounded control workers reconcile it.
-  rpc SubmitReport(SignedEnvelope) returns (Empty) {
+  rpc SubmitReport(ExposureReport) returns (Empty) {
     option (permission) = PERMISSION_NODE;
     option (payload_type) = "funnel.v1.ExposureReport";
   }
   // Complete Docker declarations, including stopped containers. No external API work.
-  rpc SubmitDockerInventory(SignedEnvelope) returns (Empty) {
+  rpc SubmitDockerInventory(DockerInventoryPayload) returns (Empty) {
     option (permission) = PERMISSION_NODE;
     option (payload_type) = "funnel.v1.DockerInventoryPayload";
   }
-  rpc SubmitPeers(SignedEnvelope) returns (Empty) {
+  rpc SubmitPeers(PeerSnapshot) returns (Empty) {
     option (permission) = PERMISSION_NODE;
     option (payload_type) = "funnel.v1.PeerSnapshot";
   }
-  rpc SubmitKubernetes(SignedEnvelope) returns (Empty) {
+  rpc SubmitKubernetes(KubernetesPayload) returns (Empty) {
     option (permission) = PERMISSION_NODE;
     option (payload_type) = "funnel.v1.KubernetesPayload";
   }
-  rpc SubmitPublicEndpoint(SignedEnvelope) returns (Empty) {
+  rpc SubmitPublicEndpoint(PublicEndpointPayload) returns (Empty) {
     option (permission) = PERMISSION_NODE;
     option (payload_type) = "funnel.v1.PublicEndpointPayload";
   }
-  rpc EnrollForwarder(SignedEnvelope) returns (ForwarderEnrollment) {
-    option (permission) = PERMISSION_NODE;
-    option (sensitive) = true;
-    option (payload_type) = "funnel.v1.ForwarderEnrollmentPayload";
-  }
+
   rpc ListForwarders(Empty) returns (Nodes) {
     option (permission) = PERMISSION_NODE;
   }
-  rpc BindForwarder(SignedEnvelope) returns (Empty) {
-    option (permission) = PERMISSION_ENROLLMENT;
-    option (payload_type) = "funnel.v1.ForwarderBindingPayload";
-  }
+
   rpc Shutdown(ShutdownRequest) returns (TestResult) {
     option (permission) = PERMISSION_NODE;
   }
 }
-service EnrollmentService {
-  rpc BindSigningKey(BindSigningKeyRequest) returns (Empty) {
-    option (permission) = PERMISSION_ENROLLMENT;
-    option (sensitive) = true;
-  }
-}
-message BindSigningKeyRequest {
-  string enrollment_id = 1;
-  string code = 2 [(secret) = true];
-  bytes public_key = 3 [(buf.validate.field).bytes.len = 32];
-}
+
 message ResolveApplicationRequest {
   string path_prefix = 3;
   PrefixRewrite rewrite = 4;
@@ -110,18 +89,7 @@ message NodeHealth {
   string withdrawal_reason = 12;
   repeated string advertised_services = 13;
 }
-message ForwarderEnrollment {
-  string node_id = 1;
-  string auth_key = 2 [(secret) = true];
-}
-message ForwarderEnrollmentPayload {
-  string node_uid = 1;
-  string hostname = 2;
-  string public_key = 3;
-}
-message ForwarderBindingPayload {
-  bool bind = 1;
-}
+
 message PublicEndpointPayload {
   string namespace = 1;
   string service = 2;
@@ -140,35 +108,26 @@ service BrokerService {
     option (permission) = PERMISSION_BROKER;
     option (sensitive) = true;
   }
-  rpc GetConfig(Empty) returns (SignedEnvelope) {
+  rpc GetConfig(Empty) returns (ConfigurationPayload) {
     option (permission) = PERMISSION_BROKER;
     option (payload_type) = "funnel.v1.ConfigurationPayload";
   }
   rpc RenewLease(Empty) returns (Empty) {
     option (permission) = PERMISSION_BROKER;
   }
-  rpc WriteState(StateUpdate) returns (Empty) {
-    option (permission) = PERMISSION_BROKER;
-    option (sensitive) = true;
-  }
+
   rpc ReleaseLease(Empty) returns (Empty) {
     option (permission) = PERMISSION_BROKER;
   }
 }
-message StateUpdate {
-  string key = 1 [(buf.validate.field).string.prefix = "tsnet."];
-  bytes value = 2;
-}
+
 message BrokerSession {
   string node_uid = 1;
   string node_name = 2;
   string node_id = 3;
-  string auth_key = 4 [(secret) = true];
   string management_url = 5;
-  string control_key = 6;
+
   string controller_id = 7;
-  bytes identity = 8;
-  map<string, bytes> state = 9;
 }
 
 message KubernetesPayload {
@@ -265,7 +224,9 @@ message ConfigurationPayload {
 }
 
 // Shutdown first withdraws owned state; confirm acknowledges receipt before device deletion.
-message ShutdownRequest { bool confirm = 1; }
+message ShutdownRequest {
+  bool remove = 1;
+}
 
 // Only complete, successfully parsed scans may retire registrations.
 message DockerInventoryPayload {
@@ -278,4 +239,38 @@ message DockerInventoryContainer {
   string id = 1;
   bool running = 2;
   map<string, string> labels = 3;
+}
+
+message RegisterComponentRequest {
+  string component_id = 1;
+  string instance_id = 2;
+  DeploymentRequest deployment = 3;
+  string parent_id = 4;
+  string node_uid = 5;
+}
+message RegisteredComponent {
+  string component_id = 1;
+  string instance_id = 2;
+  string device_id = 3;
+  int64 generation = 4;
+  int64 lease_until = 5;
+}
+
+// WorkloadBootstrapService is served by the cluster operator over authenticated TLS.
+service WorkloadBootstrapService {
+  rpc IssueKey(Empty) returns (WorkloadBootstrap) {
+    option (permission) = PERMISSION_BROKER;
+    option (sensitive) = true;
+  }
+}
+message WorkloadBootstrap {
+  string auth_key = 1 [(secret) = true];
+  string component_id = 2;
+  string parent_id = 3;
+  string instance_id = 4;
+  string installation = 5;
+  string mode = 6;
+  string node_uid = 7;
+  string node_name = 8;
+  int64 expires_at = 9;
 }

@@ -2,14 +2,15 @@ package gateway
 
 import (
 	"encoding/json"
-	"github.com/docker/docker/api/types"
-	dockerclient "github.com/docker/docker/client"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/docker/docker/api/types"
+	dockerclient "github.com/docker/docker/client"
 )
 
 func TestCompleteDockerInventoryIndependentOfBackends(t *testing.T) {

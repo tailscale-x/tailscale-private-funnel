@@ -14,6 +14,10 @@ spec:
             matchLabels: {tailscale-private-funnel.io/installation: {{ .Values.installation }}, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: forwarder}
       ports: [{protocol: TCP, port: 9443}]
   egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: tailscale-private-funnel-k8s-operator-system}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: tailscale-private-funnel-k8s-operator}}
+      ports: [{protocol: TCP, port: 9444}]
     - ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 6443}, {protocol: UDP, port: 53}, {protocol: TCP, port: 53}, {protocol: UDP, port: 1, endPort: 65535}]
 ---
 apiVersion: networking.k8s.io/v1
@@ -26,6 +30,10 @@ spec:
   policyTypes: [Ingress, Egress]
   ingress: []
   egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: tailscale-private-funnel-k8s-operator-system}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: tailscale-private-funnel-k8s-operator}}
+      ports: [{protocol: TCP, port: 9444}]
     - to:
         - podSelector:
             matchLabels: {tailscale-private-funnel.io/installation: {{ .Values.installation }}, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: agent}
@@ -46,7 +54,7 @@ spec:
         {{- else }}
         - namespaceSelector: {}
         {{- end }}
-      # Only signed, verified node-local Pod endpoints are dialed by the process.
+      # Only verified node-local Pod endpoints are dialed by the process.
       ports: [{protocol: TCP, port: 1, endPort: 65535}]
     - to:
         - ipBlock:
@@ -55,4 +63,39 @@ spec:
       ports: [{protocol: TCP, port: 443}, {protocol: UDP, port: 1, endPort: 65535}]
 {{- end }}
 
+{{- end }}
+{{- if and .Values.networkPolicy.enabled (or (eq .Values.component "control") (eq .Values.component "loadbalancer")) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-{{ .Values.component }}
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: {{ .Values.component }}}
+  policyTypes: [Ingress, Egress]
+  {{- if eq .Values.component "loadbalancer" }}
+  ingress:
+    - ports: [{protocol: TCP, port: 80}, {protocol: TCP, port: 443}]
+  {{- else }}
+  ingress: []
+  {{- end }}
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: tailscale-private-funnel-k8s-operator-system}}
+          podSelector: {matchLabels: {app.kubernetes.io/name: tailscale-private-funnel-k8s-operator}}
+      ports: [{protocol: TCP, port: 9444}]
+    - ports: [{protocol: TCP, port: 443}, {protocol: UDP, port: 53}, {protocol: TCP, port: 53}, {protocol: UDP, port: 1, endPort: 65535}]
+    {{- if eq .Values.component "loadbalancer" }}
+    - ports: [{protocol: TCP, port: 6443}]
+    {{- end }}
+    {{- if and (eq .Values.component "control") (eq .Values.control.database.type "postgres") }}
+    - to:
+        {{- if .Values.control.database.postgres.egressPeers }}
+        {{- toYaml .Values.control.database.postgres.egressPeers | nindent 8 }}
+        {{- else }}
+        - podSelector: {}
+        {{- end }}
+      ports: [{protocol: TCP, port: {{ default 5432 .Values.control.database.postgres.port }}}]
+    {{- end }}
 {{- end }}

@@ -17,7 +17,7 @@ plugins:
       - format=json
       - path=openapi.json
       - services=funnel.v1.ManagementService
-      - services=funnel.v1.ProvisioningService
+      - services=funnel.v1.DeploymentService
   - local: protoc-gen-connect-openapi
     out: internal/web/assets/api
     strategy: all
@@ -25,7 +25,6 @@ plugins:
       - format=json
       - path=node-openapi.json
       - services=funnel.v1.NodeService
-      - services=funnel.v1.EnrollmentService
   - local: protoc-gen-connect-openapi
     out: internal/web/assets/api
     strategy: all
@@ -33,3 +32,11 @@ plugins:
       - format=json
       - path=broker-openapi.json
       - services=funnel.v1.BrokerService
+
+  - local: protoc-gen-connect-openapi
+    out: internal/web/assets/api
+    strategy: all
+    opt:
+      - format=json
+      - path=bootstrap-openapi.json
+      - services=funnel.v1.WorkloadBootstrapService

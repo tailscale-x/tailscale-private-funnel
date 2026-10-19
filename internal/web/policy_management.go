@@ -69,7 +69,7 @@ func (c *Control) policyImpact(d policy.Document) []string {
 	return out
 }
 
-// Desired DNS and routes are reconstructed from signed, unexpired reports and
+// Desired DNS and routes are reconstructed from authenticated, unexpired reports and
 // verified selectors saved by the report handler, never client supplied roles.
 func (c *Control) authorizedReports(d policy.Document) map[string][]dns.GatewayExposure {
 	out := map[string][]dns.GatewayExposure{}

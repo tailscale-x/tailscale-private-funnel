@@ -32,24 +32,42 @@ type Storage struct {
 	ExistingClaim string `json:"existingClaim,omitempty"`
 }
 
+// KeyIssuerReference points to the installation's shared auth_keys issuer.
+// All components in an installation should reference the same Secret.
+type KeyIssuerReference struct {
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+	// +kubebuilder:default=client_id
+	ClientIDKey string `json:"clientIDKey,omitempty"`
+	// +kubebuilder:default=client_secret
+	ClientSecretKey string `json:"clientSecretKey,omitempty"`
+}
+
 // +kubebuilder:validation:XValidation:rule="!(has(self.controlRef) && has(self.managementURL))",message="Choose controlRef or managementURL"
-// +kubebuilder:validation:XValidation:rule="has(self.identitySecretRef) == has(oldSelf.identitySecretRef) && (!has(self.identitySecretRef) || self.identitySecretRef == oldSelf.identitySecretRef)",message="Identity binding is immutable"
 type ComponentSpec struct {
+	// ComponentID is the immutable logical control-plane identity. Defaults to the CR UID.
+	// It is independent of disposable Tailscale device and Pod identities.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=128
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Logical component identity is immutable"
+	ComponentID  string             `json:"componentID,omitempty"`
+	KeyIssuerRef KeyIssuerReference `json:"keyIssuerRef"`
+
 	// +kubebuilder:validation:MinLength=1
 	Image string `json:"image"`
 	// +kubebuilder:default=main
+	// +kubebuilder:validation:MaxLength=24
+	// +kubebuilder:validation:Pattern="^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Installation is immutable"
 	Installation string `json:"installation,omitempty"`
 	// +kubebuilder:validation:Pattern="^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Hostname is immutable; recreate to change identity"
-	Hostname string `json:"hostname,omitempty"`
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Control binding is immutable"
-	ManagementURL      string                     `json:"managementURL,omitempty"`
-	ControlRef         *core.LocalObjectReference `json:"controlRef,omitempty"`
-	BootstrapSecretRef *core.LocalObjectReference `json:"bootstrapSecretRef,omitempty"`
-	IdentitySecretRef  *core.LocalObjectReference `json:"identitySecretRef,omitempty"`
-	Placement          Placement                  `json:"placement,omitempty"`
-	Resources          core.ResourceRequirements  `json:"resources,omitempty"`
+	Hostname      string                     `json:"hostname,omitempty"`
+	ManagementURL string                     `json:"managementURL,omitempty"`
+	ControlRef    *core.LocalObjectReference `json:"controlRef,omitempty"`
+	Placement     Placement                  `json:"placement,omitempty"`
+	Resources     core.ResourceRequirements  `json:"resources,omitempty"`
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Storage binding is immutable"
 	Storage Storage `json:"storage,omitempty"`
 }
@@ -75,24 +93,21 @@ type ControlDatabase struct {
 	Postgres *PostgresDatabase `json:"postgres,omitempty"`
 }
 type ControlSpec struct {
-	// Transfer fences the source during an offline control transfer.
-	Transfer      *ControlTransferState `json:"transfer,omitempty"`
-	ComponentSpec `json:",inline"`
+	EncryptionSecretRef *core.LocalObjectReference `json:"encryptionSecretRef,omitempty"`
+	UsersRef            core.LocalObjectReference  `json:"usersRef"`
+	ServicesRef         core.LocalObjectReference  `json:"servicesRef"`
+	ComponentSpec       `json:",inline"`
 	// +kubebuilder:validation:MinLength=1
 	Tailnet string `json:"tailnet"`
 	// +kubebuilder:default={type:sqlite}
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Database binding is immutable; recreate to change it"
+	// +kubebuilder:validation:XValidation:rule="self.type == oldSelf.type && (self.type != 'postgres' || self.postgres.connectionSecretRef == oldSelf.postgres.connectionSecretRef)",message="Database backend and connection Secret binding are immutable; recreate to change them"
 	Database ControlDatabase `json:"database,omitempty"`
 }
-type ControlTransferState struct {
-	// +kubebuilder:validation:MinLength=1
-	ID string `json:"id"`
-	// +kubebuilder:validation:Enum=Stopped;Transferred
-	Phase string `json:"phase"`
-	// Digest of the durably saved installer, required before transfer deletion.
-	InstallerSHA256 string `json:"installerSHA256,omitempty"`
-}
+
 type LoadBalancerSpec struct {
+	PublicHostname   string `json:"publicHostname"`
+	CertificateEmail string `json:"certificateEmail,omitempty"`
+
 	ComponentSpec `json:",inline"`
 	PublicService PublicServiceSpec `json:"publicService,omitempty"`
 }
@@ -105,6 +120,12 @@ type PublicServiceSpec struct {
 	ExternalTrafficPolicy core.ServiceExternalTrafficPolicy `json:"externalTrafficPolicy,omitempty"`
 }
 type GatewaySpec struct {
+	// RoutingID keeps application and Service identifiers independent of workload identity.
+	// Defaults to the logical component ID.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=128
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Routing identity is immutable"
+	RoutingID     string `json:"routingID,omitempty"`
 	ComponentSpec `json:",inline"`
 	// +kubebuilder:validation:MinLength=1
 	GatewayClass       string                    `json:"gatewayClass"`

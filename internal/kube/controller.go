@@ -3,13 +3,14 @@ package kube
 import (
 	"context"
 	"encoding/json"
-	"github.com/go-logr/logr"
-	"k8s.io/client-go/util/retry"
 	"log/slog"
 	"reflect"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/go-logr/logr"
+	"k8s.io/client-go/util/retry"
 
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"

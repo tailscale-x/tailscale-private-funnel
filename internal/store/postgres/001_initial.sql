@@ -26,17 +26,10 @@ CREATE TABLE "backend_assignments"(
   last_seen BIGINT NOT NULL DEFAULT 0,
   revoked BIGINT NOT NULL DEFAULT 0
 );
-CREATE TABLE enrollments(id TEXT PRIMARY KEY, mode TEXT NOT NULL, hostname TEXT NOT NULL, code_hash TEXT NOT NULL, created_at BIGINT NOT NULL, revoked BIGINT NOT NULL DEFAULT 0, expires_at BIGINT NOT NULL DEFAULT 0, name TEXT NOT NULL DEFAULT '');
 CREATE TABLE exposures(id TEXT PRIMARY KEY,application_id TEXT NOT NULL,hostname TEXT NOT NULL UNIQUE,active BIGINT NOT NULL DEFAULT 1);
 
 CREATE TABLE managed_zones(provider_id TEXT NOT NULL, zone TEXT NOT NULL, id TEXT NOT NULL DEFAULT '', PRIMARY KEY(provider_id,zone));
-CREATE TABLE nodes(id TEXT PRIMARY KEY, mode TEXT NOT NULL, hostname TEXT NOT NULL, node_key TEXT, revoked BIGINT NOT NULL DEFAULT 0, last_report BIGINT NOT NULL DEFAULT 0, enrollment_id TEXT NOT NULL DEFAULT '', revoked_at BIGINT NOT NULL DEFAULT 0, tailnet_id TEXT NOT NULL DEFAULT '', addresses TEXT NOT NULL DEFAULT '[]', name TEXT NOT NULL DEFAULT '');
-CREATE TABLE kubernetes_forwarders (
- node_id TEXT PRIMARY KEY REFERENCES nodes(id),
- parent_id TEXT NOT NULL REFERENCES nodes(id),
- kubernetes_node_uid TEXT NOT NULL,
- UNIQUE(parent_id, kubernetes_node_uid)
-);
+CREATE TABLE nodes(id TEXT PRIMARY KEY, mode TEXT NOT NULL, hostname TEXT NOT NULL, revoked BIGINT NOT NULL DEFAULT 0, last_report BIGINT NOT NULL DEFAULT 0, revoked_at BIGINT NOT NULL DEFAULT 0, tailnet_id TEXT NOT NULL DEFAULT '', addresses TEXT NOT NULL DEFAULT '[]', name TEXT NOT NULL DEFAULT '');
 CREATE TABLE providers(id TEXT PRIMARY KEY, provider TEXT NOT NULL, config TEXT NOT NULL, enabled BIGINT NOT NULL DEFAULT 1, account_id TEXT NOT NULL DEFAULT '', capabilities TEXT NOT NULL DEFAULT '[]', tested_at BIGINT NOT NULL DEFAULT 0, name TEXT NOT NULL DEFAULT '');
 CREATE TABLE records(id TEXT PRIMARY KEY, provider_id TEXT NOT NULL, zone TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, value TEXT NOT NULL, owner_id TEXT NOT NULL, provider_id_remote TEXT, zone_id TEXT NOT NULL DEFAULT '');
 CREATE TABLE report_nonces(node_id TEXT NOT NULL, nonce TEXT NOT NULL, received_at BIGINT NOT NULL, PRIMARY KEY(node_id,nonce));

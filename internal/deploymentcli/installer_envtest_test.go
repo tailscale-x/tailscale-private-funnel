@@ -16,6 +16,7 @@ import (
 	apps "k8s.io/api/apps/v1"
 	core "k8s.io/api/core/v1"
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
@@ -89,11 +90,14 @@ func TestInstallerKubernetesAPIBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	p, err := provision.Resolve(&v1.DeploymentRequest{Mode: "k8s-gateway", Target: "kubernetes", ResourceName: "site", Context: contextName, Namespace: ns, PlacementJson: []byte(`{"nodeSelector":{"pool":"fixture"}}`)}, "http://unreachable.private.invalid:8080", "dev-test")
+	p, err := provision.Resolve(&v1.DeploymentRequest{Mode: "k8s-gateway", Target: "kubernetes", ResourceName: "site", Context: contextName, Namespace: ns, KeyIssuerSecret: "role-issuer", PlacementJson: []byte(`{"nodeSelector":{"pool":"fixture"}}`)}, "http://unreachable.private.invalid:8080", "dev-test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.Credentials = &v1.BootstrapCredentials{AuthKey: "fixture-secret", EnrollmentId: "fixture", EnrollmentCode: "fixture-proof", ControlKey: "fixture-control-public-key", ExpiresAt: time.Now().Add(time.Minute).Unix()}
+	issuer := &core.Secret{ObjectMeta: metav1.ObjectMeta{Name: "role-issuer", Namespace: ns}, Data: map[string][]byte{"client_id": []byte("fixture-id"), "client_secret": []byte("fixture-secret")}}
+	if err = k.Create(t.Context(), issuer); err != nil {
+		t.Fatal(err)
+	}
 	run := func() error {
 		b, _ := json.Marshal(p)
 		cmd := Installer("kubernetes")
@@ -123,11 +127,14 @@ func TestInstallerKubernetesAPIBoundary(t *testing.T) {
 		t.Fatal("credentials in CR")
 	}
 	var secret core.Secret
-	if err = k.Get(t.Context(), types.NamespacedName{Namespace: ns, Name: "site-bootstrap"}, &secret); err != nil {
-		t.Fatal(err)
+	if err = k.Get(t.Context(), types.NamespacedName{Namespace: ns, Name: "site-bootstrap"}, &secret); !apierrors.IsNotFound(err) {
+		t.Fatal("obsolete bootstrap Secret created", err)
 	}
-	if string(secret.Data["auth-key"]) != "fixture-secret" || len(secret.OwnerReferences) != 1 || secret.OwnerReferences[0].UID != got.UID {
-		t.Fatal("bootstrap not owned by exact CR")
+	if got.Spec.KeyIssuerRef.Name != issuer.Name {
+		t.Fatal("issuer reference lost")
+	}
+	if err = k.Get(t.Context(), types.NamespacedName{Namespace: ns, Name: issuer.Name}, &secret); err != nil || string(secret.Data["client_secret"]) != "fixture-secret" || len(secret.OwnerReferences) != 0 {
+		t.Fatal("external issuer modified", err)
 	}
 	if err = run(); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatal("conflicting resource accepted", err)

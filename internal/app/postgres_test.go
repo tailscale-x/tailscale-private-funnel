@@ -2,16 +2,17 @@ package app
 
 import (
 	"encoding/json"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
-	core "k8s.io/api/core/v1"
 	"os"
 	"path/filepath"
-	"tailscale.com/ipn"
 	"testing"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
+	core "k8s.io/api/core/v1"
+	"tailscale.com/ipn"
 )
 
 func TestPostgresKubernetesStorageDoesNotRequirePVC(t *testing.T) {
-	o, e := kubernetesNodeOptions("control", Options{IdentitySecret: "control-identity", KubeNamespace: "system", Database: store.DatabaseOptions{Type: "postgres"}, StateDir: filepath.Join(t.TempDir(), "state"), DataDir: t.TempDir()})
+	o, e := kubernetesNodeOptions("control", Options{KubeNamespace: "system", Database: store.DatabaseOptions{Type: "postgres"}, StateDir: filepath.Join(t.TempDir(), "state"), DataDir: t.TempDir()})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -32,7 +33,7 @@ func TestPostgresMissingConnectionFailsClosed(t *testing.T) {
 }
 
 // Run alongside database integration tests with a dedicated database URI.
-func TestPostgresNodeBundleRoundTrip(t *testing.T) {
+func TestPostgresControlMaterialSurvivesReplacement(t *testing.T) {
 	uri := os.Getenv("FUNNEL_TEST_CONTROL_POSTGRES_URL")
 	if uri == "" {
 		t.Skip("dedicated PostgreSQL control test database required")
@@ -52,22 +53,25 @@ func TestPostgresNodeBundleRoundTrip(t *testing.T) {
 	}
 	s.SetSecret("test", "private")
 	s.Close()
-	data, e := exportNodeBundle("control", o)
+	master, e := os.ReadFile(filepath.Join(o.DataDir, "master.key"))
 	if e != nil {
 		t.Fatal(e)
 	}
-	data["mode"] = []byte("control")
-	data["initialized"] = []byte("1")
-	originalMarker := string(data["storage-marker"])
-	again, e := exportNodeBundle("control", o)
-	if e != nil || string(again["storage-marker"]) != originalMarker {
-		t.Fatal("bootstrap retry changed database binding", e)
+	st, e := openRuntimeStore(o)
+	if e != nil {
+		t.Fatal(e)
 	}
+	marker, e := st.StorageMarker("fixture-storage")
+	st.Close()
+	if e != nil {
+		t.Fatal(e)
+	}
+	data := map[string][]byte{"master.key": master, "storage-marker": []byte(marker)}
 	o.StateDir = filepath.Join(root, "replacement-state")
 	o.DataDir = filepath.Join(root, "replacement-data")
 	os.MkdirAll(o.StateDir, 0700)
 	os.MkdirAll(o.DataDir, 0700)
-	restored, e := restoreNodeBundle("control", o, core.Secret{Data: data})
+	restored, e := bindControlMaterial("control", o, core.Secret{Data: data})
 	if e != nil {
 		t.Fatal(e)
 	}

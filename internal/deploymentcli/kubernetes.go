@@ -81,13 +81,13 @@ func newCR(kind, name string, f Flags) client.Object {
 	if spec.Hostname == "" {
 		spec.Hostname = name
 	}
-	spec.BootstrapSecretRef = &core.LocalObjectReference{Name: name + "-bootstrap"}
+	spec.KeyIssuerRef = funnel.KeyIssuerReference{Name: f.KeyIssuerSecret}
 	meta := metav1.ObjectMeta{Name: name, Namespace: f.Namespace, Annotations: map[string]string{"tailscale-private-funnel.io/display-name": f.DisplayName}}
 	switch mode {
 	case "control":
-		return &funnel.FunnelControl{TypeMeta: metav1.TypeMeta{APIVersion: funnel.GroupVersion.String(), Kind: "FunnelControl"}, ObjectMeta: meta, Spec: funnel.ControlSpec{ComponentSpec: spec, Tailnet: f.Tailnet, Database: controlDatabase(f)}}
+		return &funnel.FunnelControl{TypeMeta: metav1.TypeMeta{APIVersion: funnel.GroupVersion.String(), Kind: "FunnelControl"}, ObjectMeta: meta, Spec: funnel.ControlSpec{ComponentSpec: spec, Tailnet: f.Tailnet, UsersRef: core.LocalObjectReference{Name: f.UsersSecret}, ServicesRef: core.LocalObjectReference{Name: f.ServicesSecret}, Database: controlDatabase(f)}}
 	case "loadbalancer":
-		return &funnel.FunnelLoadBalancer{TypeMeta: metav1.TypeMeta{APIVersion: funnel.GroupVersion.String(), Kind: "FunnelLoadBalancer"}, ObjectMeta: meta, Spec: funnel.LoadBalancerSpec{ComponentSpec: spec}}
+		return &funnel.FunnelLoadBalancer{TypeMeta: metav1.TypeMeta{APIVersion: funnel.GroupVersion.String(), Kind: "FunnelLoadBalancer"}, ObjectMeta: meta, Spec: funnel.LoadBalancerSpec{ComponentSpec: spec, PublicHostname: f.PublicHostname, CertificateEmail: f.Email}}
 	default:
 		spec.Placement = funnel.Placement{}
 		gc := f.GatewayClass
@@ -283,7 +283,7 @@ func kubernetesCommands(version string, bootstrap *v1.DeploymentInstructions) *c
 					}
 					if kind == "gateways" {
 						if _, err := k.RESTMapper().RESTMapping(schema.GroupKind{Group: "gateway.networking.k8s.io", Kind: "GatewayClass"}, "v1"); err != nil {
-							return errors.New("Gateway API CRDs are not available; install the pinned standard CRDs from the installer prerequisites, then retry before bootstrap expires")
+							return errors.New("Gateway API CRDs are not available; install the pinned standard CRDs from the installer prerequisites, then regenerate the installer if settings change")
 						}
 					}
 					existing := object.DeepCopyObject().(client.Object)
@@ -292,36 +292,26 @@ func kubernetesCommands(version string, bootstrap *v1.DeploymentInstructions) *c
 					} else if !apierrors.IsNotFound(e) {
 						return e
 					}
-					secret := &core.Secret{ObjectMeta: metav1.ObjectMeta{Name: name + "-bootstrap", Namespace: f.Namespace}, Data: map[string][]byte{}}
+					refs := []string{f.KeyIssuerSecret}
 					if kind == "controls" {
-						if f.OAuthID == "" || f.OAuthSecret == "" {
-							return errors.New("control creation requires protected OAuth credential files")
+						refs = append(refs, f.ServicesSecret, f.UsersSecret)
+					}
+					for _, name := range refs {
+						if name == "" {
+							return errors.New("installation key-issuer-secret and control services-secret references are required")
 						}
-						id, e := privateFile(f.OAuthID)
-						if e != nil {
-							return e
+						var secret core.Secret
+						if e = k.Get(ctx, types.NamespacedName{Namespace: f.Namespace, Name: name}, &secret); e != nil {
+							return fmt.Errorf("referenced OAuth Secret unavailable: %w", e)
 						}
-						key, e := privateFile(f.OAuthSecret)
-						if e != nil {
-							return e
+						if len(secret.Data["client_id"]) == 0 || len(secret.Data["client_secret"]) == 0 {
+							return errors.New("referenced OAuth Secret requires client_id and client_secret")
 						}
-						secret.Data["client-id"] = id
-						secret.Data["client-secret"] = key
-						secret.Data["administrators"], _ = json.Marshal(f.Administrators)
-					} else {
-						p := bootstrap
-						c := p.Credentials
-						secret.Data = map[string][]byte{"enrollment-id": []byte(c.EnrollmentId), "code": []byte(c.EnrollmentCode), "auth-key": []byte(c.AuthKey), "control-key": []byte(c.ControlKey), "management-url": []byte(p.ManagementUrl), "hostname": []byte(p.Deployment.Hostname), "cert-email": []byte(p.Deployment.CertificateEmail), "loadbalancer-hostname": []byte(p.Deployment.PublicHostname)}
 					}
 					if e = k.Create(ctx, object); e != nil {
 						return e
 					}
-					yes := true
-					secret.OwnerReferences = []metav1.OwnerReference{{APIVersion: funnel.GroupVersion.String(), Kind: map[string]string{"controls": "FunnelControl", "gateways": "FunnelGateway", "loadbalancers": "FunnelLoadBalancer"}[kind], Name: name, UID: object.GetUID(), Controller: &yes}}
-					secret.Labels = map[string]string{"tailscale-private-funnel.io/owner-uid": string(object.GetUID())}
-					if e = k.Create(ctx, secret); e != nil {
-						return fmt.Errorf("resource created but bootstrap Secret failed; inspect get diagnostics: %w", e)
-					}
+
 				case "get":
 					if f.Wait {
 						if e = waitCR(ctx, k, object, false); e != nil {

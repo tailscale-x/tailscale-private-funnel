@@ -1,30 +1,22 @@
 package nodeconfig
 
 import (
-	"crypto/ed25519"
-	"crypto/rand"
-	"encoding/base64"
 	"testing"
 	"time"
 
-	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 )
 
-func TestVerifyRequiresPinnedControlKey(t *testing.T) {
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
+func TestConfigurationFreshnessAndTarget(t *testing.T) {
+	now := time.Now()
+	p := &v1.ConfigurationPayload{NodeId: "gateway", Revision: "1", IssuedAt: now.Unix()}
+	if _, e := FromPayload(p, "gateway", now); e != nil {
+		t.Fatal(e)
 	}
-	config := Configuration{NodeID: "gateway-1", Revision: "rev-1", IssuedAt: time.Now().Unix()}
-	e, err := report.NewEnvelope(config.NodeID, config, pub, priv, time.Now())
-	if err != nil {
-		t.Fatal(err)
+	if _, e := FromPayload(p, "other", now); e == nil {
+		t.Fatal("foreign logical target accepted")
 	}
-	if _, err := Verify(e, base64.RawStdEncoding.EncodeToString(pub), config.NodeID, time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	other, _, _ := ed25519.GenerateKey(rand.Reader)
-	if _, err := Verify(e, base64.RawStdEncoding.EncodeToString(other), config.NodeID, time.Now()); err == nil {
-		t.Fatal("accepted configuration signed by another key")
+	if _, e := FromPayload(p, "gateway", now.Add(6*time.Minute)); e == nil {
+		t.Fatal("stale configuration accepted")
 	}
 }

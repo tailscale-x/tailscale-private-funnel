@@ -2,18 +2,18 @@
 
 Runtime exposure reports and health heartbeats acknowledge durable local storage,
 not completion of external API work. Report handling verifies WhoIs binding,
-mode, signing key, signature, timestamp, nonce, policy, and application assignment.
-It stores the accepted report and backend snapshot before responding. Replay and
-revocation checks remain enforced by storage transactions.
+installation/role, active instance lease, policy, and application assignment.
+It stores the accepted report and backend snapshot before responding. Inventory ordering, instance ownership and disabled-component checks remain
+enforced by storage transactions. Receipt freshness is recorded by control.
 
 Report serialization covers local state only. DNS reconciliation, Tailscale
-endpoint discovery, and Service-host approvals must never run inside a report or
+endpoint discovery, and Service-host readiness must never run inside a report or
 health request, or hold a lock needed by those requests. Otherwise an external
 API outage can consume report freshness and incorrectly withdraw healthy routes.
 
 Control uses bounded, single-flight periodic workers (15-second ticks, fresh
 45-second pass budgets) for policy/DNS reconciliation, expiry, endpoint discovery,
-revoked-node cleanup, and Service approvals. Persisted desired state is the retry
+revoked-node cleanup, and Service readiness. Persisted desired state is the retry
 queue: no goroutine is spawned per heartbeat and no report waits for a provider.
 Existing Docker label resolution reads an unchanged, authorized application binding
 without acquiring the Service provisioning lock. Routine Kubernetes snapshots
@@ -29,8 +29,8 @@ backend assignments. A heartbeat arriving after the initial stale-candidate scan
 therefore survives cleanup. Persistent device identity is not revoked by expiry.
 
 During external API outages, existing healthy forwarding continues using fresh,
-authenticated reports and the last owned load-balancer address. New enrollment,
-Service approvals, DNS additions, and externally applied cleanup can remain
+authenticated reports and the last owned load-balancer address. New registration,
+Service readiness, DNS additions, and externally applied cleanup can remain
 pending. An actual report expiry, revoked identity, or denied exposure policy
 still withdraws the affected route. This is not a bypass of authorization and
 is not protection against an unavailable control database or tailnet transport.
@@ -38,7 +38,7 @@ is not protection against an unavailable control database or tailnet transport.
 ## Verification
 
 Tests hold the external mutation lock while submitting reports/health for all
-node modes, exercise a stalled Tailscale transport, preserve replay/revocation
+node modes, exercise a stalled Tailscale transport, preserve inventory ordering and instance/disable
 checks, verify existing label resolution while provisioning is locked, verify unchanged
 Kubernetes snapshots with a stalled REST transport and untrusted supplied Service
 targets, verify worker independence, and cover renewal-versus-expiry ordering

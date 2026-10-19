@@ -44,8 +44,8 @@ func TestBrowserPreview(t *testing.T) {
 	_ = s.SetJSON("node_deployment:gateway-dev", nodeDeployment{DeploymentTarget: "native", ResourceName: "development-gateway", Version: "dev-operator-qa"})
 	_ = s.SetJSON("access_roles", AccessSettings{Roles: map[string][]string{"admin": {"node:preview"}, "viewer": {"node:viewer"}, "operator": {"node:operator"}}})
 	_ = s.SetJSON("exposure_policy", policy.Document{Rules: []policy.Rule{{Name: "Development apps", HostnameRegexes: []string{`[^.]+[.]example[.]com`}, GatewayIDs: []string{"gateway-dev"}, Enabled: true}}})
-	_ = s.SetSecret("tailscale_oauth_client_id", "synthetic")
-	_ = s.SetSecret("tailscale_oauth_client_secret", "synthetic")
+	_ = s.SetSecret("tailscale_services_client_id", "synthetic")
+	_ = s.SetSecret("tailscale_services_client_secret", "synthetic")
 	serviceAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "oauth/token") {
 			fmt := map[string]string{"access_token": "synthetic"}
@@ -68,8 +68,8 @@ func TestBrowserPreview(t *testing.T) {
 	defer serviceAPI.Close()
 	c.TailscaleClient = &tailscale.Client{HTTP: serviceAPI.Client(), APIBase: serviceAPI.URL, OAuthBase: serviceAPI.URL, Tailnet: "example.ts.net"}
 	c.ReleaseCheck = func(context.Context, string) error { return nil }
-	pub, priv, _ := report.GenerateKey()
-	_ = s.BindNodeIdentity("gateway-dev", encodePublicKey(pub), "synthetic-gateway-device", []string{"100.70.0.9"})
+
+	_ = bindTestNode(s, "gateway-dev", "synthetic-gateway-device", []string{"100.70.0.9"})
 	_ = s.RenameResource("node", "gateway-dev", "Development gateway")
 	_ = s.RenameResource("node", "edge-dev", "Public edge")
 	_ = s.RenameResource("provider", "cloudflare-dev", "Development DNS")
@@ -94,9 +94,9 @@ func TestBrowserPreview(t *testing.T) {
 		_ = s.SetJSON("node_health:edge-id", loadBalancerHealth{ReceivedAt: time.Now().Unix()})
 		_ = s.SetJSON("node_public_endpoint:edge-id", publicEndpoint{Namespace: "example-system", Service: "example-public", UID: "synthetic-service", ObservedAt: time.Now().Unix(), Ingress: []core.LoadBalancerIngress{{IP: "203.0.113.5"}}})
 		_ = s.SetJSON("node_endpoints:edge-id", map[string]any{"public_ipv4": []string{"203.0.113.5"}, "checked_at": time.Now().Unix()})
-		envelope, _ := report.NewEnvelope("gateway-dev", map[string]any{"exposures": []dns.GatewayExposure{{ApplicationID: "demo-app", ServiceName: "svc:demo-checkout", PublicHostname: "checkout.example.com", Port: 8080, BackendHostname: "checkout", Networks: []string{"demo-network"}, Reachable: true}}, "expires_at": time.Now().Add(5 * time.Minute).Unix()}, pub, priv, time.Now())
+		envelope, _ := report.NewSnapshot("report", "gateway-dev", map[string]any{"exposures": []dns.GatewayExposure{{ApplicationID: "demo-app", ServiceName: "svc:demo-checkout", PublicHostname: "checkout.example.com", Port: 8080, BackendHostname: "checkout", Networks: []string{"demo-network"}, Reachable: true}}, "expires_at": time.Now().Add(5 * time.Minute).Unix()}, time.Now())
 		raw, _ := json.Marshal(envelope)
-		_ = s.AcceptReport("gateway-dev", envelope.Nonce, raw, envelope.PublicKey)
+		_ = s.AcceptReport("gateway-dev", envelope.Nonce, raw)
 
 		var probes []nodeconfig.Probe
 		_ = s.GetJSON("node_probes:gateway-dev", &probes)

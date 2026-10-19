@@ -34,8 +34,8 @@ func TestExplicitSelfRemovalRequiresVerifiedRemainingOwner(t *testing.T) {
 			defer server.Close()
 			c.TailscaleClient = &tailscale.Client{HTTP: server.Client(), ClientID: "id", ClientSecret: "secret", Tailnet: "test", APIBase: server.URL, OAuthBase: server.URL}
 			c.Store.SetJSON("tailnet", map[string]string{"name": "test"})
-			c.Store.SetSecret("tailscale_oauth_client_id", "fixture")
-			c.Store.SetSecret("tailscale_oauth_client_secret", "fixture")
+			c.Store.SetSecret("tailscale_users_client_id", "fixture")
+			c.Store.SetSecret("tailscale_users_client_secret", "fixture")
 			selectors := []string{"node:someone-else"}
 			if tc.selector {
 				selectors = []string{"autogroup:owner"}

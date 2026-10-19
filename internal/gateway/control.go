@@ -19,9 +19,9 @@ import (
 var ErrControlUnavailable = errors.New("control service unavailable")
 
 type RPCResolver struct {
-	BaseURL, NodeID, ControlKey string
-	Client                      *http.Client
-	Revision                    *string
+	BaseURL, NodeID string
+	Client          *http.Client
+	Revision        *string
 }
 
 func (r RPCResolver) ReportHealth(ctx context.Context, payload map[string]any) error {
@@ -58,13 +58,9 @@ func (r RPCResolver) Resolve(ctx context.Context, spec Spec) (Assignment, error)
 		}
 		return Assignment{}, err
 	}
-	envelope, err := report.FromWire(response.Msg, "configuration")
+	config, err := nodeconfig.FromPayload(response.Msg, r.NodeID, time.Now())
 	if err != nil {
-		return Assignment{}, err
-	}
-	config, err := nodeconfig.Verify(envelope, r.ControlKey, r.NodeID, time.Now())
-	if err != nil {
-		return Assignment{}, fmt.Errorf("invalid signed control configuration: %w", err)
+		return Assignment{}, fmt.Errorf("invalid authenticated control configuration: %w", err)
 	}
 	if r.Revision != nil {
 		*r.Revision = config.Revision
@@ -117,9 +113,5 @@ func (r RPCResolver) Configuration(ctx context.Context) (nodeconfig.Configuratio
 	if e != nil {
 		return nodeconfig.Configuration{}, e
 	}
-	env, e := report.FromWire(response.Msg, "configuration")
-	if e != nil {
-		return nodeconfig.Configuration{}, e
-	}
-	return nodeconfig.Verify(env, r.ControlKey, r.NodeID, time.Now())
+	return nodeconfig.FromPayload(response.Msg, r.NodeID, time.Now())
 }

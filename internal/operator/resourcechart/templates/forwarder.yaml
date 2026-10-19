@@ -35,6 +35,8 @@ spec:
           image: {{ .Values.image.reference | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: [k8s, runtime, forwarder, serve, --broker-url=https://{{ .Release.Name }}-broker.{{ .Release.Namespace }}.svc:9443]
+          env:
+            {{- include "funnel.runtimeEnvironment" . | nindent 12 }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -50,6 +52,8 @@ spec:
             - {name: broker-ca, mountPath: /broker, readOnly: true}
             - {name: runtime, mountPath: /var/lib/tailscale-private-funnel}
             - {name: tmp, mountPath: /tmp}
+            - {name: operator-token, mountPath: /var/run/secrets/funnel-operator, readOnly: true}
+            - {name: operator-ca, mountPath: /etc/funnel-operator-ca, readOnly: true}
       volumes:
         - name: identity
           projected:
@@ -65,7 +69,8 @@ spec:
             optional: true
             items: [{key: ca.crt, path: ca.crt}]
         - name: runtime
-          emptyDir: {}
+          emptyDir: {medium: Memory}
+        {{- include "funnel.operatorBootstrapVolumes" . | nindent 8 }}
         - name: tmp
           emptyDir: {}
 

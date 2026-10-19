@@ -16,13 +16,15 @@ import (
 )
 
 type savedConfig struct {
+	Installation        string `json:"installation"`
+	TailscaleConnection string `json:"tailscale_connection"`
+	TailscaleSocket     string `json:"tailscale_socket,omitempty"`
+
 	Mode                 string   `json:"mode"`
 	Hostname             string   `json:"hostname"`
 	StateDir             string   `json:"state_dir"`
 	DataDir              string   `json:"data_dir"`
 	ManagementURL        string   `json:"management_url"`
-	ControlKey           string   `json:"control_key,omitempty"`
-	EnrollmentID         string   `json:"enrollment_id"`
 	LoginServer          string   `json:"login_server"`
 	AcceptDNS            bool     `json:"accept_dns"`
 	Tags                 []string `json:"advertise_tags,omitempty"`
@@ -45,7 +47,7 @@ func writeConfig(mode string, o Options) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	b, err := json.MarshalIndent(savedConfig{Mode: mode, Hostname: o.Hostname, StateDir: o.StateDir, DataDir: o.DataDir, ManagementURL: o.ManagementURL, ControlKey: o.ControlKey, EnrollmentID: o.EnrollmentID, LoginServer: o.LoginServer, AcceptDNS: o.AcceptDNS, Tags: o.Tags, Listen: o.Listen, CertEmail: o.CertEmail, LoadBalancerHostname: o.LoadBalancerHostname, LabelKeys: o.LabelKeys, DenyNetworks: o.DenyNetworks}, "", "  ")
+	b, err := json.MarshalIndent(savedConfig{Mode: mode, Hostname: o.Hostname, StateDir: o.StateDir, DataDir: o.DataDir, ManagementURL: o.ManagementURL, Installation: o.Installation, TailscaleConnection: o.TailscaleConnection, TailscaleSocket: o.TailscaleSocket, LoginServer: o.LoginServer, AcceptDNS: o.AcceptDNS, Tags: o.Tags, Listen: o.Listen, CertEmail: o.CertEmail, LoadBalancerHostname: o.LoadBalancerHostname, LabelKeys: o.LabelKeys, DenyNetworks: o.DenyNetworks}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -76,83 +78,27 @@ func loadConfig(mode string, o Options) (Options, error) {
 		return o, fmt.Errorf("config mode is %q, expected %q", saved.Mode, mode)
 	}
 	o.Hostname, o.StateDir, o.DataDir = saved.Hostname, saved.StateDir, saved.DataDir
-	o.ManagementURL, o.EnrollmentID = saved.ManagementURL, saved.EnrollmentID
-	o.ControlKey = saved.ControlKey
+	o.ManagementURL = saved.ManagementURL
+	o.Installation, o.TailscaleConnection, o.TailscaleSocket = saved.Installation, saved.TailscaleConnection, saved.TailscaleSocket
 	o.LoginServer, o.AcceptDNS, o.Tags, o.Listen = saved.LoginServer, saved.AcceptDNS, saved.Tags, saved.Listen
 	o.CertEmail, o.LoadBalancerHostname = saved.CertEmail, saved.LoadBalancerHostname
 	o.LabelKeys, o.DenyNetworks = saved.LabelKeys, saved.DenyNetworks
 	return o, nil
 }
 
-func readEnrollmentCode(o Options) (string, error) {
-	if o.EnrollmentCode != "" {
-		return strings.TrimSpace(o.EnrollmentCode), nil
-	}
-	if o.EnrollmentCodeFile != "" {
-		b, err := os.ReadFile(o.EnrollmentCodeFile)
-		if err != nil {
-			return "", err
-		}
-		return strings.TrimSpace(string(b)), nil
-	}
-	if o.EnrollmentCodeStdin {
-		b, err := os.ReadFile("/dev/stdin")
-		if err != nil {
-			return "", err
-		}
-		return strings.TrimSpace(string(b)), nil
-	}
-	return "", errors.New("a one-use enrollment bundle from create is required")
-}
-
 func Deploy(ctx context.Context, mode string, o Options) error {
 	if mode != "loadbalancer" && !store.IsGateway(mode) {
 		return errors.New("deploy is available for loadbalancer and gateway only")
 	}
-	o.NonInteractive = o.BootstrapSecretDir == ""
+	o.NonInteractive = true
 	var err error
 	o, err = defaults(mode, o)
 	if err != nil {
 		return err
 	}
-	if o.BootstrapSecretDir != "" {
-		if mode != "k8s-gateway" && mode != "loadbalancer" {
-			return errors.New("bootstrap Secret requires a Kubernetes gateway or load balancer")
-		}
-		if _, err := os.Stat(filepath.Join(o.DataDir, "node-id")); err == nil {
-			return validatePersistentState(mode, o)
-		}
-		read := func(name string) string {
-			b, _ := os.ReadFile(filepath.Join(o.BootstrapSecretDir, name))
-			return strings.TrimSpace(string(b))
-		}
-		o.ManagementURL = read("management-url")
-		o.EnrollmentID = read("enrollment-id")
-		o.ControlKey = read("control-key")
-		o.Hostname = read("hostname")
-		o.EnrollmentCodeFile = filepath.Join(o.BootstrapSecretDir, "code")
-		if mode == "loadbalancer" {
-			o.CertEmail = read("cert-email")
-			o.LoadBalancerHostname = read("loadbalancer-hostname")
-		}
-		key := read("auth-key")
-		if key == "" {
-			return errors.New("bootstrap Secret missing auth-key; create a fresh enrollment")
-		}
-		_ = os.Setenv("TS_AUTHKEY", key)
-		defer os.Unsetenv("TS_AUTHKEY")
+	if u, parseErr := url.Parse(o.ManagementURL); parseErr != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return errors.New("valid control URL required")
 	}
-	if u, parseErr := url.Parse(o.ManagementURL); parseErr != nil || u.Scheme == "" || u.Host == "" {
-		return errors.New("a valid --management-url is required")
-	}
-	code, err := readEnrollmentCode(o)
-	if err != nil {
-		return err
-	}
-	if code == "" {
-		return errors.New("enrollment code is empty")
-	}
-	o.EnrollmentCode = code
 	if mode == "docker-gateway" {
 		if err := gatewayPreflight(); err != nil {
 			return err
@@ -173,7 +119,7 @@ func Deploy(ctx context.Context, mode string, o Options) error {
 	}
 	o.BootstrapOnly = true
 	if err := Serve(ctx, mode, o); err != nil {
-		return fmt.Errorf("initial enrollment: %w", err)
+		return fmt.Errorf("initial registration: %w", err)
 	}
 	return nil
 }

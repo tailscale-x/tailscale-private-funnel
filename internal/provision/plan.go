@@ -5,16 +5,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	funnel "github.com/tailscale-x/tailscale-private-funnel/api/kubernetes/v1alpha1"
 	"io"
-	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"net/mail"
 	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	funnel "github.com/tailscale-x/tailscale-private-funnel/api/kubernetes/v1alpha1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/util/validation"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/identity"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/policy"
 	kvalidation "k8s.io/apimachinery/pkg/util/validation"
 
@@ -51,6 +53,9 @@ func Resolve(in *v1.DeploymentRequest, managementURL, version string) (*v1.Deplo
 	}
 	if d.Target == "kubernetes" && d.Mode != "operator" && d.Mode != "control" && d.Mode != "k8s-gateway" && d.Mode != "loadbalancer" {
 		return nil, fmt.Errorf("this gateway mode is native-only")
+	}
+	if d.Target == "kubernetes" && (d.OauthClientIdFile != "" || d.OauthClientSecretFile != "" || d.ServicesClientIdFile != "" || d.ServicesClientSecretFile != "" || d.UsersClientIdFile != "" || d.UsersClientSecretFile != "") {
+		return nil, fmt.Errorf("Kubernetes uses issuer/services/users Secret references, not native credential files")
 	}
 	if len(d.PlacementJson) > 0 || len(d.ForwarderPlacementJson) > 0 {
 		if d.Target != "kubernetes" {
@@ -165,8 +170,23 @@ func Resolve(in *v1.DeploymentRequest, managementURL, version string) (*v1.Deplo
 	if d.Installation == "" {
 		d.Installation = "main"
 	}
-	if len(d.Installation) > 31 || !namePattern.MatchString(d.Installation) {
+	if identity.ValidateInstallation(d.Installation) != nil {
 		return nil, fmt.Errorf("invalid installation name")
+	}
+	if d.TailscaleConnection == "" {
+		d.TailscaleConnection = "embedded"
+	}
+	if d.TailscaleConnection != "embedded" && d.TailscaleConnection != "host" {
+		return nil, fmt.Errorf("tailscale must be embedded or host")
+	}
+	if d.Mode == "control" && d.TailscaleConnection == "host" {
+		return nil, fmt.Errorf("host-reused control is unsupported: tailscaled rejects PROXY v2 with Unix socket targets; use embedded Tailscale for control")
+	}
+	if d.TailscaleConnection != "host" && d.TailscaleSocket != "" {
+		return nil, fmt.Errorf("LocalAPI socket applies only to host reuse")
+	}
+	if d.Target == "kubernetes" && d.TailscaleConnection != "embedded" {
+		return nil, fmt.Errorf("Kubernetes requires embedded Tailscale")
 	}
 	if d.ResourceName == "" {
 		d.ResourceName = d.Hostname
@@ -215,7 +235,15 @@ func Resolve(in *v1.DeploymentRequest, managementURL, version string) (*v1.Deplo
 	if strings.HasPrefix(version, "dev-") {
 		plan.ChartVersion = "0.0.0-" + version
 	}
-	plan.Prerequisites = []string{"Generator: administrator access to the selected Funnel control; execute the installer within 15 minutes", "Target: no host Tailscale required; embedded tsnet joins before contacting control", "Existing shared tag grant; provisioning does not modify ACLs", "Persistent identity and application storage"}
+	plan.Prerequisites = []string{"Review the installation role and Service-tag policy in Tailscale; Funnel never applies policy or broadens grants", "Human management roles remain separate from runtime tags; devices sharing a role share its authority"}
+	if d.Target == "native" && d.TailscaleConnection == "host" {
+		plan.Prerequisites = append(plan.Prerequisites, "Target: already-connected role-tagged host daemon and suitable LocalAPI permissions; no bootstrap secret; unrelated host configuration is preserved")
+	} else if d.Target == "kubernetes" {
+		plan.Prerequisites = append(plan.Prerequisites, "Reference the same protected installation issuer Secret for all components; the operator issues disposable, one-use ephemeral keys per verified Pod; persist application data and certificates only")
+	} else {
+		plan.Prerequisites = append(plan.Prerequisites, "Generate embedded native installers from an authorized machine; execute within 15 minutes; no host Tailscale required; native identity persists")
+	}
+
 	if d.Target == "native" {
 		plan.Prerequisites = append(plan.Prerequisites, "Linux and systemd; root or noninteractive sudo")
 		if d.Mode == "docker-gateway" {
@@ -230,7 +258,7 @@ func Resolve(in *v1.DeploymentRequest, managementURL, version string) (*v1.Deplo
 			return nil, fmt.Errorf("operator requires at least one managed namespace")
 		}
 		plan.Namespace = "tailscale-private-funnel-k8s-operator-system"
-		plan.Prerequisites = []string{"Explicit Kubernetes context with permission to install CRDs and scoped operator RBAC", "Operator is stateless; components own their persistent identities and storage"}
+		plan.Prerequisites = []string{"Explicit Kubernetes context with permission to install CRDs and scoped operator RBAC", "Operator is stateless; Kubernetes network identities are disposable; component application storage remains persistent"}
 	}
 	if d.Mode == "control" {
 		plan.Prerequisites = []string{"Tailscale OAuth authority and protected credential files on the executing target", "Persistent identity and database storage; management remains tailnet-only"}
@@ -238,17 +266,23 @@ func Resolve(in *v1.DeploymentRequest, managementURL, version string) (*v1.Deplo
 
 	switch d.Mode {
 	case "control":
-		plan.Prerequisites = append(plan.Prerequisites, "Protected target OAuth files: auth_keys, devices:core and services scoped to tag:tailscale-private-funnel; users:read for verified Owner/Admin roles", "An independent control has its own database and private setup URL")
+		plan.Prerequisites = append(plan.Prerequisites, "Separate clients: auth_keys restricted to the installation issuer tag; services write plus devices:core:read with the control-role tag owning both Service tags; users:read for Owner/Admin authorization", "An independent control has its own database and private setup URL")
 	case "docker-gateway":
-		plan.Prerequisites = append(plan.Prerequisites, "The supervisor requires host Docker permissions; relay containers have no Docker socket or Tailscale credentials", "Services require a user-defined target network; local deny patterns exclude sensitive networks; a complete signed Docker inventory retires registrations after container or label removal; stopped containers retain registrations and failed discovery never releases ownership")
+		plan.Prerequisites = append(plan.Prerequisites, "The supervisor needs host Docker access and directly dials the selected container IP; no relay or published host port is used", "Services require a user-defined target network; local deny patterns exclude sensitive networks; a complete authenticated Docker inventory retires registrations after container or label removal; stopped containers retain registrations and failed discovery never releases ownership")
 		plan.Example = "# Add to an application container's Compose labels:\nlabels:\n  tailscale-private-funnel.expose: \"8080:app.example.com:http\"\n# Path route example (omit replace-prefix to preserve the path):\n  tailscale-private-funnel.routes.api.hostname: app.example.com\n  tailscale-private-funnel.routes.api.port: \"8081\"\n  tailscale-private-funnel.routes.api.path-prefix: /api\n  tailscale-private-funnel.routes.api.replace-prefix: /\n# The hostname must match an enabled control exposure policy."
 	case "tailnet-gateway":
-		plan.Prerequisites = append(plan.Prerequisites, "No Docker installation is required", "Assign additional tags and grants externally in Tailscale; peer visibility is not proof of connectivity", "After enrollment use Exposures → Expose a tailnet machine and select this gateway")
+		plan.Prerequisites = append(plan.Prerequisites, "No Docker installation is required", "Assign additional tags and grants externally in Tailscale; peer visibility is not proof of connectivity", "After registration use Exposures → Expose a tailnet machine and select this gateway")
 	case "k8s-gateway":
 		plan.Prerequisites = append(plan.Prerequisites, "Install pinned Gateway API v1.5.1 standard CRDs before creating the gateway", "The operator manages workload and Secret permissions only in installation namespaces; routing metadata access is cluster-scoped and watch namespaces filter processing", "Forwarders use ready endpoints on their own Kubernetes node; missing local endpoints withdraw that Service host")
 		plan.Example = fmt.Sprintf("# Example routing resources; replace app.example.com and checkout with your workload.\napiVersion: gateway.networking.k8s.io/v1\nkind: Gateway\nmetadata: {name: public-http}\nspec:\n  gatewayClassName: %s\n  listeners:\n    - {name: http, protocol: HTTP, port: 80}\n---\napiVersion: gateway.networking.k8s.io/v1\nkind: HTTPRoute\nmetadata: {name: checkout}\nspec:\n  parentRefs: [{name: public-http}]\n  hostnames: [app.example.com]\n  rules:\n    - matches: [{path: {type: PathPrefix, value: /api}}]\n      filters:\n        - type: URLRewrite\n          urlRewrite:\n            path: {type: ReplacePrefixMatch, replacePrefixMatch: /}\n      backendRefs: [{name: checkout, port: 8080}]\n---\napiVersion: networking.k8s.io/v1\nkind: Ingress\nmetadata: {name: another-example}\nspec:\n  ingressClassName: %s\n  rules:\n    - host: other.example.com\n      http:\n        paths:\n          - path: /\n            pathType: Prefix\n            backend:\n              service: {name: checkout, port: {number: 8080}}\n", d.GatewayClass, d.IngressClass)
 	case "loadbalancer":
 		plan.Prerequisites = append(plan.Prerequisites, "Public TCP 80/443, a managed DNS zone, and policy-authorized exposures are required for public HTTPS", "Updates preserve the identity and certificates; roll back by updating to the prior pinned version")
+	}
+	if d.Mode != "operator" {
+		if d.Mode == "control" || d.Target == "kubernetes" {
+			plan.Prerequisites = append(plan.Prerequisites, "Shared OAuth issuer: auth_keys only, restricted to "+identity.IssuerTag(d.Installation)+"; its tagOwners must directly own all five device roles; never assign the issuer tag to workloads")
+		}
+		plan.Prerequisites = append(plan.Prerequisites, "Required verified device role: "+identity.Tag(d.Installation, identity.Role(d.Mode)))
 	}
 	if d.Namespace != "" {
 		if len(kvalidation.IsDNS1123Label(d.Namespace)) > 0 {
@@ -256,7 +290,7 @@ func Resolve(in *v1.DeploymentRequest, managementURL, version string) (*v1.Deplo
 		}
 		plan.Namespace = d.Namespace
 	}
-	for _, step := range []struct{ id, title, description string }{{"preflight", "Check prerequisites", "Validate target, permissions, artifacts and existing identity before enrollment"}, {"enroll", "Create enrollment", "Control mints a one-use bootstrap key; secrets remain temporary"}, {"install", "Install and start", "Install verified artifacts and persistent service resources"}, {"verify", "Verify readiness", "Wait for enrolled identity and fresh signed application health"}} {
+	for _, step := range []struct{ id, title, description string }{{"preflight", "Check prerequisites", "Validate target, permissions, artifacts and existing identity before registration"}, {"register", "Verify role and register", "An exact installation role authorizes registration; embedded native joins discard their one-use key; Kubernetes obtains disposable per-Pod keys"}, {"install", "Install and start", "Install verified artifacts and persistent service resources"}, {"verify", "Verify readiness", "Wait for verified role identity and fresh role-authenticated application health"}} {
 		plan.Steps = append(plan.Steps, &v1.DeploymentStep{Id: step.id, Title: step.title, Description: step.description})
 	}
 	plan.Commands = Commands(plan)

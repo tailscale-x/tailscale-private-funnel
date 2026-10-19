@@ -2,9 +2,10 @@ package gateway
 
 import (
 	"context"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"net"
 	"testing"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 )
 
 func TestPoolNeverFallsBackToRemoteNode(t *testing.T) {

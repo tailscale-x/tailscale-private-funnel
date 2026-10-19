@@ -1,10 +1,11 @@
 package store
 
 import (
-	"github.com/libdns/libdns"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"reflect"
 	"testing"
+
+	"github.com/libdns/libdns"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 )
 
 func TestDatabaseContractDockerRetirementAndReclamation(t *testing.T) {
@@ -18,7 +19,7 @@ func TestDatabaseContractDockerRetirementAndReclamation(t *testing.T) {
 			if err := s.UpsertNode("docker", "docker-gateway", "docker"); err != nil {
 				t.Fatal(err)
 			}
-			if err := s.BindNodeIdentity("docker", "public-key", "device", nil); err != nil {
+			if err := bindTestNode(s, "docker", "device", nil); err != nil {
 				t.Fatal(err)
 			}
 			makeApp := func(id, host, path string) ApplicationRecord {
@@ -59,7 +60,7 @@ func TestDatabaseContractDockerRetirementAndReclamation(t *testing.T) {
 			inv := DockerInventory{Revision: 1, Containers: []DockerContainer{{ID: "stopped", Running: false, Routes: []DockerDeclaration{{Hostname: "app.example.com", Port: 8080}}}, {ID: "other", Running: true, Routes: []DockerDeclaration{{Hostname: "other.example.com", Port: 8080}}}, {ID: "paths", Running: true, Routes: []DockerDeclaration{{Hostname: "shared.example.com", Port: 8080, PathPrefix: "/api"}, {Hostname: "shared.example.com", Port: 8080, PathPrefix: "/"}}}}}
 			apply := func(nonce string, want int) {
 				t.Helper()
-				got, err := s.AcceptDockerInventory("docker", "public-key", nonce, inv)
+				got, err := s.AcceptDockerInventory("docker", nonce, inv)
 				if err != nil || got != want {
 					t.Fatal(got, err)
 				}
@@ -89,11 +90,11 @@ func TestDatabaseContractDockerRetirementAndReclamation(t *testing.T) {
 			if !reflect.DeepEqual(ledgerBefore, ledgerAfter) {
 				t.Fatal("retirement rewrote ledger")
 			}
-			if _, err := s.AcceptDockerInventory("docker", "public-key", "out-of-order", DockerInventory{Revision: 1}); err == nil {
+			if _, err := s.AcceptDockerInventory("docker", "out-of-order", DockerInventory{Revision: 1}); err == nil {
 				t.Fatal("old inventory accepted")
 			}
 			inv.Revision++
-			if _, err := s.AcceptDockerInventory("docker", "public-key", "removed", inv); err == nil {
+			if _, err := s.AcceptDockerInventory("docker", "removed", inv); err == nil {
 				t.Fatal("nonce replay accepted")
 			}
 			if err := s.UpsertApplication(old); err == nil {

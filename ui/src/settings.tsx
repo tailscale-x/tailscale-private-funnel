@@ -128,7 +128,7 @@ function RuleForm({
           }
         >
           {nodes.data?.items
-            .filter((n) => n.mode !== "loadbalancer" && !n.revoked)
+            .filter((n) => n.mode !== "loadbalancer" && !n.disabled)
             .map((n) => (
               <option key={n.id} value={n.id}>
                 {n.name} · {n.hostname}
@@ -258,7 +258,7 @@ export function PolicyPage() {
               <td>
                 {r.gatewayIds.length
                   ? `${r.gatewayIds.length} identities`
-                  : "Any enrolled gateway"}
+                  : "Any authorized gateway"}
                 <small className="pf-help">
                   {r.roles.join(", ") || "No role restriction"}
                 </small>
@@ -336,7 +336,7 @@ export function PolicyPage() {
                   (node) =>
                     node.mode !== "loadbalancer" &&
                     node.mode !== "k8s-forwarder" &&
-                    !node.revoked,
+                    !node.disabled,
                 )
                 .map((node) => (
                   <option key={node.id} value={node.id}>
@@ -439,11 +439,15 @@ export function SettingsPage() {
   const oauth = useMutation({
     mutationFn: async ({ form, test }: { form: FormData; test: boolean }) =>
       (test ? api.testOAuth : api.saveOAuth)({
-        clientId: String(form.get("clientId") || ""),
+        purpose: String(form.get("purpose") || ""),
+ clientId: String(form.get("clientId") || ""),
         clientSecret: String(form.get("clientSecret") || ""),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["settings"] }),
   });
+  const [purpose,setPurpose]=useState("services");
+ const [copyMessage,setCopyMessage]=useState("");
+  const policy=useQuery({queryKey:["role-policy"],queryFn:()=>api.rolePolicy({})});
   const defaults = useMutation({
     mutationFn: (form: FormData) =>
       api.saveDefaults({
@@ -456,7 +460,7 @@ export function SettingsPage() {
     <>
       <Intro
         title="Tailscale settings"
-        subtitle="Persistent control identity, encrypted OAuth credentials, and defaults for new deployments."
+        subtitle="Installation roles, purpose-scoped credentials, and deployment defaults."
       />
       <ErrorMessage error={settings.error} />
       <Panel title="Control identity">
@@ -464,20 +468,18 @@ export function SettingsPage() {
           Tailnet: <code>{settings.data?.tailnet || "Not configured"}</code>
         </p>
         <p>
-          Base tag: <code>tag:tailscale-private-funnel</code>
+          Installation: <code>{settings.data?.installation || "Not configured"}</code>
         </p>
         <p className="pf-help">
-          Identity is established during control bootstrap. Saving these
-          settings does not reconnect a running node or modify ACL policy.
+          Correctly tagged components register automatically. Native embedded identities persist; Kubernetes identities are disposable. Runtime roles never grant human management access.
         </p>
       </Panel>
+      <Panel title="Installation Tailscale policy"><p>Review and merge this template in Tailscale. Funnel never applies ACL changes. Existing broad grants may weaken isolation; additional backend access needs explicit grants.</p><ErrorMessage error={policy.error}/>{policy.data?<><details><summary>View generated tag owners, grants and Service auto-approvers</summary><pre className="pf-command pf-react-code">{policy.data.policyJson}</pre></details><button className="pf-secondary-button" onClick={async()=>{try{await navigator.clipboard.writeText(policy.data!.policyJson);setCopyMessage("Copied")}catch{setCopyMessage("Expand the policy and copy it manually.")}}}>Copy policy</button><span role="status">{copyMessage}</span></>:null}</Panel>
       {admin ? (
         <>
           <Panel title="OAuth credentials">
             <p className="pf-help">
-              Blank fields preserve stored credentials. Required scopes include
-              auth_keys, devices:core, services, and users:read; resource scopes
-              remain restricted to the shared tag where supported.
+              Use a separate OAuth client for each purpose. One installation issuer requires auth_keys for the issuer tag that directly owns its five role tags. Service management requires a separate services + devices:core:read credential (tag its client with the control role that owns both Service tags); human role lookup requires users:read; endpoint discovery requires devices:core read scoped to load balancers. Blank fields preserve only the selected credential.
             </p>
             <form
               className="pf-form-grid"
@@ -488,6 +490,8 @@ export function SettingsPage() {
                 oauth.mutate({ form, test: submitter?.value === "test" });
               }}
             >
+              <Field label="Credential purpose"><select className="pf-input" name="purpose" disabled={oauth.isPending} value={purpose} onChange={e=>{setPurpose(e.target.value);oauth.reset()}}><option value="services">Service management</option><option value="users">Human role lookup</option><option value="endpoints">Load-balancer endpoint discovery</option><option value="issuer">Installation key issuer</option></select></Field>
+              {purpose === "issuer" ? <Alert>One issuer for this installation. Give its OAuth client Auth Keys write permission and only the installation issuer tag. Each issued key receives one server-selected role; workloads never receive this OAuth secret or the issuer tag.</Alert> : null}
               <Field label="Client ID">
                 <input
                   className="pf-input"
@@ -528,7 +532,7 @@ export function SettingsPage() {
               <ErrorMessage error={oauth.error} />
             </form>
           </Panel>
-          <Panel title="New enrollment defaults">
+          <Panel title="New deployment defaults">
             {settings.data ? (
               <form
                 className="pf-form-grid"
@@ -551,15 +555,15 @@ export function SettingsPage() {
                   />
                 </Field>
                 <p className="pf-help">
-                  Applies to new enrollments only. Existing binaries, services
+                  Applies to new deployments only. Existing binaries, services
                   and management URLs are not changed.
                 </p>
                 <Submit
                   pending={defaults.isPending}
-                  label="Save enrollment defaults"
+                  label="Save deployment defaults"
                 />
                 {defaults.data ? (
-                  <Alert>Defaults saved for new enrollments.</Alert>
+                  <Alert>Defaults saved for new deployments.</Alert>
                 ) : null}
                 <ErrorMessage error={defaults.error} />
               </form>
@@ -569,7 +573,7 @@ export function SettingsPage() {
       ) : (
         <Alert>
           Read only. An administrator can rotate credentials and change
-          enrollment defaults.
+          deployment defaults.
         </Alert>
       )}
     </>

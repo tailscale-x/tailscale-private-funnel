@@ -4,7 +4,7 @@
 
 {{- define "funnel.namespaceIsolation" -}}
 {{- if not (has .Values.component (list "control" "loadbalancer" "k8s-gateway")) -}}{{ fail "Unknown Funnel component" }}{{- end -}}
-{{- if or (gt (len .Values.installation) 31) (not (regexMatch "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$" .Values.installation)) -}}{{ fail "installation must be a DNS label of at most 31 characters" }}{{- end -}}
+{{- if or (gt (len .Values.installation) 24) (not (regexMatch "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$" .Values.installation)) -}}{{ fail "installation must be a DNS label of at most 24 characters" }}{{- end -}}
 {{- if and (eq .Values.component "k8s-gateway") (ne (int .Values.controller.replicas) 1) -}}{{ fail "Kubernetes controllers require exactly one replica" }}{{- end -}}
 {{- if and (eq .Values.component "control") (ne (int .Values.control.replicas) 1) -}}{{ fail "Control supports one replica per persistent identity" }}{{- end -}}
 {{- if and (eq .Values.component "loadbalancer") (ne (int .Values.loadbalancer.replicas) 1) -}}{{ fail "Load balancers support one replica per enrolled release" }}{{- end -}}
@@ -21,3 +21,24 @@
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{- define "funnel.runtimeEnvironment" -}}
+- name: POD_NAMESPACE
+  valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+- {name: FUNNEL_ROUTING_ID, value: {{ default .Values.componentID .Values.routingID | quote }}}
+- {name: FUNNEL_COMPONENT_ID, value: {{ .Values.componentID | quote }}}
+- {name: FUNNEL_CONTROL_URL, value: {{ .Values.managementURL | quote }}}
+- {name: FUNNEL_RESOURCE_NAME, value: {{ .Release.Name | quote }}}
+- {name: FUNNEL_RESOURCE_NAMESPACE, value: {{ .Release.Namespace | quote }}}
+- {name: FUNNEL_DEPLOYMENT_TARGET, value: kubernetes}
+- {name: FUNNEL_BOOTSTRAP_URL, value: "https://tailscale-private-funnel-k8s-operator-bootstrap.tailscale-private-funnel-k8s-operator-system.svc:9444"}
+{{- end }}
+{{- define "funnel.operatorBootstrapVolumes" -}}
+- name: operator-token
+  projected:
+    defaultMode: 0440
+    sources:
+      - serviceAccountToken: {path: token, audience: tailscale-private-funnel/operator-bootstrap, expirationSeconds: 600}
+- name: operator-ca
+  configMap: {name: tailscale-private-funnel-operator-ca}
+{{- end }}

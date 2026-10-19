@@ -40,7 +40,7 @@ func (s *Store) migrateResourceNames() error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, q := range []string{`ALTER TABLE providers ADD COLUMN name TEXT NOT NULL DEFAULT ''`, `ALTER TABLE nodes ADD COLUMN name TEXT NOT NULL DEFAULT ''`, `ALTER TABLE enrollments ADD COLUMN name TEXT NOT NULL DEFAULT ''`, `ALTER TABLE applications ADD COLUMN name TEXT NOT NULL DEFAULT ''`, `ALTER TABLE managed_zones ADD COLUMN id TEXT NOT NULL DEFAULT ''`, `ALTER TABLE reports ADD COLUMN snapshot TEXT NOT NULL DEFAULT ''`, `ALTER TABLE records ADD COLUMN zone_id TEXT NOT NULL DEFAULT ''`} {
+	for _, q := range []string{`ALTER TABLE providers ADD COLUMN name TEXT NOT NULL DEFAULT ''`, `ALTER TABLE nodes ADD COLUMN name TEXT NOT NULL DEFAULT ''`, `ALTER TABLE applications ADD COLUMN name TEXT NOT NULL DEFAULT ''`, `ALTER TABLE managed_zones ADD COLUMN id TEXT NOT NULL DEFAULT ''`, `ALTER TABLE reports ADD COLUMN snapshot TEXT NOT NULL DEFAULT ''`, `ALTER TABLE records ADD COLUMN zone_id TEXT NOT NULL DEFAULT ''`} {
 		if _, err = tx.Exec(q); err != nil {
 			return err
 		}
@@ -81,7 +81,7 @@ func (s *Store) migrateResourceNames() error {
 			}
 		}
 	}
-	if _, err = tx.Exec(`UPDATE nodes SET name=hostname; UPDATE enrollments SET name=hostname; UPDATE applications SET name=COALESCE(json_extract(public_hostnames,'$[0]'),service_name)`); err != nil {
+	if _, err = tx.Exec(`UPDATE nodes SET name=hostname; UPDATE applications SET name=COALESCE(json_extract(public_hostnames,'$[0]'),service_name)`); err != nil {
 		return err
 	}
 	rows, err = tx.Query(`SELECT provider_id,zone FROM managed_zones`)
@@ -219,7 +219,6 @@ func (s *Store) migrateResourceNames() error {
 			var mode string
 			_ = tx.QueryRow(`SELECT mode FROM nodes WHERE id=?`, strings.TrimPrefix(v.key, "node_deployment:")).Scan(&mode)
 			if mode == "" {
-				_ = tx.QueryRow(`SELECT mode FROM enrollments WHERE id=?`, strings.TrimPrefix(v.key, "node_deployment:")).Scan(&mode)
 			}
 			if mode == "docker-gateway" {
 				m := data.(map[string]any)
@@ -309,7 +308,7 @@ func (s *Store) RenameResource(kind, id, name string) error {
 	if err != nil {
 		return err
 	}
-	tables := map[string]string{"provider": "providers", "node": "nodes", "enrollment": "enrollments", "application": "applications"}
+	tables := map[string]string{"provider": "providers", "node": "nodes", "application": "applications"}
 	table, ok := tables[kind]
 	if !ok {
 		return fmt.Errorf("unknown resource")
@@ -348,7 +347,7 @@ func (s *Store) migrateGatewayNames() error {
 	if done != 0 {
 		return nil
 	}
-	for _, q := range []string{`UPDATE nodes SET name=hostname WHERE mode='docker-gateway'`, `UPDATE enrollments SET name=hostname WHERE mode='docker-gateway'`} {
+	for _, q := range []string{`UPDATE nodes SET name=hostname WHERE mode='docker-gateway'`} {
 		if _, err = tx.Exec(q); err != nil {
 			return err
 		}

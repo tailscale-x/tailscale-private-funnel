@@ -1,36 +1,37 @@
 package web
 
 import (
-	"connectrpc.com/connect"
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
+	"time"
+
+	"connectrpc.com/connect"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/gateway"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	"google.golang.org/protobuf/encoding/protojson"
-	"sort"
-	"strings"
-	"time"
 )
 
-func (s *nodeRPC) SubmitDockerInventory(ctx context.Context, r *connect.Request[v1.SignedEnvelope]) (*connect.Response[v1.Empty], error) {
-	env, err := report.FromWireTyped(r.Msg, "docker-inventory", &v1.DockerInventoryPayload{})
+func (s *nodeRPC) SubmitDockerInventory(ctx context.Context, r *connect.Request[v1.DockerInventoryPayload]) (*connect.Response[v1.Empty], error) {
+	env, err := s.c.requestSnapshot(ctx, "docker-inventory", r.Msg)
 	if err == nil {
 		err = s.c.acceptDockerInventory(ctx, env)
 	}
 	return connect.NewResponse(&v1.Empty{}), rpcFailure(connect.CodeInvalidArgument, err)
 }
-func (c *Control) acceptDockerInventory(ctx context.Context, env report.Envelope) error {
+func (c *Control) acceptDockerInventory(ctx context.Context, env report.Snapshot) error {
 	n, err := c.callerNodeContext(ctx, "docker-gateway")
 	if err != nil {
 		return rpcFailure(connect.CodePermissionDenied, err)
 	}
-	if env.NodeID != n.ID || env.PublicKey != n.PublicKey {
+	if env.NodeID != n.ID {
 		return rpcFailure(connect.CodePermissionDenied, errors.New("Docker inventory identity mismatch"))
 	}
-	if _, _, err = report.Verify(env, time.Now(), 5*time.Minute); err != nil {
+	if err = env.Validate(time.Now(), 5*time.Minute); err != nil {
 		return rpcFailure(connect.CodeUnauthenticated, err)
 	}
 	var p v1.DockerInventoryPayload
@@ -89,7 +90,7 @@ func (c *Control) acceptDockerInventory(ctx context.Context, env report.Envelope
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	_, err = c.Store.AcceptDockerInventory(n.ID, n.PublicKey, env.Nonce, inv)
+	_, err = c.Store.AcceptDockerInventory(n.ID, env.Nonce, inv)
 	if err != nil {
 		return rpcFailure(connect.CodeAborted, err)
 	}

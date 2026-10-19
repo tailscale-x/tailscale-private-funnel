@@ -1,26 +1,27 @@
 package kubebroker
 
 import (
-	"connectrpc.com/connect"
 	"context"
 	"sync"
 	"time"
+
+	"connectrpc.com/connect"
 
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 )
 
-// ConfigurationCache serves only still-valid control-signed configurations.
-// Outages never refresh their signatures or extend their original expiry.
+// ConfigurationCache serves only still-valid authenticated control configurations.
+// Outages never refresh their issue times or extend their original expiry.
 type ConfigurationCache struct {
-	Fetch             func(context.Context) (report.Envelope, error)
-	PublicKey, NodeID string
-	Now               func() time.Time
-	mu                sync.Mutex
-	last              report.Envelope
+	Fetch  func(context.Context) (report.Snapshot, error)
+	NodeID string
+	Now    func() time.Time
+	mu     sync.Mutex
+	last   report.Snapshot
 }
 
-func (c *ConfigurationCache) Get(ctx context.Context) (report.Envelope, error) {
+func (c *ConfigurationCache) Get(ctx context.Context) (report.Snapshot, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := time.Now()
@@ -31,22 +32,22 @@ func (c *ConfigurationCache) Get(ctx context.Context) (report.Envelope, error) {
 	env, err := c.Fetch(bounded)
 	cancel()
 	if err == nil {
-		if _, err = nodeconfig.Verify(env, c.PublicKey, c.NodeID, now); err == nil {
+		if _, err = nodeconfig.Read(env, c.NodeID, now); err == nil {
 			c.last = env
 			return env, nil
 		}
-		// Invalid signed data is not a transient outage.
-		c.last = report.Envelope{}
-		return report.Envelope{}, err
+		// Invalid data is not a transient outage.
+		c.last = report.Snapshot{}
+		return report.Snapshot{}, err
 	}
 	if !transientControlFailure(err) {
-		c.last = report.Envelope{}
-		return report.Envelope{}, err
+		c.last = report.Snapshot{}
+		return report.Snapshot{}, err
 	}
-	if _, cachedErr := nodeconfig.Verify(c.last, c.PublicKey, c.NodeID, now); cachedErr == nil {
+	if _, cachedErr := nodeconfig.Read(c.last, c.NodeID, now); cachedErr == nil {
 		return c.last, nil
 	}
-	return report.Envelope{}, err
+	return report.Snapshot{}, err
 }
 
 func transientControlFailure(err error) bool {

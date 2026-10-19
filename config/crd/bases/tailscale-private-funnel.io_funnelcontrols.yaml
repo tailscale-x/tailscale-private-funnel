@@ -41,22 +41,16 @@ spec:
             type: object
           spec:
             properties:
-              bootstrapSecretRef:
+              componentID:
                 description: |-
-                  LocalObjectReference contains enough information to let you locate the
-                  referenced object inside the same namespace.
-                properties:
-                  name:
-                    default: ""
-                    description: |-
-                      Name of the referent.
-                      This field is effectively required, but due to backwards compatibility is
-                      allowed to be empty. Instances of this type with an empty value here are
-                      almost certainly wrong.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
+                  ComponentID is the immutable logical control-plane identity. Defaults to the CR UID.
+                  It is independent of disposable Tailscale device and Pod identities.
+                maxLength: 128
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: Logical component identity is immutable
+                  rule: self == oldSelf
               controlRef:
                 description: |-
                   LocalObjectReference contains enough information to let you locate the
@@ -288,19 +282,14 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-validations:
-                - message: Database binding is immutable; recreate to change it
-                  rule: self == oldSelf
+                - message: Database backend and connection Secret binding are immutable;
+                    recreate to change them
+                  rule: self.type == oldSelf.type && (self.type != 'postgres' || self.postgres.connectionSecretRef
+                    == oldSelf.postgres.connectionSecretRef)
                 - message: PostgreSQL requires connection settings; SQLite must not
                     have them
                   rule: 'self.type == ''postgres'' ? has(self.postgres) : !has(self.postgres)'
-              hostname:
-                maxLength: 63
-                pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
-                type: string
-                x-kubernetes-validations:
-                - message: Hostname is immutable; recreate to change identity
-                  rule: self == oldSelf
-              identitySecretRef:
+              encryptionSecretRef:
                 description: |-
                   LocalObjectReference contains enough information to let you locate the
                   referenced object inside the same namespace.
@@ -316,17 +305,43 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
+              hostname:
+                maxLength: 63
+                pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                type: string
+                x-kubernetes-validations:
+                - message: Hostname is immutable; recreate to change identity
+                  rule: self == oldSelf
               image:
                 minLength: 1
                 type: string
               installation:
                 default: main
-                type: string
-              managementURL:
+                maxLength: 24
+                pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
                 type: string
                 x-kubernetes-validations:
-                - message: Control binding is immutable
+                - message: Installation is immutable
                   rule: self == oldSelf
+              keyIssuerRef:
+                description: |-
+                  KeyIssuerReference points to the installation's shared auth_keys issuer.
+                  All components in an installation should reference the same Secret.
+                properties:
+                  clientIDKey:
+                    default: client_id
+                    type: string
+                  clientSecretKey:
+                    default: client_secret
+                    type: string
+                  name:
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
+              managementURL:
+                type: string
               placement:
                 properties:
                   affinity:
@@ -1351,6 +1366,22 @@ spec:
                       More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                     type: object
                 type: object
+              servicesRef:
+                description: |-
+                  LocalObjectReference contains enough information to let you locate the
+                  referenced object inside the same namespace.
+                properties:
+                  name:
+                    default: ""
+                    description: |-
+                      Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
               storage:
                 properties:
                   existingClaim:
@@ -1369,36 +1400,32 @@ spec:
               tailnet:
                 minLength: 1
                 type: string
-              transfer:
-                description: Transfer fences the source during an offline control
-                  transfer.
+              usersRef:
+                description: |-
+                  LocalObjectReference contains enough information to let you locate the
+                  referenced object inside the same namespace.
                 properties:
-                  id:
-                    minLength: 1
+                  name:
+                    default: ""
+                    description: |-
+                      Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                     type: string
-                  installerSHA256:
-                    description: Digest of the durably saved installer, required before
-                      transfer deletion.
-                    type: string
-                  phase:
-                    enum:
-                    - Stopped
-                    - Transferred
-                    type: string
-                required:
-                - id
-                - phase
                 type: object
+                x-kubernetes-map-type: atomic
             required:
             - image
+            - keyIssuerRef
+            - servicesRef
             - tailnet
+            - usersRef
             type: object
             x-kubernetes-validations:
             - message: Choose controlRef or managementURL
               rule: '!(has(self.controlRef) && has(self.managementURL))'
-            - message: Identity binding is immutable
-              rule: has(self.identitySecretRef) == has(oldSelf.identitySecretRef)
-                && (!has(self.identitySecretRef) || self.identitySecretRef == oldSelf.identitySecretRef)
           status:
             properties:
               conditions:

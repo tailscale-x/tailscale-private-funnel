@@ -2,8 +2,6 @@ package web
 
 import (
 	"context"
-	"crypto/ed25519"
-	"encoding/base64"
 	"encoding/json"
 	"testing"
 	"time"
@@ -16,16 +14,6 @@ import (
 
 func seedEdgeReport(t *testing.T, s *store.Store, id string) {
 	t.Helper()
-	secret, err := s.GetSecret("test-edge-key")
-	if err != nil {
-		t.Fatal(err)
-	}
-	rawkey, err := base64.RawStdEncoding.DecodeString(secret)
-	if err != nil {
-		t.Fatal(err)
-	}
-	key := ed25519.PrivateKey(rawkey)
-	pub := key.Public().(ed25519.PublicKey)
 	apps, err := s.Applications()
 	if err != nil {
 		t.Fatal(err)
@@ -42,12 +30,12 @@ func seedEdgeReport(t *testing.T, s *store.Store, id string) {
 			es = append(es, e)
 		}
 	}
-	env, err := report.NewEnvelope(id, map[string]any{"exposures": es, "expires_at": time.Now().Add(5 * time.Minute).Unix()}, pub, key, time.Now())
+	env, err := report.NewSnapshot("report", id, map[string]any{"exposures": es, "expires_at": time.Now().Add(5 * time.Minute).Unix()}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(env)
-	if err = s.AcceptReport(id, env.Nonce, raw, env.PublicKey); err != nil {
+	if err = s.AcceptReport(id, env.Nonce, raw); err != nil {
 		t.Fatal(err)
 	}
 }

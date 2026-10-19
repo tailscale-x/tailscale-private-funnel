@@ -4,9 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"strings"
 	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 )
 
 type ExposureRecord struct {

@@ -8,11 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tsconnection"
+
 	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
-	"tailscale.com/tsnet"
 )
 
-func gatewayPeers(ctx context.Context, s *tsnet.Server) (nodeconfig.PeerSnapshot, error) {
+func gatewayPeers(ctx context.Context, s tsconnection.Connection) (nodeconfig.PeerSnapshot, error) {
 	var snapshot nodeconfig.PeerSnapshot
 	lc, err := s.LocalClient()
 	if err != nil {
@@ -49,7 +50,7 @@ func peerTarget(peers []nodeconfig.Peer, id string, port uint16) (string, error)
 	}
 	return "", fmt.Errorf("backend device is absent from load balancer peer information; check Tailscale tags and grants")
 }
-func runProbes(ctx context.Context, s *tsnet.Server, peers []nodeconfig.Peer, probes []nodeconfig.Probe) []nodeconfig.ProbeResult {
+func runProbes(ctx context.Context, s tsconnection.Connection, peers []nodeconfig.Peer, probes []nodeconfig.Probe) []nodeconfig.ProbeResult {
 	var out []nodeconfig.ProbeResult
 	for _, probe := range probes {
 		if probe.ExpiresAt <= time.Now().Unix() {

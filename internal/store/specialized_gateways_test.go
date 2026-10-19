@@ -13,7 +13,7 @@ func TestSpecializedGatewayMigrationPreservesState(t *testing.T) {
 		t.Fatal(e)
 	}
 	_ = s.UpsertNode("node", "docker-gateway", "old-host")
-	_ = s.BindNodeIdentity("node", "signing", "stable-device", []string{"100.70.0.1"})
+	_ = bindTestNode(s, "node", "stable-device", []string{"100.70.0.1"})
 	_ = s.SetSecret("provider-test", "credential")
 	_ = s.SaveProvider("provider", "cloudflare", map[string]string{"api_token": "test"}, true)
 	_ = s.AddZone("provider", "example.com")
@@ -30,7 +30,7 @@ func TestSpecializedGatewayMigrationPreservesState(t *testing.T) {
 	}
 	defer s.Close()
 	n, e := s.Node("node")
-	if e != nil || n.Mode != "docker-gateway" || n.TailnetID != "stable-device" || n.PublicKey != "signing" {
+	if e != nil || n.Mode != "docker-gateway" || n.TailnetID != "stable-device" {
 		t.Fatal(n, e)
 	}
 	secret, e := s.GetSecret("provider-test")

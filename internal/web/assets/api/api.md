@@ -2,9 +2,7 @@
 
 Generated from protobuf descriptors. Do not edit.
 
-Management and Node services use verified Tailscale WhoIs. Enrollment additionally requires one-use proof. Broker methods are served by the installation HTTPS broker with projected Pod tokens, not by control.
-
-Signed payload bytes must never be reserialized before signature verification.
+Management and Node services use verified Tailscale WhoIs. Runtime calls require exact installation/role tags and an active logical-component assignment. Human management authorization is separate. No enrollment proof, component signatures or signing keys are used. Broker methods use projected Pod tokens on the installation HTTPS broker; WorkloadBootstrapService uses a separate projected audience on the operator TLS endpoint, not control.
 
 ## funnel.v1.BrokerService
 
@@ -28,11 +26,11 @@ No input fields.
 - RPC: `/funnel.v1.BrokerService/GetConfig`
 - Permission: `PERMISSION_BROKER`
 - Input: `funnel.v1.Empty`
-- Output: `funnel.v1.SignedEnvelope`
+- Output: `funnel.v1.ConfigurationPayload`
 
 No input fields.
 
-Signed payload model: `funnel.v1.ConfigurationPayload`. Verify exact bytes before decoding.
+Typed runtime payload model: `funnel.v1.ConfigurationPayload`. Authenticate through WhoIs and exact installation-role tags.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -57,20 +55,6 @@ Signed payload model: `funnel.v1.ConfigurationPayload`. Verify exact bytes befor
 
 No input fields.
 
-### WriteState
-
-
-
-- RPC: `/funnel.v1.BrokerService/WriteState`
-- Permission: `PERMISSION_BROKER`
-- Input: `funnel.v1.StateUpdate`
-- Output: `funnel.v1.Empty`
-
-| Field | Type | Notes |
-|---|---|---|
-| `key` | string |  |
-| `value` | bytes |  |
-
 ### ReleaseLease
 
 
@@ -88,7 +72,7 @@ DeploymentService authorizes deployments. Execution is performed by a generated 
 
 ### Instructions
 
-Resolve deployment choices without creating enrollment or bootstrap keys.
+Resolve deployment choices without creating bootstrap keys.
 
 - RPC: `/funnel.v1.DeploymentService/Instructions`
 - Permission: `PERMISSION_ADMIN`
@@ -132,10 +116,19 @@ Resolve deployment choices without creating enrollment or bootstrap keys.
 | `placementJson` | bytes | Resolved placement, carried to the executor without local file references. |
 | `forwarderPlacementJson` | bytes |  |
 | `database` | funnel.v1.DatabaseConfiguration |  |
+| `tailscaleConnection` | string |  |
+| `tailscaleSocket` | string |  |
+| `keyIssuerSecret` | string |  |
+| `servicesSecret` | string |  |
+| `servicesClientIdFile` | string |  |
+| `servicesClientSecretFile` | string |  |
+| `usersSecret` | string |  |
+| `usersClientIdFile` | string |  |
+| `usersClientSecretFile` | string |  |
 
 ### Authorize
 
-Create one-use enrollment and return credentials once, without server-side execution.
+Mint one-use Tailscale bootstrap credentials, without server-side execution.
 
 - RPC: `/funnel.v1.DeploymentService/Authorize`
 - Permission: `PERMISSION_ADMIN`
@@ -179,25 +172,15 @@ Create one-use enrollment and return credentials once, without server-side execu
 | `placementJson` | bytes | Resolved placement, carried to the executor without local file references. |
 | `forwarderPlacementJson` | bytes |  |
 | `database` | funnel.v1.DatabaseConfiguration |  |
-
-## funnel.v1.EnrollmentService
-
-
-
-### BindSigningKey
-
-
-
-- RPC: `/funnel.v1.EnrollmentService/BindSigningKey`
-- Permission: `PERMISSION_ENROLLMENT`
-- Input: `funnel.v1.BindSigningKeyRequest`
-- Output: `funnel.v1.Empty`
-
-| Field | Type | Notes |
-|---|---|---|
-| `enrollmentId` | string |  |
-| `code` | string | Secret; file/stdin only.  |
-| `publicKey` | bytes |  |
+| `tailscaleConnection` | string |  |
+| `tailscaleSocket` | string |  |
+| `keyIssuerSecret` | string |  |
+| `servicesSecret` | string |  |
+| `servicesClientIdFile` | string |  |
+| `servicesClientSecretFile` | string |  |
+| `usersSecret` | string |  |
+| `usersClientIdFile` | string |  |
+| `usersClientSecretFile` | string |  |
 
 ## funnel.v1.ManagementService
 
@@ -398,20 +381,6 @@ No input fields.
 | `id` | string |  |
 | `name` | string |  |
 
-### RenameEnrollment
-
-
-
-- RPC: `/funnel.v1.ManagementService/RenameEnrollment`
-- Permission: `PERMISSION_ADMIN`
-- Input: `funnel.v1.RenameRequest`
-- Output: `funnel.v1.Empty`
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | string |  |
-| `name` | string |  |
-
 ### RenameApplication
 
 
@@ -425,19 +394,6 @@ No input fields.
 |---|---|---|
 | `id` | string |  |
 | `name` | string |  |
-
-### ListEnrollments
-
-
-
-- RPC: `/funnel.v1.ManagementService/ListEnrollments`
-- Permission: `PERMISSION_VIEWER`
-- Input: `funnel.v1.ListNodesRequest`
-- Output: `funnel.v1.Enrollments`
-
-| Field | Type | Notes |
-|---|---|---|
-| `mode` | string |  |
 
 ### GetPolicy
 
@@ -489,6 +445,19 @@ No input fields.
 - Output: `funnel.v1.AccessSettings`
 
 No input fields.
+
+### RolePolicy
+
+
+
+- RPC: `/funnel.v1.ManagementService/RolePolicy`
+- Permission: `PERMISSION_VIEWER`
+- Input: `funnel.v1.RolePolicyRequest`
+- Output: `funnel.v1.RolePolicyTemplate`
+
+| Field | Type | Notes |
+|---|---|---|
+| `controlPort` | uint32 |  |
 
 ### GetSettings
 
@@ -635,7 +604,7 @@ No input fields.
 
 - RPC: `/funnel.v1.ManagementService/SaveDefaults`
 - Permission: `PERMISSION_ADMIN`
-- Input: `funnel.v1.EnrollmentDefaults`
+- Input: `funnel.v1.DeploymentDefaults`
 - Output: `funnel.v1.Settings`
 
 | Field | Type | Notes |
@@ -654,6 +623,7 @@ No input fields.
 
 | Field | Type | Notes |
 |---|---|---|
+| `purpose` | string |  |
 | `clientId` | string | Secret; file/stdin only.  |
 | `clientSecret` | string | Secret; file/stdin only.  |
 
@@ -668,6 +638,7 @@ No input fields.
 
 | Field | Type | Notes |
 |---|---|---|
+| `purpose` | string |  |
 | `clientId` | string | Secret; file/stdin only.  |
 | `clientSecret` | string | Secret; file/stdin only.  |
 
@@ -682,11 +653,11 @@ No input fields.
 
 No input fields.
 
-### RevokeNode
+### DisableNode
 
 
 
-- RPC: `/funnel.v1.ManagementService/RevokeNode`
+- RPC: `/funnel.v1.ManagementService/DisableNode`
 - Permission: `PERMISSION_ADMIN`
 - Input: `funnel.v1.ResourceID`
 - Output: `funnel.v1.TestResult`
@@ -703,19 +674,6 @@ No input fields.
 - Permission: `PERMISSION_ADMIN`
 - Input: `funnel.v1.ResourceID`
 - Output: `funnel.v1.TestResult`
-
-| Field | Type | Notes |
-|---|---|---|
-| `id` | string |  |
-
-### RevokeEnrollment
-
-
-
-- RPC: `/funnel.v1.ManagementService/RevokeEnrollment`
-- Permission: `PERMISSION_ADMIN`
-- Input: `funnel.v1.ResourceID`
-- Output: `funnel.v1.Empty`
 
 | Field | Type | Notes |
 |---|---|---|
@@ -843,6 +801,23 @@ No input fields.
 
 
 
+### RegisterComponent
+
+Role-authorized registration. Identity and role come only from WhoIs.
+
+- RPC: `/funnel.v1.NodeService/RegisterComponent`
+- Permission: `PERMISSION_NODE`
+- Input: `funnel.v1.RegisterComponentRequest`
+- Output: `funnel.v1.RegisteredComponent`
+
+| Field | Type | Notes |
+|---|---|---|
+| `componentId` | string |  |
+| `instanceId` | string |  |
+| `deployment` | funnel.v1.DeploymentRequest |  |
+| `parentId` | string |  |
+| `nodeUid` | string |  |
+
 ### GetConfig
 
 
@@ -850,11 +825,11 @@ No input fields.
 - RPC: `/funnel.v1.NodeService/GetConfig`
 - Permission: `PERMISSION_NODE`
 - Input: `funnel.v1.Empty`
-- Output: `funnel.v1.SignedEnvelope`
+- Output: `funnel.v1.ConfigurationPayload`
 
 No input fields.
 
-Signed payload model: `funnel.v1.ConfigurationPayload`. Verify exact bytes before decoding.
+Typed runtime payload model: `funnel.v1.ConfigurationPayload`. Authenticate through WhoIs and exact installation-role tags.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -875,7 +850,7 @@ Signed payload model: `funnel.v1.ConfigurationPayload`. Verify exact bytes befor
 - RPC: `/funnel.v1.NodeService/ResolveApplication`
 - Permission: `PERMISSION_NODE`
 - Input: `funnel.v1.ResolveApplicationRequest`
-- Output: `funnel.v1.SignedEnvelope`
+- Output: `funnel.v1.ConfigurationPayload`
 
 | Field | Type | Notes |
 |---|---|---|
@@ -884,7 +859,7 @@ Signed payload model: `funnel.v1.ConfigurationPayload`. Verify exact bytes befor
 | `hostname` | string |  |
 | `backendPort` | uint32 |  |
 
-Signed payload model: `funnel.v1.ConfigurationPayload`. Verify exact bytes before decoding.
+Typed runtime payload model: `funnel.v1.ConfigurationPayload`. Authenticate through WhoIs and exact installation-role tags.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -944,20 +919,15 @@ Accept authenticated desired state durably. Success acknowledges storage,
 
 - RPC: `/funnel.v1.NodeService/SubmitReport`
 - Permission: `PERMISSION_NODE`
-- Input: `funnel.v1.SignedEnvelope`
+- Input: `funnel.v1.ExposureReport`
 - Output: `funnel.v1.Empty`
 
 | Field | Type | Notes |
 |---|---|---|
-| `nodeId` | string |  |
-| `timestamp` | int64 |  |
-| `nonce` | string |  |
-| `publicKey` | bytes |  |
-| `payload` | bytes |  |
-| `signature` | bytes |  |
-| `purpose` | string |  |
+| `exposures` | list of funnel.v1.ReportedExposure |  |
+| `expiresAt` | int64 |  |
 
-Signed payload model: `funnel.v1.ExposureReport`. Verify exact bytes before decoding.
+Typed runtime payload model: `funnel.v1.ExposureReport`. Authenticate through WhoIs and exact installation-role tags.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -970,20 +940,17 @@ Complete Docker declarations, including stopped containers. No external API work
 
 - RPC: `/funnel.v1.NodeService/SubmitDockerInventory`
 - Permission: `PERMISSION_NODE`
-- Input: `funnel.v1.SignedEnvelope`
+- Input: `funnel.v1.DockerInventoryPayload`
 - Output: `funnel.v1.Empty`
 
 | Field | Type | Notes |
 |---|---|---|
-| `nodeId` | string |  |
-| `timestamp` | int64 |  |
-| `nonce` | string |  |
-| `publicKey` | bytes |  |
-| `payload` | bytes |  |
-| `signature` | bytes |  |
-| `purpose` | string |  |
+| `revision` | int64 |  |
+| `complete` | bool |  |
+| `containers` | list of funnel.v1.DockerInventoryContainer |  |
+| `labelKeys` | list of string |  |
 
-Signed payload model: `funnel.v1.DockerInventoryPayload`. Verify exact bytes before decoding.
+Typed runtime payload model: `funnel.v1.DockerInventoryPayload`. Authenticate through WhoIs and exact installation-role tags.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -998,20 +965,20 @@ Signed payload model: `funnel.v1.DockerInventoryPayload`. Verify exact bytes bef
 
 - RPC: `/funnel.v1.NodeService/SubmitPeers`
 - Permission: `PERMISSION_NODE`
-- Input: `funnel.v1.SignedEnvelope`
+- Input: `funnel.v1.PeerSnapshot`
 - Output: `funnel.v1.Empty`
 
 | Field | Type | Notes |
 |---|---|---|
-| `nodeId` | string |  |
-| `timestamp` | int64 |  |
-| `nonce` | string |  |
-| `publicKey` | bytes |  |
-| `payload` | bytes |  |
-| `signature` | bytes |  |
-| `purpose` | string |  |
+| `peers` | list of funnel.v1.Peer |  |
+| `tags` | list of string |  |
+| `results` | list of funnel.v1.ProbeResult |  |
+| `expiresAt` | int64 |  |
+| `receivedAt` | int64 |  |
+| `sources` | list of string |  |
+| `roles` | list of string |  |
 
-Signed payload model: `funnel.v1.PeerSnapshot`. Verify exact bytes before decoding.
+Typed runtime payload model: `funnel.v1.PeerSnapshot`. Authenticate through WhoIs and exact installation-role tags.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -1029,20 +996,17 @@ Signed payload model: `funnel.v1.PeerSnapshot`. Verify exact bytes before decodi
 
 - RPC: `/funnel.v1.NodeService/SubmitKubernetes`
 - Permission: `PERMISSION_NODE`
-- Input: `funnel.v1.SignedEnvelope`
+- Input: `funnel.v1.KubernetesPayload`
 - Output: `funnel.v1.Empty`
 
 | Field | Type | Notes |
 |---|---|---|
-| `nodeId` | string |  |
-| `timestamp` | int64 |  |
-| `nonce` | string |  |
-| `publicKey` | bytes |  |
-| `payload` | bytes |  |
-| `signature` | bytes |  |
-| `purpose` | string |  |
+| `errors` | map |  |
+| `clusterId` | string |  |
+| `hosts` | list of funnel.v1.KubernetesHost |  |
+| `expiresAt` | int64 |  |
 
-Signed payload model: `funnel.v1.KubernetesPayload`. Verify exact bytes before decoding.
+Typed runtime payload model: `funnel.v1.KubernetesPayload`. Authenticate through WhoIs and exact installation-role tags.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -1057,20 +1021,8 @@ Signed payload model: `funnel.v1.KubernetesPayload`. Verify exact bytes before d
 
 - RPC: `/funnel.v1.NodeService/SubmitPublicEndpoint`
 - Permission: `PERMISSION_NODE`
-- Input: `funnel.v1.SignedEnvelope`
+- Input: `funnel.v1.PublicEndpointPayload`
 - Output: `funnel.v1.Empty`
-
-| Field | Type | Notes |
-|---|---|---|
-| `nodeId` | string |  |
-| `timestamp` | int64 |  |
-| `nonce` | string |  |
-| `publicKey` | bytes |  |
-| `payload` | bytes |  |
-| `signature` | bytes |  |
-| `purpose` | string |  |
-
-Signed payload model: `funnel.v1.PublicEndpointPayload`. Verify exact bytes before decoding.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -1080,32 +1032,15 @@ Signed payload model: `funnel.v1.PublicEndpointPayload`. Verify exact bytes befo
 | `observedAt` | int64 |  |
 | `ingress` | list of funnel.v1.PublicIngress |  |
 
-### EnrollForwarder
-
-
-
-- RPC: `/funnel.v1.NodeService/EnrollForwarder`
-- Permission: `PERMISSION_NODE`
-- Input: `funnel.v1.SignedEnvelope`
-- Output: `funnel.v1.ForwarderEnrollment`
+Typed runtime payload model: `funnel.v1.PublicEndpointPayload`. Authenticate through WhoIs and exact installation-role tags.
 
 | Field | Type | Notes |
 |---|---|---|
-| `nodeId` | string |  |
-| `timestamp` | int64 |  |
-| `nonce` | string |  |
-| `publicKey` | bytes |  |
-| `payload` | bytes |  |
-| `signature` | bytes |  |
-| `purpose` | string |  |
-
-Signed payload model: `funnel.v1.ForwarderEnrollmentPayload`. Verify exact bytes before decoding.
-
-| Field | Type | Notes |
-|---|---|---|
-| `nodeUid` | string |  |
-| `hostname` | string |  |
-| `publicKey` | string |  |
+| `namespace` | string |  |
+| `service` | string |  |
+| `uid` | string |  |
+| `observedAt` | int64 |  |
+| `ingress` | list of funnel.v1.PublicIngress |  |
 
 ### ListForwarders
 
@@ -1118,31 +1053,6 @@ Signed payload model: `funnel.v1.ForwarderEnrollmentPayload`. Verify exact bytes
 
 No input fields.
 
-### BindForwarder
-
-
-
-- RPC: `/funnel.v1.NodeService/BindForwarder`
-- Permission: `PERMISSION_ENROLLMENT`
-- Input: `funnel.v1.SignedEnvelope`
-- Output: `funnel.v1.Empty`
-
-| Field | Type | Notes |
-|---|---|---|
-| `nodeId` | string |  |
-| `timestamp` | int64 |  |
-| `nonce` | string |  |
-| `publicKey` | bytes |  |
-| `payload` | bytes |  |
-| `signature` | bytes |  |
-| `purpose` | string |  |
-
-Signed payload model: `funnel.v1.ForwarderBindingPayload`. Verify exact bytes before decoding.
-
-| Field | Type | Notes |
-|---|---|---|
-| `bind` | bool |  |
-
 ### Shutdown
 
 
@@ -1154,4 +1064,19 @@ Signed payload model: `funnel.v1.ForwarderBindingPayload`. Verify exact bytes be
 
 | Field | Type | Notes |
 |---|---|---|
-| `confirm` | bool |  |
+| `remove` | bool |  |
+
+## funnel.v1.WorkloadBootstrapService
+
+WorkloadBootstrapService is served by the cluster operator over authenticated TLS.
+
+### IssueKey
+
+
+
+- RPC: `/funnel.v1.WorkloadBootstrapService/IssueKey`
+- Permission: `PERMISSION_BROKER`
+- Input: `funnel.v1.Empty`
+- Output: `funnel.v1.WorkloadBootstrap`
+
+No input fields.

@@ -3,10 +3,11 @@ package provision
 import (
 	"encoding/json"
 	"fmt"
-	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
-	"google.golang.org/protobuf/proto"
 	"sort"
 	"strings"
+
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 func ResourceKind(mode string) string {
@@ -76,9 +77,20 @@ func Arguments(p *v1.DeploymentInstructions, action string) []string {
 		}
 		return args
 	}
-	args = append(args, "--hostname", d.Hostname, "--version", p.Version)
+	args = append(args, "--hostname", d.Hostname, "--version", p.Version, "--installation", d.Installation)
+	if d.Target == "native" {
+		args = append(args, "--tailscale", d.TailscaleConnection)
+		if d.TailscaleSocket != "" {
+			args = append(args, "--tailscale-socket", d.TailscaleSocket)
+		}
+	}
 	if d.Target == "kubernetes" {
-		args = append(args, "--installation", d.Installation)
+		args = append(args, "--key-issuer-secret", d.KeyIssuerSecret)
+		if d.Mode == "control" {
+			args = append(args, "--services-secret", d.ServicesSecret, "--users-secret", d.UsersSecret)
+		}
+	}
+	if d.Target == "kubernetes" {
 		if d.StorageClass != "" {
 			args = append(args, "--storage-class", d.StorageClass)
 		}
@@ -104,7 +116,12 @@ func Arguments(p *v1.DeploymentInstructions, action string) []string {
 		if secret == "" {
 			secret = "/etc/tailscale-private-funnel/bootstrap/ts-client-secret"
 		}
-		args = append(args, "--oauth-client-id-file", id, "--oauth-client-secret-file", secret)
+		if d.Target == "native" {
+			if d.TailscaleConnection != "host" {
+				args = append(args, "--oauth-client-id-file", id, "--oauth-client-secret-file", secret)
+			}
+			args = append(args, "--services-client-id-file", d.ServicesClientIdFile, "--services-client-secret-file", d.ServicesClientSecretFile, "--users-client-id-file", d.UsersClientIdFile, "--users-client-secret-file", d.UsersClientSecretFile)
+		}
 	} else {
 		args = append(args, "--control-url", p.ManagementUrl)
 	}
@@ -175,12 +192,12 @@ func RemoteOutput(p *v1.DeploymentInstructions, format string, dry bool) (string
 	if dry {
 		p.DryRun = true
 		if format == "script" {
-			return "#!/bin/sh\n# Dry-run preview: no enrollment or credentials were created.\nprintf '%s\\n' 'Dry-run output is not an executable installer' >&2\nexit 1\n", nil
+			return "#!/bin/sh\n# Dry-run preview: no credentials were created.\nprintf '%s\\n' 'Dry-run output is not an executable installer' >&2\nexit 1\n", nil
 		}
 		p.Credentials = nil
 		p.Script = ""
 		if format == "instructions" {
-			return "Dry-run preview only. No enrollment or credentials were created.\n" + p.Commands["create"] + "\n", nil
+			return "Dry-run preview only. No credentials were created.\n" + p.Commands["create"] + "\n", nil
 		}
 	}
 	switch format {
@@ -194,7 +211,13 @@ func RemoteOutput(p *v1.DeploymentInstructions, format string, dry bool) (string
 		b, e := json.Marshal(copy)
 		return string(b) + "\n", e
 	case "instructions":
-		return fmt.Sprintf("Run this installer on the target host, or a machine with the selected Kubernetes context. Version: %s\nBootstrap expires after 15 minutes for enrolled components. No host Tailscale is required. Stop preserves identity and data; delete revokes and removes owned state.\n\n%s", p.Version, InstallerScript(p)), nil
+		guidance := "Embedded native bootstrap keys expire after 15 minutes; no host Tailscale is required. Native stop preserves identity and data."
+		if p.Deployment.TailscaleConnection == "host" {
+			guidance = "Host reuse requires an already-connected role-tagged daemon and LocalAPI permissions; no join secret is included. Stop preserves borrowed host configuration."
+		} else if p.Deployment.Target == "kubernetes" {
+			guidance = "The execution machine needs Kubernetes access. Workloads obtain fresh disposable identities through protected installation issuer Secrets; persistent application data is retained."
+		}
+		return fmt.Sprintf("Run this installer on the target host, or a machine with the selected Kubernetes context. Version: %s\n%s Delete removes only owned resources; removing a Tailscale role tag or device ends that role authority.\n\n%s", p.Version, guidance, InstallerScript(p)), nil
 	default:
 		return "", fmt.Errorf("--output must be instructions, script, or json")
 	}

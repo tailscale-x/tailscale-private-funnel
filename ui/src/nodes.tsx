@@ -35,22 +35,14 @@ export function NodesPage({
     queryFn: () => api.listNodes({}),
     refetchInterval: 15_000,
   });
-  const enrollments = useQuery({
-    queryKey: ["enrollments"],
-    queryFn: () => api.listEnrollments({}),
-    refetchInterval: 15000,
-  });
-  const revokeEnrollment = useMutation({
-    mutationFn: (id: string) => api.revokeEnrollment({ id }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["enrollments"] }),
-  });
+
   const [type, setType] = useState("");
   const [rename, setRename] = useState<Node>();
   const action = useMutation({
     mutationFn: async ({ node, cleanup }: { node: Node; cleanup: boolean }) =>
       cleanup
         ? api.cleanupNode({ id: node.id })
-        : api.revokeNode({ id: node.id }),
+        : api.disableNode({ id: node.id }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["nodes"] }),
   });
   const save = useMutation({
@@ -76,7 +68,7 @@ export function NodesPage({
         subtitle={
           loadbalancers
             ? "Public HTTPS edges. Control automatically distributes eligible exposures and reconciles their public addresses."
-            : "One persistent identity per gateway. Each type discovers and forwards only its approved backend sources."
+            : "Each gateway keeps a logical identity. Native network identities persist; Kubernetes devices are disposable. Each type forwards only its approved backend sources."
         }
         action={
           admin ? (
@@ -121,15 +113,15 @@ export function NodesPage({
               <td>
                 <strong>{n.name}</strong>
                 <small className="pf-help">{n.hostname}</small>
-                <code>{n.tailnetId || "Enrollment pending"}</code>
+                <code>{n.tailnetId || "Awaiting registration"}</code><small className="pf-help">{n.tailscaleConnection || "Embedded"}{n.instanceId ? ` · instance ${n.instanceId.slice(0,8)} · generation ${n.generation}` : ""}</small>
               </td>
               <td>{n.mode}</td>
               <td>
                 <Badge
-                  ok={!n.revoked && fresh(n.lastReport)}
+                  ok={!n.disabled && fresh(n.lastReport)}
                   label={
-                    n.revoked
-                      ? "Revoked"
+                    n.disabled
+                      ? "Disabled"
                       : fresh(n.lastReport)
                         ? "Reporting"
                         : "Offline / pending"
@@ -140,7 +132,7 @@ export function NodesPage({
               <td>
                 <div className="pf-react-actions">
                   {n.deployment?.resourceName && admin ? <a className="pf-text-link" href={"/deploy/actions?node_id="+encodeURIComponent(n.id)}>Generate deployment instructions</a> : null}
-                  {n.mode === "tailnet-gateway" && !n.revoked ? (
+                  {n.mode === "tailnet-gateway" && !n.disabled ? (
                     <a
                       href={
                         "/tailnet-exposures?gateway_id=" +
@@ -165,15 +157,15 @@ export function NodesPage({
                         onClick={() => {
                           if (
                             confirm(
-                              n.revoked
+                              n.disabled
                                 ? `Retry cleanup for ${n.name}?`
-                                : `Revoke node access for ${n.name}? Owned exposures and Service hosts will be withdrawn. Host or cluster deployment resources are not deleted.`,
+                                : `Disable component for ${n.name}? Owned exposures will be withdrawn. This does not remove host/cluster deployments or revoke the device role tag in Tailscale.`,
                             )
                           )
-                            action.mutate({ node: n, cleanup: n.revoked });
+                            action.mutate({ node: n, cleanup: n.disabled });
                         }}
                       >
-                        {n.revoked ? "Retry cleanup" : "Revoke node access"}
+                        {n.disabled ? "Retry cleanup" : "Disable component"}
                       </button>
                     </>
                   ) : null}
@@ -183,60 +175,7 @@ export function NodesPage({
           ))}
         </Table>
       </Panel>
-      <Panel title="Unused enrollments">
-        <Table
-          headers={["Name", "Type", "Created", "State", "Actions"]}
-          empty={
-            !enrollments.isPending &&
-            !enrollments.data?.items.some(
-              (enrollment) =>
-                (loadbalancers
-                  ? enrollment.mode === "loadbalancer"
-                  : enrollment.mode !== "loadbalancer") &&
-                !nodes.data?.items.some((node) => node.id === enrollment.id),
-            )
-          }
-        >
-          {enrollments.data?.items
-            .filter(
-              (enrollment) =>
-                (loadbalancers
-                  ? enrollment.mode === "loadbalancer"
-                  : enrollment.mode !== "loadbalancer") &&
-                !nodes.data?.items.some((node) => node.id === enrollment.id),
-            )
-            .map((enrollment) => (
-              <tr key={enrollment.id}>
-                <td>
-                  <strong>{enrollment.name}</strong>
-                  <small className="pf-help">{enrollment.hostname}</small>
-                </td>
-                <td>{enrollment.mode}</td>
-                <td>{date(enrollment.createdAt)}</td>
-                <td>{enrollment.revoked ? "Revoked" : "Not joined"}</td>
-                <td>
-                  {admin && !enrollment.revoked ? (
-                    <button
-                      className="pf-secondary-button"
-                      disabled={revokeEnrollment.isPending}
-                      onClick={() => {
-                        if (
-                          confirm(
-                            `Revoke unused enrollment for ${enrollment.name}?`,
-                          )
-                        )
-                          revokeEnrollment.mutate(enrollment.id);
-                      }}
-                    >
-                      Revoke enrollment
-                    </button>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
-        </Table>
-        <ErrorMessage error={enrollments.error || revokeEnrollment.error} />
-      </Panel>
+
       {rename ? (
         <Modal
           title={`Rename ${rename.name}`}
@@ -254,7 +193,7 @@ export function NodesPage({
             </Field>
             <p className="pf-help">
               Renaming changes only the display name. Identity, DNS and
-              enrollment remain unchanged.
+              role authority remain unchanged.
             </p>
             <Submit pending={save.isPending} />
             <ErrorMessage error={save.error} />
@@ -264,4 +203,4 @@ export function NodesPage({
     </>
   );
 }
-export { DeploymentWizard as EnrollmentPage } from "./deployment";
+export { DeploymentWizard as RegistrationPage } from "./deployment";

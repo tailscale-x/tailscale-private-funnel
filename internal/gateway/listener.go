@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tsconnection"
 	"tailscale.com/tsnet"
 )
 
 // ListenerManager keeps all Service listeners on the gateway node's one
 // tsnet identity and forwards directly to selected backend addresses.
 type ListenerManager struct {
-	server   *tsnet.Server
+	server   tsconnection.Connection
 	mu       sync.Mutex
 	draining sync.WaitGroup
 	items    map[string]listenerItem
@@ -24,7 +26,7 @@ type listenerItem struct {
 	target   string
 }
 
-func NewListenerManager(server *tsnet.Server) *ListenerManager {
+func NewListenerManager(server tsconnection.Connection) *ListenerManager {
 	return &ListenerManager{server: server, items: make(map[string]listenerItem)}
 }
 
@@ -44,8 +46,27 @@ func (m *ListenerManager) ListenDial(ctx context.Context, service string, port u
 	}
 	if existing, ok := m.items[key]; ok {
 		existing.cancel()
-		_ = existing.listener.Close()
+		if existing.listener != nil {
+			_ = existing.listener.Close()
+		}
 		delete(m.items, key)
+	}
+	underlying := m.server
+	if bound, ok := underlying.(*tsconnection.Bound); ok {
+		underlying = bound.Connection
+	}
+	if host, ok := underlying.(tsconnection.Forwarder); ok {
+		if err := host.ForwardService(ctx, service, port, target); err != nil {
+			m.mu.Unlock()
+			return err
+		}
+		m.items[key] = listenerItem{target: target, cancel: func() {
+			bounded, stop := context.WithTimeout(context.Background(), 5*time.Second)
+			defer stop()
+			_ = host.RemoveService(bounded, service, port)
+		}}
+		m.mu.Unlock()
+		return nil
 	}
 	listener, err := m.server.ListenService(service, tsnet.ServiceModeTCP{Port: port})
 	if err != nil {
@@ -78,7 +99,9 @@ func (m *ListenerManager) Remove(service string, port uint16) {
 	if ok {
 		delete(m.items, key)
 		item.cancel()
-		_ = item.listener.Close()
+		if item.listener != nil {
+			_ = item.listener.Close()
+		}
 	}
 	m.mu.Unlock()
 }
@@ -93,7 +116,9 @@ func (m *ListenerManager) Close() {
 	m.mu.Unlock()
 	for _, item := range items {
 		item.cancel()
-		_ = item.listener.Close()
+		if item.listener != nil {
+			_ = item.listener.Close()
+		}
 	}
 }
 
@@ -112,7 +137,9 @@ func (m *ListenerManager) Reconcile(active map[string]struct{}) {
 	m.mu.Unlock()
 	for _, item := range stale {
 		item.cancel()
-		_ = item.listener.Close()
+		if item.listener != nil {
+			_ = item.listener.Close()
+		}
 	}
 }
 

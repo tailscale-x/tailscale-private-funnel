@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"strings"
 	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 )
 
 // DockerInventory is a complete declaration inventory, not a reachability report.
@@ -104,7 +105,7 @@ func (s *Store) RetiredDockerExposure(n, app, host, service string, port uint16)
 
 // AcceptDockerInventory atomically binds revision/nonce and retires declarations.
 // DNS ledger and exposure rows are deliberately retained, never rewritten here.
-func (s *Store) AcceptDockerInventory(node, key, nonce string, i DockerInventory) (int, error) {
+func (s *Store) AcceptDockerInventory(node, nonce string, i DockerInventory) (int, error) {
 	if i.Revision <= 0 {
 		return 0, errors.New("positive inventory revision required")
 	}
@@ -115,7 +116,7 @@ func (s *Store) AcceptDockerInventory(node, key, nonce string, i DockerInventory
 	defer tx.Rollback()
 	var valid int
 	var actor string
-	if err = tx.QueryRow(`SELECT count(*) FROM nodes WHERE id=? AND mode='docker-gateway' AND revoked=0 AND node_key=? AND node_key<>''`, node, key).Scan(&valid); err != nil {
+	if err = tx.QueryRow(`SELECT count(*) FROM nodes WHERE id=? AND mode='docker-gateway' AND revoked=0 `, node).Scan(&valid); err != nil {
 		return 0, err
 	}
 	if valid != 1 {

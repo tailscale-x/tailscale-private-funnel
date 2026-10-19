@@ -1,11 +1,9 @@
 package store
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"embed"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -47,20 +45,10 @@ type NodeRecord struct {
 	ID         string `json:"id"`
 	Mode       string `json:"mode"`
 	Hostname   string `json:"hostname"`
-	PublicKey  string `json:"public_key,omitempty"`
 	Revoked    bool   `json:"revoked"`
 	LastReport int64  `json:"last_report"`
 	TailnetID  string `json:"tailnet_id"`
 	RevokedAt  int64  `json:"revoked_at,omitempty"`
-}
-
-type Enrollment struct {
-	Name      string `json:"name"`
-	ID        string `json:"id"`
-	Mode      string `json:"mode"`
-	Hostname  string `json:"hostname"`
-	Revoked   bool   `json:"revoked"`
-	CreatedAt int64  `json:"created_at"`
 }
 
 type AuditEvent struct {
@@ -156,7 +144,6 @@ func OpenDatabase(dataDir, databaseDir string) (*Store, error) {
 		`ALTER TABLE providers ADD COLUMN account_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE providers ADD COLUMN capabilities TEXT NOT NULL DEFAULT '[]'`,
 		`ALTER TABLE providers ADD COLUMN tested_at INTEGER NOT NULL DEFAULT 0`,
-		`ALTER TABLE nodes ADD COLUMN enrollment_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE nodes ADD COLUMN revoked_at INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE nodes ADD COLUMN tailnet_id TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE nodes ADD COLUMN addresses TEXT NOT NULL DEFAULT '[]'`,
@@ -247,10 +234,6 @@ func OpenDatabase(dataDir, databaseDir string) (*Store, error) {
 			return nil, err
 		}
 	}
-	if err := s.checkTransferFence(); err != nil {
-		db.Close()
-		return nil, err
-	}
 	if err := s.migrateResourceNames(); err != nil {
 		db.Close()
 		return nil, err
@@ -264,10 +247,6 @@ func OpenDatabase(dataDir, databaseDir string) (*Store, error) {
 		return nil, err
 	}
 	if err := s.migrateSharedApplicationServices(); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if err := s.checkTransferFence(); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -340,7 +319,7 @@ func (s *Store) SaveReport(nodeID string, payload []byte) error {
 	return err
 }
 
-func (s *Store) AcceptReport(nodeID, nonce string, payload []byte, publicKey string) error {
+func (s *Store) AcceptReport(nodeID, nonce string, payload []byte) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -353,9 +332,8 @@ func (s *Store) AcceptReport(nodeID, nonce string, payload []byte, publicKey str
 	if seen != 0 {
 		return fmt.Errorf("report nonce already used")
 	}
-	var storedKey string
 	var revoked int
-	if err := tx.QueryRow(`SELECT n.node_key, CASE WHEN n.revoked<>0 OR EXISTS(SELECT 1 FROM kubernetes_forwarders f LEFT JOIN nodes p ON p.id=f.parent_id WHERE f.node_id=n.id AND (p.id IS NULL OR p.revoked<>0)) THEN 1 ELSE 0 END FROM nodes n WHERE n.id=?`, nodeID).Scan(&storedKey, &revoked); err != nil {
+	if err := tx.QueryRow(`SELECT CASE WHEN n.revoked<>0 OR EXISTS(SELECT 1 FROM component_instances i LEFT JOIN nodes p ON p.id=i.parent_id WHERE i.component_id=n.id AND i.parent_id<>'' AND (p.id IS NULL OR p.revoked<>0)) THEN 1 ELSE 0 END FROM nodes n WHERE n.id=?`, nodeID).Scan(&revoked); err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("unknown node")
 		}
@@ -364,9 +342,7 @@ func (s *Store) AcceptReport(nodeID, nonce string, payload []byte, publicKey str
 	if revoked != 0 {
 		return fmt.Errorf("node is revoked")
 	}
-	if storedKey == "" || storedKey != publicKey {
-		return fmt.Errorf("report signing key is not enrolled")
-	}
+
 	if _, err := tx.Exec(`INSERT INTO report_nonces(node_id,nonce,received_at) VALUES(?,?,?)`, nodeID, nonce, time.Now().Unix()); err != nil {
 		return err
 	}
@@ -418,7 +394,7 @@ func (s *Store) StaleReportIDs(before int64) ([]string, error) {
 // before. Nodes without a heartbeat are left for explicit administrator
 // revocation because they may be completing their first bootstrap.
 func (s *Store) StaleNodes(before int64) ([]NodeRecord, error) {
-	rows, err := s.db.Query(`SELECT id,name,mode,hostname,node_key,revoked,last_report,tailnet_id,revoked_at FROM nodes WHERE revoked=0 AND mode IN ('loadbalancer','docker-gateway','tailnet-gateway','k8s-gateway') AND last_report>0 AND last_report < ?`, before)
+	rows, err := s.db.Query(`SELECT id,name,mode,hostname,revoked,last_report,tailnet_id,revoked_at FROM nodes WHERE revoked=0 AND mode IN ('loadbalancer','docker-gateway','tailnet-gateway','k8s-gateway') AND last_report>0 AND last_report < ?`, before)
 	if err != nil {
 		return nil, err
 	}
@@ -427,7 +403,7 @@ func (s *Store) StaleNodes(before int64) ([]NodeRecord, error) {
 	for rows.Next() {
 		var n NodeRecord
 		var revoked int
-		if err := rows.Scan(&n.ID, &n.Name, &n.Mode, &n.Hostname, &n.PublicKey, &revoked, &n.LastReport, &n.TailnetID, &n.RevokedAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.Name, &n.Mode, &n.Hostname, &revoked, &n.LastReport, &n.TailnetID, &n.RevokedAt); err != nil {
 			return nil, err
 		}
 		n.Revoked = revoked != 0
@@ -585,147 +561,18 @@ func (s *Store) UpsertNode(id, mode, hostname string) error {
 	return err
 }
 
-func (s *Store) UpsertNodeEnrollment(id, enrollmentID, mode, hostname string) error {
-	_, err := s.db.Exec(`INSERT INTO nodes(id,name,mode,hostname,enrollment_id) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET mode=excluded.mode,hostname=excluded.hostname,enrollment_id=excluded.enrollment_id`, id, hostname, mode, hostname, enrollmentID)
-	if err == nil {
-		_, err = s.db.Exec(`UPDATE nodes SET name=(SELECT name FROM enrollments WHERE id=?) WHERE id=? AND name=hostname AND EXISTS(SELECT 1 FROM enrollments WHERE id=?)`, enrollmentID, id, enrollmentID)
-	}
-	return err
-}
-
-func (s *Store) CreateEnrollment(mode, hostname string) (Enrollment, string, error) {
-	codeBytes := make([]byte, 24)
-	if _, err := rand.Read(codeBytes); err != nil {
-		return Enrollment{}, "", err
-	}
-	idBytes := make([]byte, 12)
-	if _, err := rand.Read(idBytes); err != nil {
-		return Enrollment{}, "", err
-	}
-	id := base64.RawURLEncoding.EncodeToString(idBytes)
-	code := base64.RawURLEncoding.EncodeToString(codeBytes)
-	hash := sha256.Sum256([]byte(code))
-	now := time.Now().Unix()
-	_, err := s.db.Exec(`INSERT INTO enrollments(id,name,mode,hostname,code_hash,created_at,expires_at,revoked) VALUES(?,?,?,?,?,?,?,0)`, id, hostname, mode, hostname, fmt.Sprintf("%x", hash[:]), now, now+900)
-	return Enrollment{ID: id, Name: hostname, Mode: mode, Hostname: hostname, CreatedAt: now}, code, err
-}
-
-func (s *Store) RedeemEnrollment(id, code string) (Enrollment, error) {
-	var e Enrollment
-	var revoked int
-	var hash string
-	var expiresAt int64
-	if err := s.db.QueryRow(`SELECT id,name,mode,hostname,code_hash,created_at,revoked,expires_at FROM enrollments WHERE id=?`, id).Scan(&e.ID, &e.Name, &e.Mode, &e.Hostname, &hash, &e.CreatedAt, &revoked, &expiresAt); err != nil {
-		return e, err
-	}
-	e.Revoked = revoked != 0
-	if expiresAt <= time.Now().Unix() {
-		return e, fmt.Errorf("enrollment expired; generate a new installer")
-	}
-	if e.Revoked {
-		return e, fmt.Errorf("enrollment is revoked")
-	}
-	sum := sha256.Sum256([]byte(code))
-	if hash != fmt.Sprintf("%x", sum[:]) {
-		return e, fmt.Errorf("invalid enrollment code")
-	}
-	return e, nil
-}
-
-// BindEnrollment consumes the code and binds its signing key and verified
-// tailnet identity in one transaction. A competing redemption cannot reuse it.
-func (s *Store) BindEnrollment(id, code, publicKey, tailnetID, hostname string, addresses []string) error {
-	if code == "" || publicKey == "" || tailnetID == "" {
-		return fmt.Errorf("code, key, and tailnet identity are required")
-	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	var bound int
-	if err = tx.QueryRow(`SELECT count(*) FROM nodes WHERE tailnet_id=?`, tailnetID).Scan(&bound); err != nil {
-		return err
-	}
-	if bound != 0 {
-		return fmt.Errorf("tailnet identity is already enrolled")
-	}
-	sum := sha256.Sum256([]byte(code))
-	result, err := tx.Exec(`UPDATE enrollments SET code_hash='' WHERE id=? AND code_hash=? AND revoked=0 AND expires_at>?`, id, fmt.Sprintf("%x", sum[:]), time.Now().Unix())
-	if err != nil {
-		return err
-	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n != 1 {
-		return fmt.Errorf("invalid, consumed, or revoked enrollment")
-	}
-	if hostname != "" {
-		hostname = strings.SplitN(strings.TrimSuffix(hostname, "."), ".", 2)[0]
-		if _, err = tx.Exec(`UPDATE enrollments SET name=CASE WHEN name=hostname THEN ? ELSE name END,hostname=? WHERE id=?`, hostname, hostname, id); err != nil {
-			return err
-		}
-	}
-	b, _ := json.Marshal(addresses)
-	_, err = tx.Exec(`INSERT INTO nodes(id,name,enrollment_id,mode,hostname,node_key,tailnet_id,addresses) SELECT id,name,id,mode,hostname,?,?,? FROM enrollments WHERE id=?`, publicKey, tailnetID, string(b), id)
-	if err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-func (s *Store) Enrollments(mode string) ([]Enrollment, error) {
-	rows, err := s.db.Query(`SELECT id,name,mode,hostname,created_at,revoked FROM enrollments WHERE (?='' OR mode=?) ORDER BY created_at DESC`, mode, mode)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Enrollment
-	for rows.Next() {
-		var e Enrollment
-		var revoked int
-		if err := rows.Scan(&e.ID, &e.Name, &e.Mode, &e.Hostname, &e.CreatedAt, &revoked); err != nil {
-			return nil, err
-		}
-		e.Revoked = revoked != 0
-		out = append(out, e)
-	}
-	return out, rows.Err()
-}
-
-func (s *Store) RevokeEnrollment(id string) error {
-	_, err := s.db.Exec(`UPDATE enrollments SET revoked=1 WHERE id=?`, id)
-	if err == nil {
-		_, err = s.db.Exec(`UPDATE nodes SET revoked=1,revoked_at=? WHERE enrollment_id=?`, time.Now().Unix(), id)
-	}
-	if err == nil {
-		_, err = s.db.Exec(`UPDATE backend_assignments SET revoked=1,last_seen=? WHERE node_id IN (SELECT id FROM nodes WHERE enrollment_id=?)`, time.Now().Unix(), id)
-	}
-	return err
-}
-
 func (s *Store) RevokeNode(id string) error {
 	_, err := s.db.Exec(`UPDATE nodes SET revoked=1,revoked_at=? WHERE id=?`, time.Now().Unix(), id)
-	if err == nil {
-		_, err = s.db.Exec(`UPDATE enrollments SET revoked=1 WHERE id=?`, id)
-	}
 	if err == nil {
 		_, err = s.db.Exec(`UPDATE backend_assignments SET revoked=1,last_seen=? WHERE node_id=?`, time.Now().Unix(), id)
 	}
 	return err
 }
 
-func (s *Store) BindNodeKey(id, publicKey string) error {
-	_, err := s.db.Exec(`UPDATE nodes SET node_key=? WHERE id=? AND revoked=0`, publicKey, id)
-	return err
-}
-
 func (s *Store) Node(id string) (NodeRecord, error) {
 	var n NodeRecord
 	var revoked int
-	err := s.db.QueryRow(`SELECT id,name,mode,hostname,COALESCE(node_key,''),revoked,last_report,revoked_at,tailnet_id FROM nodes WHERE id=?`, id).Scan(&n.ID, &n.Name, &n.Mode, &n.Hostname, &n.PublicKey, &revoked, &n.LastReport, &n.RevokedAt, &n.TailnetID)
+	err := s.db.QueryRow(`SELECT id,name,mode,hostname,revoked,last_report,revoked_at,tailnet_id FROM nodes WHERE id=?`, id).Scan(&n.ID, &n.Name, &n.Mode, &n.Hostname, &revoked, &n.LastReport, &n.RevokedAt, &n.TailnetID)
 	n.Revoked = revoked != 0
 	if err == nil {
 		n.ParentID = s.ForwarderParent(n.ID)
@@ -746,7 +593,7 @@ func (s *Store) NodeByTailnetID(tailnetID string) (NodeRecord, error) {
 	}
 	var n NodeRecord
 	var revoked int
-	err := s.db.QueryRow(`SELECT id,name,mode,hostname,COALESCE(node_key,''),revoked,last_report,revoked_at,tailnet_id FROM nodes WHERE tailnet_id=?`, tailnetID).Scan(&n.ID, &n.Name, &n.Mode, &n.Hostname, &n.PublicKey, &revoked, &n.LastReport, &n.RevokedAt, &n.TailnetID)
+	err := s.db.QueryRow(`SELECT id,name,mode,hostname,revoked,last_report,revoked_at,tailnet_id FROM nodes WHERE tailnet_id=?`, tailnetID).Scan(&n.ID, &n.Name, &n.Mode, &n.Hostname, &revoked, &n.LastReport, &n.RevokedAt, &n.TailnetID)
 	n.Revoked = revoked != 0
 	if err == nil {
 		n.ParentID = s.ForwarderParent(n.ID)
@@ -915,8 +762,7 @@ func (s *Store) TransferZoneLedgerOwnership(zone, ownerID string, records []libd
 
 var schema = `
 CREATE TABLE IF NOT EXISTS settings(name TEXT PRIMARY KEY, value TEXT NOT NULL, secret INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE IF NOT EXISTS nodes(id TEXT PRIMARY KEY, mode TEXT NOT NULL, hostname TEXT NOT NULL, node_key TEXT, revoked INTEGER NOT NULL DEFAULT 0, last_report INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE IF NOT EXISTS enrollments(id TEXT PRIMARY KEY, mode TEXT NOT NULL, hostname TEXT NOT NULL, code_hash TEXT NOT NULL, created_at INTEGER NOT NULL, revoked INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS nodes(id TEXT PRIMARY KEY, mode TEXT NOT NULL, hostname TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0, last_report INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS providers(id TEXT PRIMARY KEY, provider TEXT NOT NULL, config TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS managed_zones(provider_id TEXT NOT NULL, zone TEXT NOT NULL, PRIMARY KEY(provider_id,zone));
 CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY, provider_id TEXT NOT NULL, zone TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, value TEXT NOT NULL, owner_id TEXT NOT NULL, provider_id_remote TEXT);
@@ -926,25 +772,6 @@ CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT, action TE
 `
 
 func (s *Store) String() string { return fmt.Sprintf("store(%p)", s) }
-
-func (s *Store) BindNodeIdentity(id, publicKey, tailnetID string, addresses []string) error {
-	if tailnetID == "" {
-		return fmt.Errorf("tailnet identity required")
-	}
-	b, _ := json.Marshal(addresses)
-	result, err := s.db.Exec(`UPDATE nodes SET node_key=?,tailnet_id=?,addresses=? WHERE id=? AND revoked=0 AND (tailnet_id='' OR (tailnet_id=? AND node_key=?)) AND NOT EXISTS(SELECT 1 FROM nodes other WHERE other.tailnet_id=? AND other.id<>?)`, publicKey, tailnetID, string(b), id, tailnetID, publicKey, tailnetID, id)
-	if err != nil {
-		return err
-	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n != 1 {
-		return fmt.Errorf("node identity already bound or revoked")
-	}
-	return nil
-}
 
 type ApplicationRecord struct {
 	HTTPRules           []proxy.HTTPRule `json:"http_rules,omitempty"`
@@ -1067,13 +894,13 @@ func (s *Store) UpsertServiceHost(h ServiceHostRecord) error {
 func (s *Store) UpsertBackend(sc BackendAssignment) error { return s.upsertBackend(sc, false) }
 
 // Runtime reports cannot resurrect assignments after either identity is revoked.
-func (s *Store) UpsertEnrolledBackend(sc BackendAssignment) error { return s.upsertBackend(sc, true) }
+func (s *Store) UpsertRegisteredBackend(sc BackendAssignment) error { return s.upsertBackend(sc, true) }
 func (s *Store) upsertBackend(sc BackendAssignment, enrolled bool) error {
 	networks, _ := json.Marshal(sc.Networks)
 	query := `INSERT INTO backend_assignments(id,application_id,node_id,container_id,backend_ip,backend_port,networks,reachable,config_revision,last_seen,revoked) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET application_id=excluded.application_id,node_id=excluded.node_id,container_id=excluded.container_id,backend_ip=excluded.backend_ip,backend_port=excluded.backend_port,networks=excluded.networks,reachable=excluded.reachable,config_revision=excluded.config_revision,last_seen=excluded.last_seen,revoked=excluded.revoked`
 	args := []any{sc.ID, sc.ApplicationID, sc.NodeID, sc.ContainerID, sc.BackendIP, sc.BackendPort, string(networks), boolInt(sc.Reachable), sc.ConfigRevision, sc.LastSeen, boolInt(sc.Revoked)}
 	if enrolled {
-		query = strings.Replace(query, "VALUES(?,?,?,?,?,?,?,?,?,?,?)", "SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM nodes n WHERE n.id=? AND n.revoked=0 AND NOT EXISTS(SELECT 1 FROM kubernetes_forwarders f LEFT JOIN nodes p ON p.id=f.parent_id WHERE f.node_id=n.id AND (p.id IS NULL OR p.revoked<>0)))", 1)
+		query = strings.Replace(query, "VALUES(?,?,?,?,?,?,?,?,?,?,?)", "SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM nodes n WHERE n.id=? AND n.revoked=0 AND NOT EXISTS(SELECT 1 FROM component_instances i LEFT JOIN nodes p ON p.id=i.parent_id WHERE i.component_id=n.id AND i.parent_id<>'' AND (p.id IS NULL OR p.revoked<>0)))", 1)
 		args = append(args, sc.NodeID)
 	}
 	result, err := s.db.Exec(query, args...)
@@ -1126,24 +953,6 @@ func boolInt(value bool) int {
 		return 1
 	}
 	return 0
-}
-
-// SignedReports retains the exact authenticated envelopes for inspection.
-func (s *Store) SignedReports() (map[string]string, error) {
-	rows, err := s.db.Query(`SELECT node_id,payload FROM reports ORDER BY received_at DESC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]string{}
-	for rows.Next() {
-		var id, payload string
-		if err := rows.Scan(&id, &payload); err != nil {
-			return nil, err
-		}
-		out[id] = payload
-	}
-	return out, rows.Err()
 }
 
 // BindPublicService changes only administrator-authorized discovery settings.

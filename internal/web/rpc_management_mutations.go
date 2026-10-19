@@ -137,7 +137,7 @@ func (s *managementRPC) SaveAccess(ctx context.Context, r *connect.Request[v1.Ac
 	r.Msg.ConfirmSelfRemoval = false
 	return connect.NewResponse(r.Msg), nil
 }
-func (s *managementRPC) SaveDefaults(ctx context.Context, r *connect.Request[v1.EnrollmentDefaults]) (*connect.Response[v1.Settings], error) {
+func (s *managementRPC) SaveDefaults(ctx context.Context, r *connect.Request[v1.DeploymentDefaults]) (*connect.Response[v1.Settings], error) {
 	if e := validManagementURL(r.Msg.ManagementUrl); e != nil {
 		return nil, rpcFailure(connect.CodeInvalidArgument, e)
 	}
@@ -158,48 +158,6 @@ func (s *managementRPC) SaveDefaults(ctx context.Context, r *connect.Request[v1.
 		return nil, rpcFailure(connect.CodeInternal, e)
 	}
 	return s.GetSettings(ctx, connect.NewRequest(&v1.Empty{}))
-}
-func (s *managementRPC) oauth(ctx context.Context, in *v1.OAuthRequest, save bool) (*connect.Response[v1.TestResult], error) {
-	s.c.settingsMu.Lock()
-	defer s.c.settingsMu.Unlock()
-	id, secret := strings.TrimSpace(in.ClientId), strings.TrimSpace(in.ClientSecret)
-	if id == "" {
-		id, _ = s.c.Store.GetSecret("tailscale_oauth_client_id")
-	}
-	if secret == "" {
-		secret, _ = s.c.Store.GetSecret("tailscale_oauth_client_secret")
-	}
-	if id == "" || secret == "" {
-		return nil, rpcFailure(connect.CodeInvalidArgument, errors.New("client ID and secret required"))
-	}
-	var settings map[string]any
-	if e := s.c.Store.GetJSON("tailnet", &settings); e != nil {
-		return nil, rpcFailure(connect.CodeInternal, e)
-	}
-	client := s.c.tsClient(id, secret, stringValue(settings, "name", ""))
-	client.ClientID = id
-	client.ClientSecret = secret
-	bounded, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-	_, e := client.ListDevices(bounded)
-	if e == nil {
-		_, e = client.ListUsers(bounded)
-	}
-	if e != nil {
-		return nil, rpcFailure(connect.CodeUnavailable, errors.New("Credential test failed; verify tailnet and Devices Read / users:read permissions. Stored credentials were not changed."))
-	}
-	message := "Credentials verified. No changes saved."
-	if save {
-		if e = s.c.Store.SetSecrets(map[string]string{"tailscale_oauth_client_id": id, "tailscale_oauth_client_secret": secret}); e != nil {
-			return nil, rpcFailure(connect.CodeInternal, e)
-		}
-		s.c.roleMu.Lock()
-		s.c.rolesExpire = time.Time{}
-		s.c.roleUsers = nil
-		s.c.roleMu.Unlock()
-		message = "Credentials verified and saved."
-	}
-	return connect.NewResponse(&v1.TestResult{Ok: true, Message: message}), nil
 }
 func (s *managementRPC) TestOAuth(ctx context.Context, r *connect.Request[v1.OAuthRequest]) (*connect.Response[v1.TestResult], error) {
 	return s.oauth(ctx, r.Msg, false)
@@ -227,7 +185,7 @@ func (s *managementRPC) ListExposures(ctx context.Context, _ *connect.Request[v1
 	}
 	return connect.NewResponse(out), nil
 }
-func (s *managementRPC) RevokeNode(ctx context.Context, r *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error) {
+func (s *managementRPC) DisableNode(ctx context.Context, r *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error) {
 	node, e := s.c.Store.Node(r.Msg.Id)
 	if e != nil {
 		return nil, rpcFailure(connect.CodeNotFound, e)
@@ -241,14 +199,11 @@ func (s *managementRPC) CleanupNode(ctx context.Context, r *connect.Request[v1.R
 		return nil, rpcFailure(connect.CodeNotFound, e)
 	}
 	if !node.Revoked {
-		return nil, rpcFailure(connect.CodeFailedPrecondition, errors.New("revoke node before cleanup"))
+		return nil, rpcFailure(connect.CodeFailedPrecondition, errors.New("disable the component before cleanup"))
 	}
 	return s.revokeNode(ctx, node)
 }
-func (s *managementRPC) RevokeEnrollment(ctx context.Context, r *connect.Request[v1.ResourceID]) (*connect.Response[v1.Empty], error) {
-	e := s.c.Store.RevokeEnrollment(r.Msg.Id)
-	return connect.NewResponse(&v1.Empty{}), rpcFailure(connect.CodeNotFound, e)
-}
+
 func (s *managementRPC) GetPeers(ctx context.Context, r *connect.Request[v1.ResourceID]) (*connect.Response[v1.PeerSnapshot], error) {
 	node, e := s.c.Store.Node(r.Msg.Id)
 	if e != nil || node.Revoked || node.Mode != "tailnet-gateway" {

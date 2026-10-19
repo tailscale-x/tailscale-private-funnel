@@ -41,22 +41,16 @@ spec:
             type: object
           spec:
             properties:
-              bootstrapSecretRef:
+              componentID:
                 description: |-
-                  LocalObjectReference contains enough information to let you locate the
-                  referenced object inside the same namespace.
-                properties:
-                  name:
-                    default: ""
-                    description: |-
-                      Name of the referent.
-                      This field is effectively required, but due to backwards compatibility is
-                      allowed to be empty. Instances of this type with an empty value here are
-                      almost certainly wrong.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
+                  ComponentID is the immutable logical control-plane identity. Defaults to the CR UID.
+                  It is independent of disposable Tailscale device and Pod identities.
+                maxLength: 128
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: Logical component identity is immutable
+                  rule: self == oldSelf
               controlRef:
                 description: |-
                   LocalObjectReference contains enough information to let you locate the
@@ -1107,22 +1101,6 @@ spec:
                 x-kubernetes-validations:
                 - message: Hostname is immutable; recreate to change identity
                   rule: self == oldSelf
-              identitySecretRef:
-                description: |-
-                  LocalObjectReference contains enough information to let you locate the
-                  referenced object inside the same namespace.
-                properties:
-                  name:
-                    default: ""
-                    description: |-
-                      Name of the referent.
-                      This field is effectively required, but due to backwards compatibility is
-                      allowed to be empty. Instances of this type with an empty value here are
-                      almost certainly wrong.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
               image:
                 minLength: 1
                 type: string
@@ -1130,12 +1108,31 @@ spec:
                 type: string
               installation:
                 default: main
-                type: string
-              managementURL:
+                maxLength: 24
+                pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
                 type: string
                 x-kubernetes-validations:
-                - message: Control binding is immutable
+                - message: Installation is immutable
                   rule: self == oldSelf
+              keyIssuerRef:
+                description: |-
+                  KeyIssuerReference points to the installation's shared auth_keys issuer.
+                  All components in an installation should reference the same Secret.
+                properties:
+                  clientIDKey:
+                    default: client_id
+                    type: string
+                  clientSecretKey:
+                    default: client_secret
+                    type: string
+                  name:
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
+              managementURL:
+                type: string
               placement:
                 properties:
                   affinity:
@@ -2160,6 +2157,16 @@ spec:
                       More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                     type: object
                 type: object
+              routingID:
+                description: |-
+                  RoutingID keeps application and Service identifiers independent of workload identity.
+                  Defaults to the logical component ID.
+                maxLength: 128
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: Routing identity is immutable
+                  rule: self == oldSelf
               storage:
                 properties:
                   existingClaim:
@@ -2182,13 +2189,11 @@ spec:
             required:
             - gatewayClass
             - image
+            - keyIssuerRef
             type: object
             x-kubernetes-validations:
             - message: Choose controlRef or managementURL
               rule: '!(has(self.controlRef) && has(self.managementURL))'
-            - message: Identity binding is immutable
-              rule: has(self.identitySecretRef) == has(oldSelf.identitySecretRef)
-                && (!has(self.identitySecretRef) || self.identitySecretRef == oldSelf.identitySecretRef)
           status:
             properties:
               conditions:

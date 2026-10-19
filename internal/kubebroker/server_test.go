@@ -2,15 +2,11 @@ package kubebroker
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-
-	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/tailscale-x/tailscale-private-funnel/internal/kube"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
@@ -23,7 +19,6 @@ import (
 	kfake "k8s.io/client-go/kubernetes/fake"
 	ktest "k8s.io/client-go/testing"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"tailscale.com/ipn"
 )
 
 func fixture(t *testing.T) (*Broker, *auth.TokenReviewStatus) {
@@ -37,9 +32,8 @@ func fixture(t *testing.T) (*Broker, *auth.TokenReviewStatus) {
 	status := &auth.TokenReviewStatus{Authenticated: true, Audiences: []string{"audience"}, User: auth.UserInfo{Username: "system:serviceaccount:system:one-forwarder", Extra: map[string]auth.ExtraValue{"authentication.kubernetes.io/pod-name": {"forwarder"}, "authentication.kubernetes.io/pod-uid": {"pod-a"}}}}
 	tokens := kfake.NewSimpleClientset()
 	tokens.PrependReactor("create", "tokenreviews", func(ktest.Action) (bool, runtime.Object, error) { return true, &auth.TokenReview{Status: *status}, nil })
-	b := &Broker{Kube: c, Tokens: tokens, Namespace: "system", Installation: "one", DaemonSet: "one-forwarder", ServiceAccount: "one-forwarder", Audience: "audience", ManagementURL: "http://control", Enroll: func(context.Context, string, string, string) (Enrollment, error) {
-		return Enrollment{NodeID: "child", AuthKey: "memory-only"}, nil
-	}}
+	b := &Broker{Kube: c, Tokens: tokens, Namespace: "system", Installation: "one", DaemonSet: "one-forwarder", ServiceAccount: "one-forwarder", Audience: "audience", ManagementURL: "http://control", ControllerID: "controller"}
+
 	return b, status
 }
 func call(b *Broker, path, body string) *httptest.ResponseRecorder {
@@ -54,37 +48,7 @@ func call(b *Broker, path, body string) *httptest.ResponseRecorder {
 	b.Handler().ServeHTTP(w, r)
 	return w
 }
-func TestSessionStatePersistenceAndNoAuthKeyStorage(t *testing.T) {
-	b, _ := fixture(t)
-	w := call(b, "/funnel.v1.BrokerService/OpenSession", "")
-	if w.Code != 200 {
-		t.Fatal(w.Code, w.Body.String())
-	}
-	var session v1.BrokerSession
-	if protojson.Unmarshal(w.Body.Bytes(), &session) != nil || session.NodeId != "child" {
-		t.Fatal(w.Body.String())
-	}
-	w = call(b, "/funnel.v1.BrokerService/WriteState", `{"key":"tsnet.dGVzdA","value":"c2VjcmV0"}`)
-	if w.Code != 200 {
-		t.Fatal(w.Code, w.Body.String())
-	}
-	b.Enroll = func(context.Context, string, string, string) (Enrollment, error) {
-		t.Fatal("must restore identity without reenrollment")
-		return Enrollment{}, nil
-	}
-	w = call(b, "/funnel.v1.BrokerService/OpenSession", "")
-	var restored v1.BrokerSession
-	_ = protojson.Unmarshal(w.Body.Bytes(), &restored)
-	if w.Code != 200 || restored.AuthKey != "" || string(restored.Identity) != string(session.Identity) || string(restored.State["tsnet.dGVzdA"]) != "secret" {
-		t.Fatal(w.Code, w.Body.String())
-	}
-	var secrets core.SecretList
-	_ = b.Kube.List(context.Background(), &secrets)
-	encoded, _ := json.Marshal(secrets)
-	if strings.Contains(string(encoded), "memory-only") {
-		t.Fatal("persisted auth key")
-	}
-}
+
 func TestBrokerRejectsWrongIdentity(t *testing.T) {
 	for _, kind := range []string{"account", "audience", "uid", "owner", "node"} {
 		t.Run(kind, func(t *testing.T) {
@@ -134,16 +98,7 @@ func TestLeaseExclusionExpiryAndRelease(t *testing.T) {
 		t.Fatal("old holder resumed")
 	}
 }
-func TestSecretStoreFailsClosed(t *testing.T) {
-	b, _ := fixture(t)
-	s := SecretStore{Client: b.Kube, Namespace: "system", Name: "missing"}
-	if _, e := s.ReadState(ipn.StateKey("key")); e == nil || e == ipn.ErrStateNotExist {
-		t.Fatal("missing Secret treated as empty identity", e)
-	}
-	if e := s.WriteState(ipn.StateKey("key"), []byte("x")); e == nil {
-		t.Fatal("created unreserved identity")
-	}
-}
+
 func TestBrokerReadOnlyHealth(t *testing.T) {
 	b, _ := fixture(t)
 	w := httptest.NewRecorder()
@@ -174,25 +129,18 @@ func TestTerminatingPodCanFlushAndReleaseButCannotRenew(t *testing.T) {
 	if w := call(b, "/funnel.v1.BrokerService/RenewLease", ""); w.Code != 403 {
 		t.Fatal("terminating pod renewed lease", w.Code)
 	}
-	if w := call(b, "/funnel.v1.BrokerService/WriteState", `{"key":"tsnet.dGVzdA","value":"Y2xlYW4="}`); w.Code != 200 {
-		t.Fatal("final state flush failed", w.Code, w.Body.String())
-	}
 	if w := call(b, "/funnel.v1.BrokerService/ReleaseLease", ""); w.Code != 200 {
 		t.Fatal("lease not released", w.Code, w.Body.String())
 	}
-	if w := call(b, "/funnel.v1.BrokerService/WriteState", `{"key":"tsnet.dGVzdA","value":"c3RhbGU="}`); w.Code != 409 {
-		t.Fatal("released pod still wrote state", w.Code)
+	if w := call(b, "/funnel.v1.BrokerService/WriteState", `{"key":"tsnet.dGVzdA","value":"c3RhbGU="}`); w.Code != 404 {
+		t.Fatal("removed identity API remains reachable", w.Code)
 	}
 }
 
 func TestConfigurationRequiresBoundPodAndOwnedLease(t *testing.T) {
 	b, status := fixture(t)
-	b.Configuration = func(context.Context) (report.Envelope, error) {
-		pub, key, e := report.GenerateKey()
-		if e != nil {
-			return report.Envelope{}, e
-		}
-		return report.NewEnvelopeWithPurpose("configuration", "parent", map[string]string{"node_id": "parent"}, pub, key, time.Now())
+	b.Configuration = func(context.Context) (report.Snapshot, error) {
+		return report.NewSnapshot("configuration", "parent", map[string]string{"node_id": "parent"}, time.Now())
 	}
 	if w := call(b, "/funnel.v1.BrokerService/GetConfig", ""); w.Code != 409 {
 		t.Fatal("configuration before lease", w.Code)

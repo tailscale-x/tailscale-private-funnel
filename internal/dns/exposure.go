@@ -2,10 +2,11 @@ package dns
 
 import (
 	"fmt"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"net/netip"
 	"strings"
 	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 
 	"github.com/libdns/libdns"
 )

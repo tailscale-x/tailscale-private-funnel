@@ -49,8 +49,8 @@ func generate() error {
 	})
 	sort.Slice(services, func(i, j int) bool { return services[i].FullName() < services[j].FullName() })
 	var api, cli strings.Builder
-	api.WriteString("# Funnel API reference\n\nGenerated from protobuf descriptors. Do not edit.\n\nManagement and Node services use verified Tailscale WhoIs. Enrollment additionally requires one-use proof. Broker methods are served by the installation HTTPS broker with projected Pod tokens, not by control.\n\nSigned payload bytes must never be reserialized before signature verification.\n")
-	cli.WriteString("# Funnel CLI\n\nGenerated from protobuf/Cobra metadata. Do not edit.\n\nUse `native` for this Linux machine, `k8s` with an explicit `--context` for operator-backed deployment, and `manage` for the Tailscale-authorized installation API. Public `native ... create` and `k8s ... create` generate installers; they never install locally, connect by SSH or contact Kubernetes. Non-control component generation needs authorized control connectivity. Use `--output script` and transfer its secret output to the execution machine; bootstrap expires after 15 minutes. The target uses embedded tsnet and needs no host Tailscale.\n\nUse `--output json`, mutation `--dry-run`, target-side deployment `--wait` and `--timeout`, and `--yes` for destructive deletion. UI instruction generation is read-only; CLI create issues enrollment credentials, while hidden installers execute deployment. Stop preserves identity and data; delete revokes and removes owned state.\n\nControl transfer: `tailscale-private-funnel transfer-remote NAME native|k8s --source native|k8s --out FILE --yes` stops/fences the source, saves a private installer, then removes owned source state without revocation. Execute the saved installer on the destination. See docs/CONTROL_TRANSFER.md.\n\nManagement uses `--control-url` or XDG client.json. Secret inputs are file/stdin only. Exit codes: 0 success, 1 failure, 2 invalid input, 3 authorization, 4 transport unavailable, 5 conflict, 6 timeout.\n")
+	api.WriteString("# Funnel API reference\n\nGenerated from protobuf descriptors. Do not edit.\n\nManagement and Node services use verified Tailscale WhoIs. Runtime calls require exact installation/role tags and an active logical-component assignment. Human management authorization is separate. No enrollment proof, component signatures or signing keys are used. Broker methods use projected Pod tokens on the installation HTTPS broker; WorkloadBootstrapService uses a separate projected audience on the operator TLS endpoint, not control.\n")
+	cli.WriteString("# Funnel CLI\n\nGenerated from protobuf/Cobra metadata. Do not edit.\n\nUse `native` for this Linux machine, `k8s` with an explicit `--context` for operator-backed deployment, and `manage` for the Tailscale-authorized installation API. Public `native ... create` and `k8s ... create` generate installers; they never install locally, connect by SSH or contact Kubernetes. Embedded native key issuance needs authorized control connectivity; host reuse has no join secret and Kubernetes references protected issuer Secrets. Use `--output script` and transfer its secret output to the execution machine; bootstrap expires after 15 minutes. The target uses embedded tsnet and needs no host Tailscale.\n\nUse `--output json`, mutation `--dry-run`, target-side deployment `--wait` and `--timeout`, and `--yes` for destructive deletion. UI instruction generation is read-only; embedded native CLI create issues temporary role-tagged join keys, while hidden installers execute deployment. Native stop preserves identity/data. Delete removes owned application state; remove role tags in Tailscale to revoke authority.\n\nManagement uses `--control-url` or XDG client.json. Secret inputs are file/stdin only. Exit codes: 0 success, 1 failure, 2 invalid input, 3 authorization, 4 transport unavailable, 5 conflict, 6 timeout.\n")
 	for _, service := range services {
 		fmt.Fprintf(&api, "\n## %s\n\n%s\n", service.FullName(), comments(service))
 		for i := 0; i < service.Methods().Len(); i++ {
@@ -65,13 +65,13 @@ func generate() error {
 			if payload, _ := proto.GetExtension(m.Options(), v1.E_PayloadType).(string); payload != "" {
 				descriptor, err := registry.FindDescriptorByName(protoreflect.FullName(payload))
 				if err != nil {
-					return fmt.Errorf("unknown signed payload %s: %w", payload, err)
+					return fmt.Errorf("unknown payload %s: %w", payload, err)
 				}
 				model, ok := descriptor.(protoreflect.MessageDescriptor)
 				if !ok {
 					return fmt.Errorf("payload is not a message: %s", payload)
 				}
-				fmt.Fprintf(&api, "\nSigned payload model: `%s`. Verify exact bytes before decoding.\n", payload)
+				fmt.Fprintf(&api, "\nTyped runtime payload model: `%s`. Authenticate through WhoIs and exact installation-role tags.\n", payload)
 				fields(&api, model)
 			}
 			if command != "" {
@@ -84,7 +84,7 @@ func generate() error {
 	root := &cobra.Command{Use: "tailscale-private-funnel"}
 	management := &cobra.Command{Use: "manage"}
 	manage.Attach(management, nil)
-	root.AddCommand(management, deploymentcli.Native("VERSION"), deploymentcli.Kubernetes("VERSION"), deploymentcli.TransferRemote("VERSION"))
+	root.AddCommand(management, deploymentcli.Native("VERSION"), deploymentcli.Kubernetes("VERSION"))
 	var walk func(*cobra.Command)
 	walk = func(command *cobra.Command) {
 		if command.Runnable() {
@@ -148,7 +148,7 @@ Management uses WhoIs and configured roles, not bearer tokens or identity header
 				command, _ := proto.GetExtension(method.Options(), v1.E_Cli).(string)
 				operation["x-funnel-permission"] = strings.TrimPrefix(permission.String(), "PERMISSION_")
 				if payload, _ := proto.GetExtension(method.Options(), v1.E_PayloadType).(string); payload != "" {
-					operation["x-funnel-signed-payload"] = payload
+					operation["x-funnel-payload"] = payload
 				}
 				audit, _ := proto.GetExtension(method.Options(), v1.E_Audit).(bool)
 				operation["x-funnel-audit"] = audit
