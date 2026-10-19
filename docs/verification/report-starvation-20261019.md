@@ -101,7 +101,8 @@ Published image index:
 Final normal-image GitOps commit:
 `d8837fcd2fe20f771af42189ea912c82366d9b40`.
 
-No stable tag or GitHub release is created for this correction.
+The development verification above did not create a stable tag or GitHub release.
+The subsequent stable rollout is recorded below.
 
 ## Normal-image acceptance and cleanup
 
@@ -124,3 +125,46 @@ The final storage snapshot again matched all original node bindings, 13 ledger
 records with their exact owner values, encrypted settings, provider, zones, and
 policy. Control's encryption/signing/Tailscale identity and Tiny's persisted
 identity hashes matched their pre-deployment values.
+
+
+## Stable v3.3.1 rollout
+
+Published [v3.3.1](https://github.com/tailscale-x/tailscale-private-funnel/releases/tag/v3.3.1)
+from commit `880d894`. All jobs in the
+[release workflow](https://github.com/tailscale-x/tailscale-private-funnel/actions/runs/39179434221)
+passed, including both Go suites, vet, generation, operator checks,
+PostgreSQL 16/18 contracts, native builds, image checks, and OCI chart verification.
+Linux amd64/arm64 and macOS arm64 binaries, checksums, metadata, CRDs, and chart
+artifacts are available. The downloaded Linux amd64 binary and release metadata
+passed checksum verification; both the binary and container report `v3.3.1`.
+
+Updated only DLKN control in place through GitOps commit
+`6da52f8239b15d596f2111d6f2b703a7eaa8d39c`. Argo reports Synced, and the sole control
+Pod is Ready on the exact published image index:
+
+```text
+ghcr.io/tailscale-x/tailscale-private-funnel:v3.3.1
+sha256:28cb42d929746197ccddd38220d62e8523a202713a85c9eb43caea624407f7b5
+```
+
+The load balancer and gateways remain running v3.3.0; the patch is control-side
+and requires no client or deployment-contract upgrade. No reset, transfer,
+reenrollment, ACL mutation, administrator grant, or manual DNS mutation was used.
+A consistent protected database backup and identity snapshot were saved before
+replacement.
+
+The fresh deployment baseline contained 20 node bindings and 11 owned DNS ledger
+records. All of them, including their exact owner values, matched after rollout.
+Provider configuration, encrypted settings, both zones, and policy were unchanged.
+The control Secret UID, encryption key, signing key, Tailscale machine/profile
+identity, hostname, and storage binding were retained.
+
+Released-image verification passed **50/50 public DNS/HTTPS checks** across the ten
+admissions, preview, Harbor, and Metube endpoints listed above. Each HTTPS request
+used normal certificate validation. Harbor separately reported `healthy`; all
+four preview HTTPRoutes reported `Programmed=True`. Native load-balancer and Docker
+gateway reports were fresh (approximately 12 and 2 seconds old at the final
+storage probe), and exposure reconciliation reported no errors or pending cleanup.
+The earlier 380.73-second development fault test remains the external-API-stall
+acceptance evidence; this stable rollout rechecked normal public routing and
+persistence without reintroducing fault infrastructure.
