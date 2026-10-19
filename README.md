@@ -203,4 +203,5 @@ Run PostgreSQL contracts against disposable PostgreSQL 16/18 databases and opera
 contracts with the pinned envtest binaries. Real role-tag policy, Service auto-approval,
 host-daemon source preservation, public TLS and Pod replacement require explicit
 integration acceptance; local unit tests do not prove a live rollout. Build locally
-or in CI. No deployment or publication accompanies this refactor.
+or in CI. See the [v4.0.1 rollout evidence](docs/verification/v4.0.1-rollout.md)
+for deployed artifacts, routing checks, and the fresh-name DNS/ACME limitation.
