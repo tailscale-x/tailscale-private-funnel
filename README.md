@@ -42,7 +42,9 @@ credential-free environment.
 
 HTTP path routing supports Kubernetes PathPrefix and named Docker route labels, with optional prefix stripping or replacement at the shared Caddy edge. See [configuration and examples](docs/path-routing.md).
 
-Runtime reports are accepted independently of external DNS and Tailscale API work, so API stalls do not consume healthy nodes' report leases. See [report acceptance and reconciliation](docs/report-reconciliation.md).
+Runtime reports are accepted independently of external DNS and Tailscale API work, so API stalls do not consume healthy nodes' report leases. See [report acceptance and reconciliation](docs/report-reconciliation.md). Previously ready routes and owned DNS survive lost connectivity and negative health reports while configuration remains authorized. New routes still require readiness; explicit removal, policy denial, and revocation clean up owned resources.
+
+For intermittent Service routing, see [bounded diagnostic events and log collection](docs/service-route-diagnostics.md). Missing connectivity never authorizes DNS deletion.
 
 Docker container/label removal automatically retires registrations after a complete authenticated scan, allowing authorized Kubernetes reclamation without changing DNS ownership. See [registration lifecycle](docs/docker-registration-lifecycle.md).
 

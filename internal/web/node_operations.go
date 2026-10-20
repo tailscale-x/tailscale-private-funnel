@@ -28,6 +28,7 @@ import (
 )
 
 func (c *Control) callerNodeContext(ctx context.Context, mode string) (store.NodeRecord, error) {
+	st := c.Store.WithContext(ctx)
 	p := rpcPrincipal(ctx)
 	if p.NodeID == "" {
 		return store.NodeRecord{}, fmt.Errorf("verified tailnet node identity required")
@@ -36,7 +37,7 @@ func (c *Control) callerNodeContext(ctx context.Context, mode string) (store.Nod
 	var node store.NodeRecord
 	var err error
 	if selection.ID != "" {
-		node, err = c.Store.Node(selection.ID)
+		node, err = st.Node(selection.ID)
 	} else {
 		node, err = c.Store.NodeByTailnetID(p.NodeID)
 	}
@@ -46,7 +47,7 @@ func (c *Control) callerNodeContext(ctx context.Context, mode string) (store.Nod
 		}
 		return node, fmt.Errorf("unknown or ambiguous component")
 	}
-	registration, err := c.Store.ComponentRegistration(node.ID)
+	registration, err := st.ComponentRegistration(node.ID)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			return node, rpcFailure(connect.CodeUnavailable, errors.New("component storage unavailable"))
@@ -65,21 +66,21 @@ func (c *Control) callerNodeContext(ctx context.Context, mode string) (store.Nod
 	if selection.Instance == "" {
 		return node, fmt.Errorf("runtime instance selector required")
 	}
-	if err = c.Store.WithContext(ctx).RenewInstance(node.ID, selection.Instance, p.NodeID, time.Now()); err != nil {
+	if err = st.RenewInstance(node.ID, selection.Instance, p.NodeID, time.Now()); err != nil {
 		return node, err
 	}
 	verifiedHostname := strings.SplitN(strings.TrimSuffix(p.Hostname, "."), ".", 2)[0]
 	if verifiedHostname != "" && verifiedHostname != node.Hostname {
-		if err := c.Store.RefreshNodeHostname(node.ID, p.NodeID, p.Hostname); err != nil {
+		if err := st.RefreshNodeHostname(node.ID, p.NodeID, p.Hostname); err != nil {
 			return node, err
 		}
-		node, err = c.Store.Node(node.ID)
+		node, err = st.Node(node.ID)
 		if err != nil {
 			return node, err
 		}
 	}
 	if node.ParentID != "" {
-		parent, e := c.Store.Node(node.ParentID)
+		parent, e := st.Node(node.ParentID)
 		if e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return node, rpcFailure(connect.CodeUnavailable, errors.New("controller identity storage unavailable"))
 		}
@@ -110,7 +111,12 @@ func (c *Control) nodeConfiguration(ctx context.Context) (report.Snapshot, error
 	if err != nil {
 		return report.Snapshot{}, rpcFailure(connectCodeHTTP(403), errors.New(err.Error()))
 	}
-	_ = c.Store.SetJSON("node_policy_roles:"+node.ID, rpcPrincipal(ctx).RoleSelectors())
+	if err := c.Store.WithContext(ctx).SetJSON("node_policy_roles:"+node.ID, rpcPrincipal(ctx).RoleSelectors()); err != nil {
+		return report.Snapshot{}, rpcFailure(connect.CodeUnavailable, err)
+	}
+	// Authenticate and renew on the live store, then keep routing reads bounded
+	// and memoized for this request. Never publish a partially read configuration.
+	c = c.readControl(ctx)
 	apps, err := c.Store.Applications()
 	if err != nil {
 		return report.Snapshot{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
@@ -152,6 +158,9 @@ func (c *Control) nodeConfiguration(ctx context.Context) (report.Snapshot, error
 			config.PublishedAddresses = append(config.PublishedAddresses, ips...)
 		}
 	}
+	if err := configurationReadError(ctx, c.Store); err != nil {
+		return report.Snapshot{}, err
+	}
 	config.Revision = nodeconfig.Revision(config)
 	config.IssuedAt = time.Now().Unix()
 	envelope, err := report.NewSnapshot("configuration", id, config, time.Now())
@@ -167,14 +176,24 @@ func (c *Control) loadBalancerConfiguration(ctx context.Context) (report.Snapsho
 	if err != nil || node.Revoked || node.Mode != "loadbalancer" {
 		return report.Snapshot{}, rpcFailure(connectCodeHTTP(403), errors.New("registered load balancer identity required"))
 	}
+	writer := c.Store.WithContext(ctx)
+	if err := writer.SetJSON("node_policy_roles:"+node.ID, rpcPrincipal(ctx).RoleSelectors()); err != nil {
+		return report.Snapshot{}, rpcFailure(connect.CodeUnavailable, err)
+	}
+	c = c.readControl(ctx)
 	apps, err := c.Store.Applications()
 	if err != nil {
-		return report.Snapshot{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
+		return report.Snapshot{}, rpcFailure(connect.CodeUnavailable, err)
 	}
 	routes := []proxy.Route{}
 	config := nodeconfig.Configuration{NodeID: node.ID}
-	_ = c.Store.SetJSON("node_policy_roles:"+node.ID, rpcPrincipal(ctx).RoleSelectors())
-	authorized := c.authorizedReports(c.loadExposurePolicy())
+	d := c.loadExposurePolicy()
+	authorized := c.authorizedReports(d)
+	previous, err := c.previousLoadBalancerRoutes(node.ID)
+	if err != nil {
+		return report.Snapshot{}, rpcFailure(connect.CodeUnavailable, err)
+	}
+
 	for _, app := range apps {
 		if !app.Enabled {
 			continue
@@ -198,20 +217,36 @@ func (c *Control) loadBalancerConfiguration(ctx context.Context) (report.Snapsho
 				_ = c.Store.GetJSON("node_policy_roles:"+id, &roles)
 				for _, e := range exposures {
 					if e.ApplicationID == app.ID && e.PublicHostname == host {
-						if ok, _ := c.loadExposurePolicy().Allows(host, []string{id, ing.TailnetID}, roles); ok {
+						if ok, _ := d.Allows(host, []string{id, ing.TailnetID}, roles); ok {
 							eligible = true
 							healthy = c.edgeReported(node, app, host)
 						}
 					}
 				}
 			}
-			if !eligible {
+
+			candidate := proxy.Route{Hostname: host, Service: app.ServiceFQDN, Port: app.ServicePort, Rules: app.HTTPRules}
+			retained := false
+			allowed, err := c.configuredGatewayAllows(app, host, d)
+			if err != nil {
+				return report.Snapshot{}, rpcFailure(connect.CodeUnavailable, err)
+			}
+			if allowed {
+				for _, prior := range previous {
+					if sameRoute(prior, candidate) {
+						retained = true
+						break
+					}
+				}
+			}
+			if !eligible && !retained {
 				continue
 			}
 			hosts = append(hosts, host)
-			if healthy && c.edgeFresh(node) {
-				routes = append(routes, proxy.Route{Hostname: host, Service: app.ServiceFQDN, Port: app.ServicePort, Rules: app.HTTPRules})
+			if (healthy && c.edgeFresh(node)) || retained {
+				routes = append(routes, candidate)
 			}
+
 		}
 		if len(hosts) > 0 {
 			app.PublicHostnames = hosts
@@ -221,15 +256,31 @@ func (c *Control) loadBalancerConfiguration(ctx context.Context) (report.Snapsho
 	}
 	config.Routes = routes
 	_ = c.Store.GetJSON("node_probes:"+node.ID, &config.Probes)
+	if err := configurationReadError(ctx, c.Store); err != nil {
+		return report.Snapshot{}, err
+	}
 	config.Revision = nodeconfig.Revision(config)
 	config.IssuedAt = time.Now().Unix()
-	_ = c.Store.SetJSON("node_sent_config:"+node.ID, map[string]any{"revision": config.Revision, "routes": routes})
+	if err := writer.SetJSON("node_sent_config:"+node.ID, map[string]any{"revision": config.Revision, "routes": routes}); err != nil {
+		return report.Snapshot{}, rpcFailure(connect.CodeUnavailable, err)
+	}
 	envelope, err := report.NewSnapshot("configuration", node.ID, config, time.Now())
 	if err != nil {
 		return report.Snapshot{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
 	}
 
 	return envelope, nil
+}
+
+// A canceled or incomplete metadata read is not authorization to withdraw routes.
+func configurationReadError(ctx context.Context, s *store.Store) error {
+	if err := ctx.Err(); err != nil {
+		return rpcFailure(connect.CodeDeadlineExceeded, err)
+	}
+	if err := s.ReadError(); err != nil {
+		return rpcFailure(connect.CodeUnavailable, err)
+	}
+	return nil
 }
 
 func (c *Control) acceptDirectReport(ctx context.Context, env report.Snapshot, node store.NodeRecord) error {

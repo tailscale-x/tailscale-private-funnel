@@ -2,7 +2,6 @@ package store
 
 import (
 	"database/sql"
-	"time"
 )
 
 // ExpireReportBefore rechecks freshness in the same transaction as removal.
@@ -32,9 +31,7 @@ func (s *Store) expireRuntimeBefore(id string, before int64, heartbeat bool) (bo
 	if seen == 0 || seen >= before {
 		return false, nil
 	}
-	if _, err = tx.Exec(`UPDATE backend_assignments SET revoked=1,last_seen=? WHERE node_id=?`, time.Now().Unix(), id); err != nil {
-		return false, err
-	}
+	// Expire health only. Assignment revocation requires explicit removal.
 	if _, err = tx.Exec(`DELETE FROM reports WHERE node_id=?`, id); err != nil {
 		return false, err
 	}

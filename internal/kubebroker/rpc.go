@@ -24,7 +24,7 @@ func (b *Broker) Handler() http.Handler {
 	mux := http.NewServeMux()
 	health := func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/readyz" && b.Ready != nil && !b.Ready() {
-			http.Error(w, "controller joining or stopping", 503)
+			http.Error(w, "broker unavailable or stopping", 503)
 			return
 		}
 		w.WriteHeader(200)
@@ -34,7 +34,12 @@ func (b *Broker) Handler() http.Handler {
 	interceptor := connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, r connect.AnyRequest) (connect.AnyResponse, error) {
 			if b.Ready != nil && !b.Ready() {
-				return nil, connect.NewError(connect.CodeUnavailable, errors.New("controller joining or stopping"))
+				return nil, connect.NewError(connect.CodeUnavailable, errors.New("broker unavailable or stopping"))
+			}
+			// Existing authenticated lease owners must not depend on control
+			// registration/configuration availability. Only new sessions wait.
+			if r.Spec().Procedure == funnelv1connect.BrokerServiceOpenSessionProcedure && b.SessionReady != nil && !b.SessionReady() {
+				return nil, connect.NewError(connect.CodeUnavailable, errors.New("controller registration pending"))
 			}
 			ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 			defer cancel()

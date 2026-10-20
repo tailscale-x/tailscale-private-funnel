@@ -31,6 +31,7 @@ type Broker struct {
 	Configuration                                                               func(context.Context) (report.Snapshot, error)
 	ControllerID                                                                string
 	Ready                                                                       func() bool
+	SessionReady                                                                func() bool
 	Now                                                                         func() time.Time
 }
 type caller struct {

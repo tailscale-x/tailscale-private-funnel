@@ -17,6 +17,9 @@ func TestDatabaseContractExpiryRechecksFreshnessAfterCandidateScan(t *testing.T)
 			_ = s.UpsertNode("node", "docker-gateway", "node")
 			old := time.Now().Add(-time.Hour).Unix()
 			cutoff := time.Now().Add(-time.Minute).Unix()
+			if err = s.UpsertBackend(BackendAssignment{ID: "still-configured", NodeID: "node", ApplicationID: "app", BackendPort: 8080}); err != nil {
+				t.Fatal(err)
+			}
 			_, err = s.db.Exec(`INSERT INTO reports(node_id,payload,snapshot,received_at) VALUES('node','{}','{}',?)`, old)
 			if err != nil {
 				t.Fatal(err)
@@ -41,6 +44,10 @@ func TestDatabaseContractExpiryRechecksFreshnessAfterCandidateScan(t *testing.T)
 			_, _ = s.db.Exec(`UPDATE reports SET received_at=? WHERE node_id='node'`, old)
 			if removed, err := s.ExpireReportBefore("node", cutoff); err != nil || !removed {
 				t.Fatal("stale report retained", removed, err)
+			}
+			var revoked int
+			if err = s.db.QueryRow(`SELECT revoked FROM backend_assignments WHERE id='still-configured'`).Scan(&revoked); err != nil || revoked != 0 {
+				t.Fatal("connectivity expiry revoked a configured backend", revoked, err)
 			}
 			n, err := s.Node("node")
 			if err != nil || n.Revoked {

@@ -67,7 +67,7 @@ func ServeKubernetesAgent(ctx context.Context, o Options) error {
 	if e != nil {
 		return e
 	}
-	broker := &kubebroker.Broker{Kube: c, Tokens: k, Namespace: o.KubeNamespace, Installation: resource, DaemonSet: resource + "-forwarder", ServiceAccount: resource + "-forwarder", Audience: "tailscale-private-funnel/" + resource, ManagementURL: saved.ManagementURL, Ready: func() bool { return ctx.Err() == nil && controllerHTTP.Load() != nil }}
+	broker := &kubebroker.Broker{Kube: c, Tokens: k, Namespace: o.KubeNamespace, Installation: resource, DaemonSet: resource + "-forwarder", ServiceAccount: resource + "-forwarder", Audience: "tailscale-private-funnel/" + resource, ManagementURL: saved.ManagementURL, Ready: func() bool { return ctx.Err() == nil }, SessionReady: func() bool { return controllerHTTP.Load() != nil }}
 	broker.ControllerID = o.ComponentID
 	configCache := &kubebroker.ConfigurationCache{NodeID: broker.ControllerID}
 	configCache.Fetch = func(ctx context.Context) (report.Snapshot, error) {
@@ -85,7 +85,7 @@ func ServeKubernetesAgent(ctx context.Context, o Options) error {
 	broker.Configuration = configCache.Get
 	// Broker requests use the singleton controller's Service endpoint.
 
-	server := &http.Server{Addr: ":9443", Handler: broker.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{cert}, GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+	server := &http.Server{Addr: ":9443", Handler: broker.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{cert}, GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 		fresh, e := tls.LoadX509KeyPair("/etc/funnel-broker-tls/tls.crt", "/etc/funnel-broker-tls/tls.key")
 		return &fresh, e
 	}}}

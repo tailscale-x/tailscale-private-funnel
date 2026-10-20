@@ -17,7 +17,8 @@ import (
 )
 
 type Client struct {
-	rpc funnelv1connect.BrokerServiceClient
+	rpc       funnelv1connect.BrokerServiceClient
+	configRPC funnelv1connect.BrokerServiceClient
 }
 
 func NewClient(url, tokenFile, caFile string) (*Client, error) {
@@ -30,7 +31,10 @@ func NewClient(url, tokenFile, caFile string) (*Client, error) {
 		return nil, errors.New("invalid broker CA")
 	}
 	transport := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}}
+	// Keep assignment acquisition bounded well inside the lease fencing margin.
+	// Only configuration bootstrap uses the longer cold-fetch budget.
 	httpClient := &http.Client{Timeout: 10 * time.Second, Transport: transport}
+	configClient := &http.Client{Timeout: 30 * time.Second, Transport: transport}
 	token := connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, r connect.AnyRequest) (connect.AnyResponse, error) {
 			b, e := os.ReadFile(tokenFile)
@@ -41,7 +45,7 @@ func NewClient(url, tokenFile, caFile string) (*Client, error) {
 			return next(ctx, r)
 		}
 	})
-	return &Client{rpc: funnelv1connect.NewBrokerServiceClient(httpClient, url, connect.WithInterceptors(token))}, nil
+	return &Client{rpc: funnelv1connect.NewBrokerServiceClient(httpClient, url, connect.WithInterceptors(token)), configRPC: funnelv1connect.NewBrokerServiceClient(configClient, url, connect.WithInterceptors(token))}, nil
 }
 func (c *Client) OpenSession(ctx context.Context) (*v1.BrokerSession, error) {
 	r, e := c.rpc.OpenSession(ctx, connect.NewRequest(&v1.Empty{}))
@@ -51,7 +55,7 @@ func (c *Client) OpenSession(ctx context.Context) (*v1.BrokerSession, error) {
 	return r.Msg, nil
 }
 func (c *Client) GetConfig(ctx context.Context) (report.Snapshot, error) {
-	r, e := c.rpc.GetConfig(ctx, connect.NewRequest(&v1.Empty{}))
+	r, e := c.configRPC.GetConfig(ctx, connect.NewRequest(&v1.Empty{}))
 	if e != nil {
 		return report.Snapshot{}, e
 	}

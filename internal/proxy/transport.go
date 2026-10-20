@@ -23,6 +23,14 @@ var sharedDialer struct {
 	dial func(context.Context, string, string) (net.Conn, error)
 }
 
+// SetDialer binds Caddy's transport to the process-owned Tailscale identity.
+// Call before loading configuration; route reloads retain this same callback.
+func SetDialer(dial func(context.Context, string, string) (net.Conn, error)) {
+	sharedDialer.Lock()
+	sharedDialer.dial = dial
+	sharedDialer.Unlock()
+}
+
 type tailnetTransport struct {
 	reverseproxy.HTTPTransport
 	BackendRequestTimeout caddy.Duration `json:"backend_request_timeout,omitempty"`
@@ -74,7 +82,17 @@ func (t *tailnetTransport) Provision(ctx caddy.Context) error {
 	}
 	// Service traffic must never escape via an environment HTTP proxy.
 	t.Transport.Proxy = nil
-	t.Transport.DialContext = dial
+	t.Transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		// Replacing Caddy's dialer must preserve its configured connect timeout.
+		// A Service first seen before its peer route arrives must not leave an
+		// unbounded host-network fallback dial stuck after the route is ready.
+		if t.DialTimeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, time.Duration(t.DialTimeout))
+			defer cancel()
+		}
+		return dial(ctx, network, address)
+	}
 	return nil
 }
 

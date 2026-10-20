@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"connectrpc.com/connect"
@@ -26,7 +27,13 @@ func envelopeResponse(env report.Snapshot, e error) (*connect.Response[v1.Config
 	return response, nil
 }
 func (s *nodeRPC) GetConfig(ctx context.Context, _ *connect.Request[v1.Empty]) (*connect.Response[v1.ConfigurationPayload], error) {
-	return envelopeResponse(s.c.nodeConfiguration(ctx))
+	start := time.Now()
+	env, err := s.c.nodeConfiguration(ctx)
+	if elapsed := time.Since(start); elapsed >= 3*time.Second {
+		selection, _ := ctx.Value(componentContext{}).(componentContext)
+		slog.Warn("slow runtime configuration", "component", selection.ID, "elapsed", elapsed, "error", err, "context_error", ctx.Err())
+	}
+	return envelopeResponse(env, err)
 }
 func (s *nodeRPC) ResolveApplication(ctx context.Context, r *connect.Request[v1.ResolveApplicationRequest]) (*connect.Response[v1.ConfigurationPayload], error) {
 	return envelopeResponse(s.c.resolveApplication(ctx, r.Msg))

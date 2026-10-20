@@ -25,8 +25,9 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 		return e
 	}
 	var ready atomic.Bool
+	var leaseActive atomic.Bool
 	health := &http.Server{Addr: ":9091", ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/readyz" && !ready.Load() {
+		if r.URL.Path == "/readyz" && (!ready.Load() || !leaseActive.Load()) {
 			http.Error(w, "joining or local configuration unavailable", 503)
 			return
 		}
@@ -52,37 +53,8 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	var lastRenew atomic.Int64
-	lastRenew.Store(time.Now().UnixNano())
-	go func() {
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		lastAttempt := time.Now()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if time.Since(time.Unix(0, lastRenew.Load())) >= 40*time.Second {
-					ready.Store(false)
-					cancel()
-					return
-				}
-				if time.Since(lastAttempt) < 15*time.Second {
-					continue
-				}
-				lastAttempt = time.Now()
-				renew, stop := context.WithTimeout(ctx, 5*time.Second)
-				err := client.RenewLease(renew)
-				stop()
-				if err == nil {
-					lastRenew.Store(time.Now().UnixNano())
-				} else {
-					slog.Warn("forwarder lease renewal failed", "error", err)
-				}
-			}
-		}
-	}()
+	lease := newForwarderLease(client, state, &leaseActive, time.Now)
+	go lease.run(ctx)
 	data := "/var/lib/tailscale-private-funnel/data"
 	dir := "/var/lib/tailscale-private-funnel/state"
 	if e = os.MkdirAll(data, 0700); e != nil {
@@ -119,6 +91,7 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 	httpClient := tsnetHTTPClient(s)
 	agent := report.Agent{NodeID: state.NodeId, ManagementURL: state.ManagementUrl, DataDir: data, HTTPClient: httpClient}
 	listeners := gateway.NewListenerManager(s)
+	lease.attach(listeners)
 	defer listeners.Close()
 	defer func() {
 		ready.Store(false)
@@ -138,17 +111,23 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 	resolver := gateway.RPCResolver{NodeID: state.NodeId, BaseURL: state.ManagementUrl, Client: httpClient}
 	session := gateway.Session{Resolver: resolver, Listeners: listeners, Agent: agent}
 	pools := map[string]*gateway.LocalPool{}
-	configExpires := time.Now()
 	tick := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
 	for {
+		if !leaseActive.Load() {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-tick.C:
+				continue
+			}
+		}
 		envelope, err := client.GetConfig(ctx)
 		var config nodeconfig.Configuration
 		if err == nil {
 			config, err = nodeconfig.Read(envelope, state.ControllerId, time.Now())
 		}
 		if err == nil {
-			configExpires = time.Unix(envelope.Timestamp, 0).Add(5 * time.Minute)
 			runtimes := []gateway.Runtime{}
 			services := []string{}
 			endpointCount := 0
@@ -221,14 +200,14 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 		}
 		if err != nil {
 			slog.Warn("forwarder reconciliation failed", "error", err)
-			if !time.Now().Before(configExpires) {
-				listeners.Close()
-				ready.Store(false)
-			}
+			// Connectivity loss is not an authoritative configuration withdrawal.
+			// Keep existing listeners; the independently renewed broker assignment
+			// lease still fences competing Pods and closes them on ownership loss.
+
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("forwarder stopped or lease lost: %w", ctx.Err())
+			return fmt.Errorf("forwarder stopped: %w", ctx.Err())
 		case <-tick.C:
 		}
 	}

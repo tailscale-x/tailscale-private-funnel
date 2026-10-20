@@ -410,8 +410,11 @@ func (c *Control) reconcileLoadBalancerNode(ctx context.Context, node store.Node
 		freshness = 5 * time.Minute
 	}
 	stale := node.Revoked || healthErr != nil || health.ReceivedAt <= 0 || time.Since(time.Unix(health.ReceivedAt, 0)) > freshness
-	if stale {
+	if node.Revoked {
 		return c.reconcilePartitions(ctx, ownerID, nil)
+	}
+	if stale {
+		return fmt.Errorf("load balancer health unavailable; retaining the previous owned A record")
 	}
 	if deployment.AddressSource == "kubernetes" {
 		ips, err := c.kubernetesAddresses(ctx, node, deployment)
@@ -446,9 +449,9 @@ func (c *Control) reconcileLoadBalancerNode(ctx context.Context, node store.Node
 	return c.reconcilePartitions(ctx, ownerID, desired)
 }
 
-// ReconcileLoadBalancerDNS removes owned A records after a loadbalancer health
-// report expires and reapplies a verified endpoint on the periodic control
-// loop. Missing or ambiguous fresh endpoints are retained by design.
+// ReconcileLoadBalancerDNS applies verified endpoints on the periodic control
+// loop. Health loss and missing or ambiguous endpoints retain owned records;
+// only explicit revocation authorizes removal of this load balancer's records.
 func (c *Control) ReconcileLoadBalancerDNS(ctx context.Context) error {
 	c.cleanupMu.Lock()
 	defer c.cleanupMu.Unlock()
@@ -669,14 +672,13 @@ func (c *Control) serviceHostAllowed(ctx context.Context, _ tailscale.Client, ap
 			Services []string `json:"services"`
 			At       int64    `json:"at"`
 		}
-		if c.Store.GetJSON("node_config_ack:"+n.ID, &ack) != nil || !contains(ack.Services, app.ServiceName) || ack.At < time.Now().Add(-5*time.Minute).Unix() {
+		if c.Store.GetJSON("node_config_ack:"+n.ID, &ack) != nil || !contains(ack.Services, app.ServiceName) {
 			continue
 		}
-		for _, exposure := range c.freshReport(n) {
-			if exposure.ApplicationID == app.ID {
-				return true, nil
-			}
-		}
+		// Acknowledged ownership survives connectivity loss. Reports describe
+		// backend health; only current configuration, role and revocation
+		// decide whether this Service advertisement remains authorized.
+		return true, nil
 	}
 	return false, nil
 }
@@ -699,10 +701,6 @@ func (c *Control) ExpireReports(ctx context.Context, maxAge time.Duration) (int,
 	removed := 0
 	var failures []string
 	for _, id := range ids {
-		if err := c.reconcilePartitions(ctx, "gateway:"+id, nil); err != nil {
-			failures = append(failures, err.Error())
-			continue
-		}
 		expired, err := c.Store.ExpireReportBefore(id, before)
 		if err != nil {
 			return removed, err
@@ -738,7 +736,7 @@ func (c *Control) CleanupStaleNodes(ctx context.Context, maxAge time.Duration) (
 		removed++
 	}
 	// Persistent devices survive outages. Only explicit reset or revocation
-	// deletes an identity; report expiry still withdraws routes and owned DNS.
+	// deletes an identity. Report expiry does not remove configured routes or DNS.
 	_ = c.reconcileExposures(ctx)
 
 	return removed, nil

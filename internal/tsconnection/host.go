@@ -51,7 +51,7 @@ type Host struct {
 }
 
 func NewHost(socket, dataDir string) *Host {
-	c := &local.Client{Socket: socket}
+	c := &local.Client{Socket: socket, UseSocketOnly: socket != ""}
 	return &Host{Client: c, API: c, DataDir: dataDir}
 }
 func (h *Host) LocalClient() (*local.Client, error) {

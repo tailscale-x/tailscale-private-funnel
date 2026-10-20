@@ -23,17 +23,77 @@ mutation for every backend. New Service creation remains an external operation.
 A worker which exhausts its context leaves pending cleanup for a later pass.
 Workers recheck an expired context after acquiring mutation locks.
 
-The five-minute report freshness window is unchanged. Expiry rechecks the report
-or node heartbeat timestamp transactionally before deleting a report and revoking
-backend assignments. A heartbeat arriving after the initial stale-candidate scan
-therefore survives cleanup. Persistent device identity is not revoked by expiry.
+The five-minute report freshness window describes observed health. Expiry rechecks
+freshness transactionally and discards stale reports, without revoking backend
+assignments, node identities, DNS ownership, or previously ready routes. Explicit
+inventory/configuration removal and revocation remain separate operations.
 
-During external API outages, existing healthy forwarding continues using fresh,
-authenticated reports and the last owned load-balancer address. New registration,
-Service readiness, DNS additions, and externally applied cleanup can remain
-pending. An actual report expiry, revoked identity, or denied exposure policy
-still withdraws the affected route. This is not a bypass of authorization and
-is not protection against an unavailable control database or tailnet transport.
+During external API outages, new Service readiness and DNS additions can remain
+pending. Previously validated routing continues while its durable configuration
+and exposure policy remain unchanged and authorized.
+
+## DNS continuity and configuration requests
+
+Existing owned DNS is retained through missing, expired, empty, and unreachable
+health reports while the configured exposure remains authorized. Retention does
+not create records or authorize unowned overwrites. Authoritative Docker
+inventory removal, application/hostname removal, policy denial, disabling an
+application, and component revocation still withdraw the affected records.
+Stopped containers retain registration. Load-balancer revocation removes only its
+address contribution. Missing health or ambiguous endpoints preserve its owned A.
+
+Previously ready load-balancer routes survive health loss and control restart.
+Each response rechecks current application membership, policy, managed zone,
+gateway revocation, and exact route definition. Changed/new backends require
+fresh readiness; a saved route is not a way to introduce a new backend.
+Authoritative empty configurations replace the saved route set, preventing
+withdrawn routes from reappearing. The load balancer also atomically saves its
+successfully applied routes locally, bound to its component, installation and
+control URL, for restart during a control outage. Startup loads that saved configuration before
+attempting a control RPC; revalidation follows in the refresh loop.
+
+Kubernetes forwarders retain listeners if control configuration/report delivery
+fails. Their independent broker assignment lease still fences competing Pods;
+losing that lease stops forwarding. At 40 seconds without successful renewal,
+listeners are fenced before the broker's 60-second lease expires. The process
+keeps its existing tsnet identity and retries broker assignment acquisition;
+it does not exit, log out, or mint another device for a broker outage. Listeners
+can reopen only after the same controller, logical node, Kubernetes Node UID,
+node name, and control URL binding is reacquired. Readiness stays false while
+fenced. Ordinary Pod deletion still retires its disposable identity.
+
+Broker endpoint readiness reflects its ability to authenticate Pods and manage
+leases, independently of the controller's Tailscale registration. New sessions
+still wait for registration. Existing holders keep renewing through a controller
+startup or a stalled configuration fetch. Cold configuration fetches have a
+20-second budget; a valid warm cache keeps its two-second fallback and original
+five-minute expiry, rechecked after fetch completes. Configuration HTTP has its own 30-second budget; initial
+lease acquisition remains at 10 seconds and renew/reacquire calls at five.
+
+Unchanged Service/port/backend assignments retain the same listener across
+configuration polls. Backend pools update their endpoint sets in place. Changed
+backends, authoritative removal, or lease fencing withdraw the affected
+listeners; a control RPC failure alone does not. Backend failure is not made
+healthy by retention: a request may fail even though its hostname and route
+still exist.
+
+Disconnected nodes cannot receive new control-policy revocations until they
+reconnect. Tailscale network policy remains independently enforced. Administrators
+requiring immediate isolation during disconnection must use Tailscale grants or
+stop the component; report freshness alone is no longer a revocation mechanism.
+Disposable Kubernetes identities remain disposable; no network identity is made
+persistent by this change.
+
+Configuration handlers authenticate and renew the caller on the live store, then
+use one context-bound metadata view per request. Failed or canceled reads return
+an error without replacing the last sent configuration. Authorization changes
+are read again on the next request; no cache crosses requests. Requests taking
+three seconds or more log their duration and cancellation state.
+
+Disposable embedded Kubernetes identities explicitly log out before their tsnet
+transport closes. Persistent native and borrowed host identities are never logged
+out by ordinary shutdown. Failure to log out is bounded and reported; transport
+closure still completes. No additional OAuth scope or ACL grant is needed.
 
 ## Verification
 
@@ -44,9 +104,13 @@ Kubernetes snapshots with a stalled REST transport and untrusted supplied Servic
 targets, verify worker independence, and cover renewal-versus-expiry ordering
 through the shared SQLite/PostgreSQL storage contract.
 
-For live fault verification, use a temporary CONNECT proxy that stalls only
-`api.tailscale.com:443` and `api.cloudflare.com:443`. Do not block Tailscale's
-control-plane/DERP transport, interfere with backend networking, intercept TLS,
-or log credentials. Run the fault for longer than the report freshness window;
-verify public HTTPS, fresh reports, stable node bindings and owned DNS, then
-release the fault and remove the proxy configuration/workloads.
+Run fault verification in a disposable installation. Stall external APIs and
+control connectivity beyond the report window, including fresh negative/empty
+reports; assert stable DNS ledger ownership and previously ready routes while
+new routes stay pending. Verify explicit deletion, policy denial, assignment
+fencing, and recovery separately. Do not inject faults into shared live routes.
+
+For the outage investigation, artifact history, consolidation decisions and
+remaining transport boundary, see the [Service-route review](verification/service-route-consolidation-20261020.md).
+
+See [Service-route diagnostics](service-route-diagnostics.md) for bounded runtime events and log collection.

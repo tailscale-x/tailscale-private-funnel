@@ -58,5 +58,15 @@ func (s *Store) cachedJSON(name string, out any) error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(b, out)
+	err = json.Unmarshal(b, out)
+	if err != nil {
+		// Raw JSON can be syntactically valid but incompatible with the typed
+		// metadata. That is a failed read, not an empty authorization decision.
+		s.reads.mu.Lock()
+		if s.reads.err == nil {
+			s.reads.err = err
+		}
+		s.reads.mu.Unlock()
+	}
+	return err
 }

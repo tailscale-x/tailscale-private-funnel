@@ -275,6 +275,7 @@ func (c *Control) reconcileExposures(ctx context.Context) error {
 	}
 	d := reader.loadExposurePolicy()
 	failures := []string{}
+	retained := []string{}
 	start := 0
 	if len(es) > 0 {
 		start = int(c.exposureCursor.Load() % uint64(len(es)))
@@ -288,6 +289,18 @@ func (c *Control) reconcileExposures(ctx context.Context) error {
 		}
 		e := es[index]
 		records, _ := reader.exposureDesired(e, d)
+		if len(records) == 0 {
+			var retainErr error
+			records, retainErr = reader.retainedExposureDNS(e, d)
+			if retainErr != nil {
+				failures = append(failures, e.Hostname+": "+retainErr.Error())
+				c.exposureCursor.Store(uint64((index + 1) % len(es)))
+				continue
+			}
+			if len(records) > 0 {
+				retained = append(retained, e.Hostname)
+			}
+		}
 		if err := reader.Store.ReadError(); err != nil {
 			return err
 		}
@@ -311,7 +324,7 @@ func (c *Control) reconcileExposures(ctx context.Context) error {
 	}
 	statusCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	_ = c.Store.WithContext(statusCtx).SetJSON("exposure_mapping_sync", map[string]any{"pending": len(failures) > 0, "errors": failures, "at": time.Now().Unix()})
+	_ = c.Store.WithContext(statusCtx).SetJSON("exposure_mapping_sync", map[string]any{"pending": len(failures) > 0, "errors": failures, "retained_hostnames": retained, "at": time.Now().Unix()})
 	if len(failures) > 0 {
 		return fmt.Errorf("%s", strings.Join(failures, "; "))
 	}

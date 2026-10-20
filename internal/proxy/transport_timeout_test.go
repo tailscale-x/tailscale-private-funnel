@@ -3,8 +3,11 @@
 package proxy
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -51,5 +54,25 @@ func TestBackendTimeoutPreservesUpgradedDuplexBody(t *testing.T) {
 	b := make([]byte, 4)
 	if _, err = io.ReadFull(stream, b); err != nil || string(b) != "ping" {
 		t.Fatal(string(b), err)
+	}
+}
+
+func TestSelectedTailnetDialerRetainsCaddyConnectTimeout(t *testing.T) {
+	SetDialer(func(ctx context.Context, _, _ string) (net.Conn, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})
+	defer SetDialer(nil)
+	ctx, cancel := caddy.NewContext(caddy.Context{Context: t.Context()})
+	defer cancel()
+	transport := tailnetTransport{HTTPTransport: reverseproxy.HTTPTransport{DialTimeout: caddy.Duration(25 * time.Millisecond)}}
+	if err := transport.Provision(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer transport.Cleanup()
+	start := time.Now()
+	_, err := transport.Transport.DialContext(t.Context(), "tcp", "100.64.0.1:8080")
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > time.Second {
+		t.Fatalf("connect timeout lost: %v after %v", err, time.Since(start))
 	}
 }

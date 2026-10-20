@@ -29,9 +29,7 @@ var reloadState struct {
 // Start runs the public load balancer. Gateway owns Docker discovery and
 // forwards approved Services directly to their selected backends.
 func Start(mode, listen string, dial func(context.Context, string, string) (net.Conn, error)) error {
-	sharedDialer.Lock()
-	sharedDialer.dial = dial
-	sharedDialer.Unlock()
+	SetDialer(dial)
 	if mode != "loadbalancer" {
 		return fmt.Errorf("Caddy is available only in loadbalancer mode")
 	}

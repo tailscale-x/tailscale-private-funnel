@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ type ListenerManager struct {
 	mu       sync.Mutex
 	draining sync.WaitGroup
 	items    map[string]listenerItem
+	fenced   bool
 }
 
 type listenerItem struct {
@@ -40,17 +42,15 @@ func (m *ListenerManager) ListenDial(ctx context.Context, service string, port u
 	}
 	key := fmt.Sprintf("%s:%d", service, port)
 	m.mu.Lock()
+	if m.fenced {
+		m.mu.Unlock()
+		return fmt.Errorf("Service assignment is fenced; broker lease reacquisition required")
+	}
 	if existing, ok := m.items[key]; ok && existing.target == target {
 		m.mu.Unlock()
 		return nil
 	}
-	if existing, ok := m.items[key]; ok {
-		existing.cancel()
-		if existing.listener != nil {
-			_ = existing.listener.Close()
-		}
-		delete(m.items, key)
-	}
+	m.removeLocked(key, "backend_changed")
 	underlying := m.server
 	if bound, ok := underlying.(*tsconnection.Bound); ok {
 		underlying = bound.Connection
@@ -60,6 +60,7 @@ func (m *ListenerManager) ListenDial(ctx context.Context, service string, port u
 			m.mu.Unlock()
 			return err
 		}
+		slog.Info("tailnet Service listener opened", "service", service, "port", port, "backend", target, "transport", "host")
 		m.items[key] = listenerItem{target: target, cancel: func() {
 			bounded, stop := context.WithTimeout(context.Background(), 5*time.Second)
 			defer stop()
@@ -73,6 +74,7 @@ func (m *ListenerManager) ListenDial(ctx context.Context, service string, port u
 		m.mu.Unlock()
 		return err
 	}
+	slog.Info("tailnet Service listener opened", "service", service, "port", port, "backend", target, "transport", "embedded")
 	listenCtx, cancel := context.WithCancel(ctx)
 	m.items[key] = listenerItem{listener: listener, cancel: cancel, target: target}
 	m.draining.Add(1)
@@ -95,31 +97,56 @@ func (m *ListenerManager) Remove(service string, port uint16) {
 	}
 	key := fmt.Sprintf("%s:%d", service, port)
 	m.mu.Lock()
-	item, ok := m.items[key]
-	if ok {
-		delete(m.items, key)
-		item.cancel()
-		if item.listener != nil {
-			_ = item.listener.Close()
-		}
-	}
+	m.removeLocked(key, "runtime_remove")
 	m.mu.Unlock()
 }
 
+// removeLocked serializes every withdrawal with replacement, including
+// reconciliation. Otherwise a delayed RemoveService can erase a new host Serve
+// entry for the same Service/port. Call only while holding m.mu.
+func (m *ListenerManager) removeLocked(key, reason string) {
+	item, ok := m.items[key]
+	if !ok {
+		return
+	}
+	delete(m.items, key)
+	slog.Info("tailnet Service listener withdrawn", "assignment", key, "backend", item.target, "reason", reason)
+	item.cancel()
+	if item.listener != nil {
+		_ = item.listener.Close()
+	}
+}
+
 func (m *ListenerManager) Close() {
+	m.stop(false)
+}
+
+// Fence closes listeners and prevents a concurrent reconciliation from opening
+// them again. It does not close or replace the process-owned Tailscale identity.
+func (m *ListenerManager) Fence() { m.stop(true) }
+
+func (m *ListenerManager) Resume() {
+	m.mu.Lock()
+	m.fenced = false
+	m.mu.Unlock()
+}
+
+func (m *ListenerManager) stop(fence bool) {
 	if m == nil {
 		return
 	}
 	m.mu.Lock()
-	items := m.items
-	m.items = make(map[string]listenerItem)
-	m.mu.Unlock()
-	for _, item := range items {
-		item.cancel()
-		if item.listener != nil {
-			_ = item.listener.Close()
-		}
+	if fence {
+		m.fenced = true
 	}
+	reason := "shutdown"
+	if fence {
+		reason = "lease_fenced"
+	}
+	for key := range m.items {
+		m.removeLocked(key, reason)
+	}
+	m.mu.Unlock()
 }
 
 func (m *ListenerManager) Reconcile(active map[string]struct{}) {
@@ -127,18 +154,10 @@ func (m *ListenerManager) Reconcile(active map[string]struct{}) {
 		return
 	}
 	m.mu.Lock()
-	var stale []listenerItem
-	for key, item := range m.items {
+	defer m.mu.Unlock()
+	for key := range m.items {
 		if _, ok := active[key]; !ok {
-			delete(m.items, key)
-			stale = append(stale, item)
-		}
-	}
-	m.mu.Unlock()
-	for _, item := range stale {
-		item.cancel()
-		if item.listener != nil {
-			_ = item.listener.Close()
+			m.removeLocked(key, "configuration_withdrawal")
 		}
 	}
 }

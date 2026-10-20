@@ -4,7 +4,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 )
 
@@ -28,7 +27,7 @@ func (c *Control) publishedGatewayHosts() []string {
 		}
 		for _, r := range sent.Routes {
 			for _, app := range apps {
-				if app.Enabled && contains(app.PublicHostnames, r.Hostname) && app.ServiceFQDN == r.Service && app.ServicePort == r.Port && nodeconfig.Revision(app.HTTPRules) == nodeconfig.Revision(r.Rules) {
+				if app.Enabled && contains(app.PublicHostnames, r.Hostname) && sameRoute(proxy.Route{Hostname: r.Hostname, Service: app.ServiceFQDN, Port: app.ServicePort, Rules: app.HTTPRules}, r) {
 					set[r.Hostname] = true
 				}
 			}

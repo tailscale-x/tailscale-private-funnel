@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"tailscale.com/client/local"
@@ -25,9 +27,48 @@ type Connection interface {
 	Listen(string, string) (net.Listener, error)
 	Close() error
 }
-type Embedded struct{ *tsnet.Server }
+type Embedded struct {
+	*tsnet.Server
+	closeOnce sync.Once
+	closeErr  error
+	routes    routeObserver
+}
 
-func Wrap(s *tsnet.Server) *Embedded { return &Embedded{s} }
+func Wrap(s *tsnet.Server) *Embedded { return &Embedded{Server: s} }
+func (e *Embedded) HTTPClient() *http.Client {
+	client := e.Server.HTTPClient()
+	client.Transport.(*http.Transport).DialContext = e.Dial
+	return client
+}
+
+// Disposable workloads must retire their owned device, rather than leave a
+// departed Service host eligible until the coordination server's expiry timer.
+// Persistent native identities and borrowed host daemons are never logged out.
+func (e *Embedded) Close() error {
+	e.closeOnce.Do(func() {
+		e.closeErr = closeEmbedded(e.Server.Ephemeral, func(ctx context.Context) error {
+			api, err := e.Server.LocalClient()
+			if err != nil {
+				return err
+			}
+			return api.Logout(ctx)
+		}, e.Server.Close)
+	})
+	return e.closeErr
+}
+func closeEmbedded(ephemeral bool, logout func(context.Context) error, closeServer func() error) error {
+	var logoutErr error
+	if ephemeral {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		logoutErr = logout(ctx)
+		cancel()
+		if logoutErr != nil {
+			slog.Warn("owned ephemeral Tailscale logout failed", "error", logoutErr)
+		}
+	}
+	return errors.Join(logoutErr, closeServer())
+}
+
 func (e *Embedded) ListenService(name string, mode tsnet.ServiceMode) (net.Listener, error) {
 	return e.Server.ListenService(name, mode)
 }

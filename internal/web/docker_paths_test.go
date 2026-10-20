@@ -179,8 +179,8 @@ func TestDockerPathApplicationsAndSignedReports(t *testing.T) {
 		t.Fatal(err)
 	}
 	ledger, err = s.Ledger("fixture", "example.com", "exposure:"+ownerID)
-	if err != nil || len(ledger) != 0 {
-		t.Fatal("empty snapshot failed owned cleanup", ledger, err)
+	if err != nil || len(ledger) == 0 {
+		t.Fatal("empty health snapshot removed owned DNS without authoritative inventory withdrawal", ledger, err)
 	}
 	kept := false
 	for _, record := range fixture.records["example.com"] {

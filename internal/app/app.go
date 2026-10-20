@@ -519,6 +519,12 @@ func Serve(ctx context.Context, mode string, o Options) error {
 	}
 	defer os.Remove(filepath.Join(o.DataDir, "serve.pid"))
 	if mode == "loadbalancer" {
+		stopDiagnostics, diagnosticErr := serveServiceDiagnostics(ctx, o.DataDir, s)
+		if diagnosticErr != nil {
+			slog.Warn("local Service diagnostics unavailable", "error", diagnosticErr)
+		} else {
+			defer stopDiagnostics()
+		}
 		_ = os.Setenv("FUNNEL_STATE_DIR", o.StateDir)
 		_ = os.Setenv("FUNNEL_HOSTNAME", o.Hostname)
 		_ = os.Setenv("FUNNEL_DATA_DIR", o.DataDir)
@@ -526,20 +532,31 @@ func Serve(ctx context.Context, mode string, o Options) error {
 		if o.CertEmail != "" {
 			_ = os.Setenv("FUNNEL_CERT_EMAIL", o.CertEmail)
 		}
+		var startingRoutes []proxy.Route
+		startingRoutesKnown := false
 		if o.ManagementURL != "" {
-			if config, fetchErr := fetchLoadBalancerConfig(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir)); fetchErr == nil {
-				routes := config.Routes
-				if encoded, marshalErr := json.Marshal(routes); marshalErr == nil {
-					_ = os.Setenv("FUNNEL_ROUTES", string(encoded))
-				}
+			var err error
+			startingRoutes, err = initialLoadBalancerRoutes(o, func() ([]proxy.Route, error) {
+				config, err := fetchLoadBalancerConfig(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir))
+				return config.Routes, err
+			})
+			if err != nil {
+				slog.Warn("load balancer startup routes unavailable", "error", err)
 			} else {
-				slog.Warn("load balancer route config unavailable; starting with no public routes", "error", fetchErr)
+				startingRoutesKnown = true
+				encoded, _ := json.Marshal(startingRoutes)
+				_ = os.Setenv("FUNNEL_ROUTES", string(encoded))
 			}
 		}
 		if err := proxy.Start(mode, o.Listen, s.Dial); err != nil {
 			return err
 		}
 		defer proxy.Stop()
+		if startingRoutesKnown {
+			if err := saveRouteCache(o, startingRoutes); err != nil {
+				slog.Error("unable to persist applied load balancer routes", "error", err)
+			}
+		}
 		markRuntimeReady(o.DataDir)
 		runtimeReady.Store(true)
 		if o.KubernetesService != "" {
@@ -567,6 +584,9 @@ func Serve(ctx context.Context, mode string, o Options) error {
 						if reloadErr := proxy.ReloadRoutes(config.Routes); reloadErr != nil {
 							slog.Error("load balancer route reload failed", "error", reloadErr)
 						} else {
+							if err := saveRouteCache(o, config.Routes); err != nil {
+								slog.Error("unable to persist applied load balancer routes", "error", err)
+							}
 							_ = (gateway.RPCResolver{BaseURL: o.ManagementURL, NodeID: loadBalancerNodeID(o.DataDir), Client: tsnetHTTPClient(s)}).Acknowledge(ctx, config.Revision, nil)
 						}
 						reportLoadBalancerHealth(ctx, tsnetHTTPClient(s), o.ManagementURL, loadBalancerNodeID(o.DataDir), o.LoadBalancerHostname, o.DataDir)
