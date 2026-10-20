@@ -68,3 +68,30 @@ replacement caused temporary failures; affected routes recovered automatically.
 The cleanup does not promise zero downtime or repair unrelated cluster/database
 instability. No temporary image-check Pods or direct-Docker fixture containers or
 networks remained after verification.
+
+## Follow-up: forwarder replacement with unchanged edge
+
+At 00:48–00:50 ICT on 21 October (17:48–17:50 UTC on 20 October),
+a further controlled replacement deleted only the DLKN forwarder on
+`dlkntalos3`. Its replacement became Ready about 85 seconds after deletion.
+Voice returned HTTP 502 in three 20-second samples while its sole eligible host
+was restarting, then recovered automatically. Admissions frontend/API/SSO,
+Harbor, Metube and LuongGia/SSO remained HTTP 200 throughout the same samples.
+
+The logical forwarder component remained unchanged while its disposable device
+changed from `nPQNhmzV1C21CNTRL` to `n5AD2by2ov11CNTRL`. The edge retained PID
+`178586`, device `n9YQSZEmrA21CNTRL`, and the exact v4.0.7 binary checksum.
+No edge restart, reauthentication, policy edit or additional client join occurred.
+The first successful public Voice probe preceded the diagnostic probe: subsequent
+inspection of the existing edge confirmed the new host as an allowed primary
+Service candidate, a successful userspace Tailscale dial, and a direct peer path.
+
+All 20 final normal-DNS/pinned-WAN HTTPS checks passed, along with HTTP redirect,
+Gateway Accepted/Programmed conditions, fresh reports and Facebook challenge /
+signature rejection checks. The 11 DNS-ledger rows, 44 exposure bindings,
+control encryption material, decrypted credentials, providers, zones, three
+native device bindings and eight public certificate fingerprints were unchanged.
+All deployed components remained Ready on the pinned v4.0.7 release digest.
+
+This verifies automatic replacement recovery without an edge recovery restart;
+it does not make a single eligible Service host a zero-downtime deployment.
