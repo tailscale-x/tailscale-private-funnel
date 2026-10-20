@@ -147,6 +147,10 @@ func (s *nodeRPC) Shutdown(ctx context.Context, r *connect.Request[v1.ShutdownRe
 func (s *managementRPC) revokeNode(ctx context.Context, node store.NodeRecord) (*connect.Response[v1.TestResult], error) {
 	s.c.shutdownMu.Lock()
 	defer s.c.shutdownMu.Unlock()
+	var completed nodeCleanupState
+	if node.Revoked && s.c.Store.GetJSON("node_cleanup:"+node.ID, &completed) == nil && completed.OperationalComplete && !completed.Pending {
+		return connect.NewResponse(&v1.TestResult{Ok: true, Message: "Component disabled; cleanup already complete. Tailscale role authority is unchanged."}), nil
+	}
 	_ = s.c.Store.SetJSON("node_cleanup:"+node.ID, nodeCleanupState{Pending: true})
 	if e := s.c.Store.RevokeNode(node.ID); e != nil {
 		return nil, rpcFailure(connect.CodeInternal, e)

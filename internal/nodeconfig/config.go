@@ -15,6 +15,7 @@ import (
 )
 
 type Configuration struct {
+	KubernetesErrors   map[string]string         `json:"kubernetes_errors,omitempty"`
 	PublishedAddresses []string                  `json:"published_addresses,omitempty"`
 	PublishedHostnames []string                  `json:"published_hostnames,omitempty"`
 	Routes             []proxy.Route             `json:"routes,omitempty"`

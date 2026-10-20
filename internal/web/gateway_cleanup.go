@@ -31,19 +31,8 @@ func (c *Control) cleanupRevokedNodeLocked(ctx context.Context, n store.NodeReco
 		return fmt.Errorf("node must be revoked before cleanup")
 	}
 	if n.Mode == "k8s-gateway" {
-		apps, e := c.Store.Applications()
-		if e != nil {
+		if e := c.withdrawKubernetesGateway(n.ID); e != nil {
 			return e
-		}
-		for _, app := range apps {
-			// Child revocation must never disable an installation's shared application.
-			// Revoking the logical installation withdraws only its exclusive intent.
-			if app.BackendSource == "kubernetes" && len(app.AllowedGatewayNodes) == 1 && app.AllowedGatewayNodes[0] == n.ID && app.Enabled {
-				app.Enabled = false
-				if e = c.Store.UpsertApplication(app); e != nil {
-					return e
-				}
-			}
 		}
 		children, e := c.Store.Forwarders(n.ID)
 		if e != nil {
@@ -66,10 +55,15 @@ func (c *Control) cleanupRevokedNodeLocked(ctx context.Context, n store.NodeReco
 	_ = c.Store.DeleteReport(n.ID)
 	failures := []string{}
 
-	if e := c.reconcileExposures(ctx); e != nil {
+	if e := c.reconcileNodeExposures(ctx, &n); e != nil {
 		failures = append(failures, e.Error())
 	}
 
+	if len(failures) == 0 && n.Mode == "k8s-gateway" {
+		if e := c.retireKubernetesGateway(ctx, n); e != nil {
+			failures = append(failures, e.Error())
+		}
+	}
 	if len(failures) > 0 {
 		state.Pending = true
 		state.Errors = failures

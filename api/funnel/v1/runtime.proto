@@ -212,6 +212,8 @@ message HTTPRoute {
   uint32 port = 4;
 }
 message ConfigurationPayload {
+  // Per-resource reconciliation failures; unrelated hosts remain operational.
+  map<string, string> kubernetes_errors = 10;
   repeated string published_addresses = 1;
   repeated string published_hostnames = 2;
   repeated HTTPRoute routes = 3;

@@ -356,6 +356,15 @@
             "title": "issued_at",
             "type": "string"
           },
+          "kubernetesErrors": {
+            "additionalProperties": {
+              "title": "value",
+              "type": "string"
+            },
+            "description": "Per-resource reconciliation failures; unrelated hosts remain operational.",
+            "title": "kubernetes_errors",
+            "type": "object"
+          },
           "labelAliases": {
             "items": {
               "type": "string"

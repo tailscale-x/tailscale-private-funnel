@@ -114,3 +114,45 @@ For the outage investigation, artifact history, consolidation decisions and
 remaining transport boundary, see the [Service-route review](verification/service-route-consolidation-20261020.md).
 
 See [Service-route diagnostics](service-route-diagnostics.md) for bounded runtime events and log collection.
+
+## Kubernetes hostname conflicts and removed gateways
+
+A valid Kubernetes snapshot is processed per hostname. A hostname already owned
+by another gateway or backend source is excluded from the incoming forwarding
+configuration; its owner and DNS ledger are untouched. Other authorized hostnames
+in the same snapshot still reconcile. Control returns `kubernetes_errors` keyed
+by Kubernetes resource ID and hostname. The gateway reports `Programmed=False`
+with the conflict on the affected route, while unrelated routes can remain
+`Programmed=True`. Malformed or unauthenticated snapshots are still rejected.
+
+Uninstalling k3s or deleting an entire cluster cannot notify control. An offline
+node, expired report, missing Pod, or negative health does **not** release a
+hostname claim. This prevents transient failures from becoming ownership changes.
+When a logical Kubernetes gateway has been deliberately removed, an authorized
+administrator must explicitly disable it:
+
+```sh
+tailscale-private-funnel manage nodes disable --id <removed-gateway-id> \
+  --control-url http://<installation-control-service>:8080
+```
+
+Inspect the result. If cleanup remains pending, resolve its diagnostic and retry:
+
+```sh
+tailscale-private-funnel manage nodes cleanup --id <removed-gateway-id> --yes \
+  --control-url http://<installation-control-service>:8080
+```
+
+Cleanup revokes only that logical gateway and its registered child forwarders,
+withdraws its exclusive applications, and removes only its owned DNS records.
+It deletes only control-created Kubernetes Services with no references from
+other applications and no hosts outside the revoked gateway. Shared applications
+and Services remain protected. Claims are released transactionally **last**, after
+owned cleanup succeeds. Failed cleanup retains claims and history for retry;
+a disabled application alone is not a released hostname. A successful retry is
+idempotent. Application records, retirement history, and exposure IDs are retained. Completed cleanup returns its recorded success without repeating external deletion. Gateway cleanup reconciles only its assigned exposures, so an unavailable unrelated zone cannot block retirement.
+
+After completion, another policy-authorized gateway may claim the hostname through
+normal reporting and readiness checks. This is cleanup followed by fresh
+provisioning, not an implicit transfer or an ownership bypass. No SQL edits,
+unowned-record deletion, or Tailscale ACL changes are required.

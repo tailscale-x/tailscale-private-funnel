@@ -259,13 +259,37 @@ func (c *Control) exposureDesired(e store.ExposureRecord, d policy.Document) ([]
 	return records, states
 }
 func (c *Control) reconcileExposures(ctx context.Context) error {
+	return c.reconcileNodeExposures(ctx, nil)
+}
+
+// A gateway cleanup must not wait for or mutate unrelated provider partitions.
+// Load-balancer revocation affects every exposure; gateway/forwarder cleanup is
+// limited to applications explicitly assigned to that gateway or its parent.
+func (c *Control) reconcileNodeExposures(ctx context.Context, node *store.NodeRecord) error {
 	reader := c.readControl(ctx)
 	es, err := reader.Store.Exposures()
 	if err != nil {
 		return err
 	}
-	if _, err = reader.Store.Applications(); err != nil {
+	apps, err := reader.Store.Applications()
+	if err != nil {
 		return err
+	}
+	if node != nil && node.Mode != "loadbalancer" {
+		parent := reader.Store.ForwarderParent(node.ID)
+		owned := map[string]bool{}
+		for _, app := range apps {
+			if contains(app.AllowedGatewayNodes, node.ID) || parent != "" && contains(app.AllowedGatewayNodes, parent) {
+				owned[app.ID] = true
+			}
+		}
+		selected := make([]store.ExposureRecord, 0, len(es))
+		for _, exposure := range es {
+			if owned[exposure.ApplicationID] {
+				selected = append(selected, exposure)
+			}
+		}
+		es = selected
 	}
 	if _, err = reader.Store.Reports(); err != nil {
 		return err
@@ -277,13 +301,18 @@ func (c *Control) reconcileExposures(ctx context.Context) error {
 	failures := []string{}
 	retained := []string{}
 	start := 0
-	if len(es) > 0 {
+	if node == nil && len(es) > 0 {
 		start = int(c.exposureCursor.Load() % uint64(len(es)))
+	}
+	advance := func(index uint64) {
+		if node == nil {
+			c.exposureCursor.Store(index)
+		}
 	}
 	for i := range es {
 		index := (start + i) % len(es)
 		if err := ctx.Err(); err != nil {
-			c.exposureCursor.Store(uint64(index))
+			advance(uint64(index))
 			failures = append(failures, err.Error())
 			break
 		}
@@ -294,7 +323,7 @@ func (c *Control) reconcileExposures(ctx context.Context) error {
 			records, retainErr = reader.retainedExposureDNS(e, d)
 			if retainErr != nil {
 				failures = append(failures, e.Hostname+": "+retainErr.Error())
-				c.exposureCursor.Store(uint64((index + 1) % len(es)))
+				advance(uint64((index + 1) % len(es)))
 				continue
 			}
 			if len(records) > 0 {
@@ -305,7 +334,7 @@ func (c *Control) reconcileExposures(ctx context.Context) error {
 			return err
 		}
 		if err := ctx.Err(); err != nil {
-			c.exposureCursor.Store(uint64(index))
+			advance(uint64(index))
 			return err
 		}
 		desired := map[store.LedgerPartition][]libdns.Record{}
@@ -320,11 +349,13 @@ func (c *Control) reconcileExposures(ctx context.Context) error {
 		if err = c.reconcilePartitions(ctx, "exposure:"+e.ID, desired); err != nil {
 			failures = append(failures, e.Hostname+": "+err.Error())
 		}
-		c.exposureCursor.Store(uint64((index + 1) % len(es)))
+		advance(uint64((index + 1) % len(es)))
 	}
 	statusCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	_ = c.Store.WithContext(statusCtx).SetJSON("exposure_mapping_sync", map[string]any{"pending": len(failures) > 0, "errors": failures, "retained_hostnames": retained, "at": time.Now().Unix()})
+	if node == nil {
+		_ = c.Store.WithContext(statusCtx).SetJSON("exposure_mapping_sync", map[string]any{"pending": len(failures) > 0, "errors": failures, "retained_hostnames": retained, "at": time.Now().Unix()})
+	}
 	if len(failures) > 0 {
 		return fmt.Errorf("%s", strings.Join(failures, "; "))
 	}

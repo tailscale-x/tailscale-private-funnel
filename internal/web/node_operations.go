@@ -150,6 +150,11 @@ func (c *Control) nodeConfiguration(ctx context.Context) (report.Snapshot, error
 		}
 	}
 	config := nodeconfig.Configuration{NodeID: id, Applications: filtered, LabelAliases: splitValues(settings.LabelKeys)}
+	if node.Mode == "k8s-gateway" {
+		var snapshot nodeconfig.KubernetesSnapshot
+		_ = c.Store.GetJSON("node_kubernetes:"+id, &snapshot)
+		config.KubernetesErrors = snapshot.Errors
+	}
 	_ = c.Store.GetJSON("node_probes:"+node.ID, &config.Probes)
 	config.PublishedHostnames = c.publishedGatewayHosts()
 	for _, edge := range c.loadBalancers() {
@@ -733,19 +738,28 @@ func (c *Control) acceptKubernetesSnapshot(ctx context.Context, env report.Snaps
 	if err != nil {
 		return report.Snapshot{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
 	}
-	for _, h := range snapshot.Hosts {
-		for _, a := range apps {
-			for _, name := range a.PublicHostnames {
-				if name == h.Hostname && (a.BackendSource != "kubernetes" || !contains(a.AllowedGatewayNodes, node.ID)) {
-					return report.Snapshot{}, rpcFailure(connectCodeHTTP(409), errors.New("hostname owned by another gateway or source"))
-				}
-			}
-		}
+	// A rejected hostname must not reject an otherwise authoritative inventory.
+	// Store only accepted hosts for forwarding, with resource-scoped diagnostics.
+	if revoked, e := c.Store.NodeRevoked(node.ID); e != nil || revoked {
+		return report.Snapshot{}, rpcFailure(connect.CodePermissionDenied, errors.New("gateway revoked or unavailable"))
+	}
+	accepted, rejected := partitionKubernetesHosts(snapshot.Hosts, apps, node.ID)
+	if snapshot.Errors == nil {
+		snapshot.Errors = map[string]string{}
+	}
+	for id, reason := range rejected {
+		snapshot.Errors[id] = reason
+	}
+	snapshot.Hosts = accepted
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		return report.Snapshot{}, rpcFailure(connect.CodeInternal, err)
 	}
 	// Consume the nonce before external mutations; retry uses a fresh envelope.
-	if err = c.Store.AcceptNodeSnapshot(node.ID, env.Nonce, "node_kubernetes:"+node.ID, env.Payload); err != nil {
+	if err = c.Store.AcceptNodeSnapshot(node.ID, env.Nonce, "node_kubernetes:"+node.ID, payload); err != nil {
 		return report.Snapshot{}, rpcFailure(connectCodeHTTP(409), errors.New("snapshot rejected or replayed"))
 	}
+
 	ts, err := c.tailscaleRuntimeClient()
 	if err != nil {
 		return report.Snapshot{}, rpcFailure(connectCodeHTTP(428), errors.New(err.Error()))

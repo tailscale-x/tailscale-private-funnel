@@ -37,6 +37,7 @@ import (
 )
 
 type Publication struct {
+	Problems  map[string]string
 	Hosts     []string
 	Addresses []string
 }
@@ -121,6 +122,9 @@ func (c *Controller) Reconcile(ctx context.Context, _ reconcile.Request) (ctrl.R
 	for _, object := range result.Objects {
 		id := resourceID(object)
 		problem := result.Problems[id]
+		if problem == "" {
+			problem = published.Problems[id]
+		}
 		if applyErr != nil && problem == "" {
 			problem = applyErr.Error()
 		}
@@ -129,6 +133,14 @@ func (c *Controller) Reconcile(ctx context.Context, _ reconcile.Request) (ctrl.R
 		for _, host := range result.Hosts {
 			if c.hostReferencesObject(ctx, object, host, result) {
 				seen = true
+				for _, resource := range host.ResourceIDs {
+					if failure := published.Problems[resource]; failure != "" {
+						programmed = false
+						if problem == "" {
+							problem = failure
+						}
+					}
+				}
 				programmed = programmed && set[host.Hostname]
 			}
 		}

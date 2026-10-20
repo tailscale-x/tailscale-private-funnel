@@ -34,6 +34,7 @@ Typed runtime payload model: `funnel.v1.ConfigurationPayload`. Authenticate thro
 
 | Field | Type | Notes |
 |---|---|---|
+| `kubernetesErrors` | map | Per-resource reconciliation failures; unrelated hosts remain operational. |
 | `publishedAddresses` | list of string |  |
 | `publishedHostnames` | list of string |  |
 | `routes` | list of funnel.v1.HTTPRoute |  |
@@ -833,6 +834,7 @@ Typed runtime payload model: `funnel.v1.ConfigurationPayload`. Authenticate thro
 
 | Field | Type | Notes |
 |---|---|---|
+| `kubernetesErrors` | map | Per-resource reconciliation failures; unrelated hosts remain operational. |
 | `publishedAddresses` | list of string |  |
 | `publishedHostnames` | list of string |  |
 | `routes` | list of funnel.v1.HTTPRoute |  |
@@ -863,6 +865,7 @@ Typed runtime payload model: `funnel.v1.ConfigurationPayload`. Authenticate thro
 
 | Field | Type | Notes |
 |---|---|---|
+| `kubernetesErrors` | map | Per-resource reconciliation failures; unrelated hosts remain operational. |
 | `publishedAddresses` | list of string |  |
 | `publishedHostnames` | list of string |  |
 | `routes` | list of funnel.v1.HTTPRoute |  |
