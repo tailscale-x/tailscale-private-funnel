@@ -14,20 +14,8 @@ import (
 
 	"github.com/docker/docker/api/types"
 	docker "github.com/docker/docker/client"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/tsconnection"
-	"tailscale.com/tsnet"
 )
 
-type directConnection struct {
-	tsconnection.Connection
-	listener net.Listener
-}
-
-func (c *directConnection) ListenService(_ string, _ tsnet.ServiceMode) (net.Listener, error) {
-	ln, e := net.Listen("tcp", "127.0.0.1:0")
-	c.listener = ln
-	return ln, e
-}
 func TestDockerForwardsDirectlyWithoutDaemonMutations(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -66,9 +54,8 @@ func TestDockerForwardsDirectlyWithoutDaemonMutations(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer client.Close()
-	conn := &directConnection{}
-	listeners := NewListenerManager(conn)
-	defer listeners.Close()
+	conn := &listenerFixtureConnection{}
+	listeners := listenerManagerFixture(t, conn)
 	config := Config{Docker: client, ListenerManager: listeners, Resolver: StaticResolver{"app.example.com": {ApplicationID: "app", ServiceName: "svc:app", ServicePort: uint16(port), Enabled: true}}}
 	exposed, e := config.Reconcile(context.Background())
 	if e != nil || len(exposed) != 1 || !exposed[0].Reachable || exposed[0].BackendIP != "127.0.0.1" {

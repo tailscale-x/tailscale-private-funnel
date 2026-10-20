@@ -7,41 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/tsconnection"
-	"tailscale.com/tsnet"
 )
 
-type drainFixtureListener struct {
-	net.Listener
-	drained, closed atomic.Bool
-}
-
-func (l *drainFixtureListener) Drain(context.Context) error {
-	l.drained.Store(true)
-	return l.Listener.Close()
-}
-func (l *drainFixtureListener) Close() error { l.closed.Store(true); return l.Listener.Close() }
-
-type drainFixtureConnection struct {
-	tsconnection.Connection
-	listener *drainFixtureListener
-	opens    int
-}
-
-func (c *drainFixtureConnection) ListenService(string, tsnet.ServiceMode) (net.Listener, error) {
-	ln, e := net.Listen("tcp", "127.0.0.1:0")
-	if e != nil {
-		return nil, e
-	}
-	c.listener = &drainFixtureListener{Listener: ln}
-	c.opens++
-	return c.listener, nil
-}
 func echoBackend(t *testing.T, name string) net.Listener {
 	t.Helper()
 	ln, e := net.Listen("tcp", "127.0.0.1:0")
@@ -76,9 +47,8 @@ func connectFixture(t *testing.T, ln net.Listener, want string) (net.Conn, *bufi
 }
 func TestBackendMoveKeepsAdvertisementAndEstablishedStream(t *testing.T) {
 	a, b := echoBackend(t, "old"), echoBackend(t, "new")
-	f := &drainFixtureConnection{}
-	m := NewListenerManager(f)
-	defer m.Close()
+	f := &listenerFixtureConnection{drainable: true}
+	m := listenerManagerFixture(t, f)
 	if e := m.Listen(t.Context(), "svc:app", 8080, a.Addr().String()); e != nil {
 		t.Fatal(e)
 	}
@@ -94,20 +64,20 @@ func TestBackendMoveKeepsAdvertisementAndEstablishedStream(t *testing.T) {
 	if e != nil || s != "still-old-stream\n" {
 		t.Fatal(s, e)
 	}
-	if f.opens != 1 || f.listener.drained.Load() {
+	if f.count() != 1 || f.drain.drained.Load() {
 		t.Fatal("backend move changed advertisement")
 	}
 }
 func TestGracefulWithdrawalDrainsBeforeFinalCleanup(t *testing.T) {
 	backend := echoBackend(t, "backend")
-	f := &drainFixtureConnection{}
-	m := NewListenerManager(f)
+	f := &listenerFixtureConnection{drainable: true}
+	m := listenerManagerFixture(t, f)
 	if e := m.Listen(t.Context(), "svc:app", 8080, backend.Addr().String()); e != nil {
 		t.Fatal(e)
 	}
 	c, reader := connectFixture(t, f.listener, "backend")
 	m.Remove("svc:app", 8080)
-	if !f.listener.drained.Load() || f.listener.closed.Load() {
+	if !f.drain.drained.Load() || f.drain.closed.Load() {
 		t.Fatal("Serve configuration removed before streams drained")
 	}
 	fmt.Fprintln(c, "after-drain")
@@ -123,14 +93,14 @@ func TestGracefulWithdrawalDrainsBeforeFinalCleanup(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	m.CloseWait(ctx)
-	if !f.listener.closed.Load() {
+	if !f.drain.closed.Load() {
 		t.Fatal("final Serve configuration not cleaned")
 	}
 }
 func TestFenceCancelsStreamsWithoutGrace(t *testing.T) {
 	backend := echoBackend(t, "backend")
-	f := &drainFixtureConnection{}
-	m := NewListenerManager(f)
+	f := &listenerFixtureConnection{drainable: true}
+	m := listenerManagerFixture(t, f)
 	if e := m.Listen(t.Context(), "svc:app", 8080, backend.Addr().String()); e != nil {
 		t.Fatal(e)
 	}
@@ -144,38 +114,11 @@ func TestFenceCancelsStreamsWithoutGrace(t *testing.T) {
 		t.Fatal("fence waited for graceful drain")
 	}
 }
-func TestLocalFirstPoolFallsBackOnlyToValidatedConfiguredPods(t *testing.T) {
-	calls := []string{}
-	p := &LocalPool{AllowRemote: true, DialContext: func(_ context.Context, _, a string) (net.Conn, error) {
-		calls = append(calls, a)
-		if a == "10.1.0.1:80" {
-			return nil, fmt.Errorf("local failed")
-		}
-		c, b := net.Pipe()
-		b.Close()
-		return c, nil
-	}}
-	p.Update([]proxy.PodEndpoint{{Address: "10.1.0.1:80", PodUID: "local-pod", NodeUID: "local", NodeName: "here"}, {Address: "10.2.0.2:80", PodUID: "remote-pod", NodeUID: "remote", NodeName: "there"}, {Address: "10.9.0.1:0", PodUID: "bad", NodeUID: "remote", NodeName: "there"}, {Address: "10.9.0.2:80"}}, "local", "here")
-	c, e := p.Dial(t.Context(), "tcp", "")
-	if e != nil {
-		t.Fatal(e)
-	}
-	c.Close()
-	if len(calls) != 2 || calls[0] != "10.1.0.1:80" || calls[1] != "10.2.0.2:80" || p.Count() != 1 || p.RemoteCount() != 1 {
-		t.Fatal(calls, p.Count(), p.RemoteCount())
-	}
-	// A replacement snapshot revokes the old Pod address, even when fallback is on.
-	p.Update(nil, "local", "here")
-	if _, e = p.Dial(t.Context(), "tcp", ""); e == nil {
-		t.Fatal("stale endpoint retained")
-	}
-}
 
 func TestReopenWaitsForDrainingServeCleanup(t *testing.T) {
 	backend := echoBackend(t, "backend")
-	f := &drainFixtureConnection{}
-	m := NewListenerManager(f)
-	defer m.Close()
+	f := &listenerFixtureConnection{drainable: true}
+	m := listenerManagerFixture(t, f)
 	if e := m.Listen(t.Context(), "svc:app", 8080, backend.Addr().String()); e != nil {
 		t.Fatal(e)
 	}
@@ -190,15 +133,14 @@ func TestReopenWaitsForDrainingServeCleanup(t *testing.T) {
 	if e := m.Listen(t.Context(), "svc:app", 8080, backend.Addr().String()); e != nil {
 		t.Fatal(e)
 	}
-	if f.opens != 2 {
+	if f.count() != 2 {
 		t.Fatal("replacement did not open after drain")
 	}
 }
 func TestAuthorizationRemovalCancelsAlreadyDrainingStream(t *testing.T) {
 	backend := echoBackend(t, "backend")
-	f := &drainFixtureConnection{}
-	m := NewListenerManager(f)
-	defer m.Close()
+	f := &listenerFixtureConnection{drainable: true}
+	m := listenerManagerFixture(t, f)
 	if e := m.Listen(t.Context(), "svc:app", 8080, backend.Addr().String()); e != nil {
 		t.Fatal(e)
 	}
@@ -234,8 +176,7 @@ func (h *hostUpdateFixture) RemoveService(context.Context, string, uint16) error
 }
 func TestHostBackendUpdatePreservesAdvertisementAndOldTargetOnFailure(t *testing.T) {
 	h := &hostUpdateFixture{}
-	m := NewListenerManager(h)
-	defer m.Close()
+	m := listenerManagerFixture(t, h)
 	if e := m.Listen(t.Context(), "svc:app", 80, "old:80"); e != nil {
 		t.Fatal(e)
 	}
@@ -261,28 +202,11 @@ func TestCleanupErrorFilteringDoesNotHideAdvertisementFailure(t *testing.T) {
 		t.Fatal("configuration failure hidden by repeated close")
 	}
 }
-func TestFirstAdvertisementRequiresReachableLocalBackend(t *testing.T) {
-	p := &LocalPool{AllowRemote: true, DialContext: func(_ context.Context, _, a string) (net.Conn, error) {
-		if a == "10.1.0.1:80" {
-			return nil, fmt.Errorf("local failed")
-		}
-		c, b := net.Pipe()
-		b.Close()
-		return c, nil
-	}}
-	p.Update([]proxy.PodEndpoint{{Address: "10.1.0.1:80", PodUID: "local", NodeUID: "local", NodeName: "here"}, {Address: "10.2.0.2:80", PodUID: "remote", NodeUID: "remote", NodeName: "there"}}, "local", "here")
-	if p.ReadyLocal(t.Context()) {
-		t.Fatal("remote reachability admitted a new Service host")
-	}
-	if !p.Ready(t.Context()) {
-		t.Fatal("established host cannot use authorized remote fallback")
-	}
-}
 
 func TestCloseWaitDeadlineAbortsStalledStream(t *testing.T) {
 	backend := echoBackend(t, "backend")
-	f := &drainFixtureConnection{}
-	m := NewListenerManager(f)
+	f := &listenerFixtureConnection{drainable: true}
+	m := listenerManagerFixture(t, f)
 	if e := m.Listen(t.Context(), "svc:app", 8080, backend.Addr().String()); e != nil {
 		t.Fatal(e)
 	}

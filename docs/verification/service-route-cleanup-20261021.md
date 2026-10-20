@@ -61,3 +61,30 @@ operator, container and artifact gates before rollout.
 The released rollout receipt records live acceptance separately from these source
 and automated-test claims. A successful route check does not establish that
 independent Kubernetes or application-database instability has been repaired.
+
+## Further test-only consolidation
+
+After the v4.0.7 runtime patch, consolidate the listener test layer without another
+runtime release:
+
+- Three overlapping Service-connection fakes now use one socket-allocation and
+  counting implementation. Plain listeners and SDK-style drainable listeners
+  remain separate behavior modes.
+- Shared manager cleanup drains/cancels owned listeners on test completion,
+  including tests that previously left asynchronous cleanup running.
+- The host-withdrawal fake tolerates its normal final cleanup as well as the
+  explicitly blocked withdrawal under test.
+- Pool selection tests live together. The default remote-node rejection test
+  injects a dialer that would succeed, so it cannot pass merely because a remote
+  address is unreachable.
+- All **37 named gateway tests** are retained, including their streaming, fencing,
+  authorization, cleanup serialization, and backend-replacement scenarios.
+
+Both Go suites, vet, gateway race tests, and the opt-in real-Docker SSE/replacement
+fixture pass after consolidation. The real-Docker fixture owns and removes only
+its uniquely named container/network and verifies complete streams through both
+container generations without published backend ports.
+
+These follow-up changes affect tests and documentation only; the deployed
+v4.0.7 runtime artifact remains unchanged. Unrelated foreground-tunnel work is
+preserved in the original checkout.

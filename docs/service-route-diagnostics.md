@@ -10,8 +10,10 @@ retry requests, refresh identities, alter Service approval, or change DNS.
 | `tailnet route dial failed` | First failed userspace dial and periodic summary. `target`, `network`, `error_class`, `dial_duration`, `failure_duration`, `failed_attempts`. |
 | `tailnet route dial recovered` | A previously failing target connected again. Includes failure duration and attempt count. This means TCP connected, not that the HTTP application passed acceptance. |
 | `tailnet route map sample` | Bounded asynchronous read from that process's identity: `target`, `device_id`, matching `candidates` with advertised `Allowed` and selected `Primary`, and `map_available`. No active connection or ping is issued by this sampler. |
-| `tailnet Service listener opened` | Service/port/backend and embedded or host transport. Unchanged configuration polls produce no new listener event. |
-| `tailnet Service listener withdrawn` | Assignment/backend and reason: `backend_changed`, `runtime_remove`, `configuration_withdrawal`, `lease_fenced`, or `shutdown`. Withdrawal alone does not establish hostname deletion intent. |
+| `tailnet Service listener opened` / `... configured` | Service/port/backend; opened for embedded transport, configured for an exact owned host Serve entry. Unchanged polls produce no new listener event. |
+| `tailnet Service backend updated without advertisement change` | New connections use the current backend while existing streams keep their original connection. This does not withdraw/reopen the Service. |
+| `tailnet Service listener withdrawing` | Withdrawal started, not a completion acknowledgment. Includes assignment/backend, `immediate`, and reason: `runtime_remove`, `configuration_withdrawal`, `lease_fenced`, or `shutdown`. It does not establish hostname deletion intent. |
+| `tailnet Service final cleanup failed` / `... drain failed; closing owned listener` | Advertisement cleanup or acceptor drain failed; inspect these separately from the withdrawal-start event. |
 | `forwarder assignment fenced…` / `…lease reacquired…` | Component, controller, Kubernetes node UID and last renewal. Broker failure fences listeners while retaining the same process-owned identity. |
 | `slow runtime configuration` | Control configuration duration, component and cancellation state. Correlate with broker/lease events to distinguish control delay from a missing data-plane route. |
 

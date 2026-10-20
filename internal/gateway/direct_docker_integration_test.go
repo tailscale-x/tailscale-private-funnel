@@ -41,9 +41,8 @@ func TestDirectDockerStreamingAndReplacement(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer client.Close()
-	conn := &directConnection{}
-	listeners := NewListenerManager(conn)
-	defer listeners.Close()
+	conn := &listenerFixtureConnection{}
+	listeners := listenerManagerFixture(t, conn)
 	config := Config{Docker: client, ListenerManager: listeners, Resolver: StaticResolver{"direct.example.com": {ApplicationID: "direct", ServiceName: "svc:direct", ServicePort: 8080, Enabled: true}}}
 	var previous string
 	for generation := 0; generation < 2; generation++ {
