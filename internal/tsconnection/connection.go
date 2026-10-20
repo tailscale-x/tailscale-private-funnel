@@ -70,7 +70,7 @@ func closeEmbedded(ephemeral bool, logout func(context.Context) error, closeServ
 }
 
 func (e *Embedded) ListenService(name string, mode tsnet.ServiceMode) (net.Listener, error) {
-	return e.Server.ListenService(name, mode)
+	return e.listenService(name, mode)
 }
 
 // Forwarder publishes a native daemon Service directly, without an extra relay.

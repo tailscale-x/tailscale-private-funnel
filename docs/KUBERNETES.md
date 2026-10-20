@@ -69,14 +69,39 @@ TLS material is mounted from an operator-owned Secret.
 A 60-second node assignment lease, renewed every 15 seconds, prevents competing
 forwarders. This protects active assignments, not network identity restoration.
 Forwarders stop advertising before a lost lease expires. An empty node does not erase
-another node's healthy application host. Only reachable ready endpoints on the same
-Kubernetes node are selected; there is no unrestricted ClusterIP/remote-node fallback.
+another node's healthy application host. New Service hosts require a reachable ready endpoint on their own node. Existing
+hosts prefer local endpoints and can use verified ready endpoints from the same
+authorized backend on another cluster node during Pod movement. No unrestricted
+ClusterIP or arbitrary-address fallback is used. This can add one cross-node hop.
+An already advertised listener has a two-minute endpoint-gap grace, evaluated on
+successful configuration polls;
+lease fencing and authorization withdrawal take precedence.
 
 Pods remain nonroot with dropped capabilities, read-only roots, seccomp, and scoped
 NetworkPolicies. There is no TUN, Docker socket, or host networking. Only the public
 load balancer adds NET_BIND_SERVICE.
 
 ## Routing and lifecycle
+
+Backend address/pool changes keep the existing Service listener and advertisement.
+Established TCP connections retain their original backend; new connections use the
+current pool. Moving a Pod does not create a new Tailscale Service or identity.
+
+The pinned SDK cannot be assumed to deliver a replacement Service host to an
+already-connected client promptly. Approval and configuration acknowledgment are
+not client-route acknowledgments. Do not withdraw an old host merely because a
+replacement is marked ready. See [handoff verification](verification/service-handoff-20261020.md) and the
+[verified ICMP-only peer-discovery remedy](verification/service-peer-discovery-20261020.md).
+
+Ordinary embedded listener shutdown quiesces the acceptor and gives existing streams up to
+30 seconds (20 seconds in the forwarder shutdown budget) before final SDK Serve
+and advertisement cleanup. Early advertisement withdrawal reproduced a stream
+interruption in live testing, so it is deferred until streams finish. This is an
+application-level quiesce, not a claim of seamless Tailscale host-election draining.
+New connections to a quiescing host can fail until routing selects another host.
+Revocation and assignment-lease loss cancel streams immediately. Killing a backend
+Pod cannot migrate its established TCP connections; applications still need their
+own readiness/termination drain for those connections.
 
 Standard Gateway API/Ingress validation, ReferenceGrant checks, route precedence,
 backend identity checks, prefix rewriting, status acknowledgments, and forwarding

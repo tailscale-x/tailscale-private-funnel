@@ -28,6 +28,12 @@ import (
 )
 
 func (c *Control) callerNodeContext(ctx context.Context, mode string) (store.NodeRecord, error) {
+	if n, ok := ctx.Value(verifiedComponentContext{}).(store.NodeRecord); ok {
+		if mode != "" && n.Mode != mode {
+			return n, fmt.Errorf("inactive or mismatched component")
+		}
+		return n, nil
+	}
 	st := c.Store.WithContext(ctx)
 	p := rpcPrincipal(ctx)
 	if p.NodeID == "" {
@@ -299,14 +305,15 @@ func (c *Control) acceptDirectReport(ctx context.Context, env report.Snapshot, n
 	if json.Unmarshal(env.Payload, &p) != nil || p.ExpiresAt <= time.Now().Unix() || p.ExpiresAt > env.Timestamp+300 {
 		return rpcFailure(connectCodeHTTP(400), errors.New("invalid report expiry"))
 	}
-	apps, err := c.Store.Applications()
+	reader := c.readControl(ctx)
+	apps, err := reader.Store.Applications()
 	if err != nil {
 		return rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
 	}
 	for _, e := range p.Exposures {
 		valid := false
 		for _, app := range apps {
-			if app.Enabled && app.ID == e.ApplicationID && app.BackendPort == e.Port && contains(app.PublicHostnames, e.PublicHostname) && c.selected(e.PublicHostname, node.ID) && app.ServiceName == e.ServiceName && e.ContainerID == "" {
+			if app.Enabled && app.ID == e.ApplicationID && app.BackendPort == e.Port && contains(app.PublicHostnames, e.PublicHostname) && reader.selected(e.PublicHostname, node.ID) && app.ServiceName == e.ServiceName && e.ContainerID == "" {
 				valid = true
 				break
 			}
@@ -316,15 +323,17 @@ func (c *Control) acceptDirectReport(ctx context.Context, env report.Snapshot, n
 		}
 	}
 
+	if err := configurationReadError(ctx, reader.Store); err != nil {
+		return err
+	}
 	encoded, _ := json.Marshal(env)
-	if err = c.Store.AcceptReport(node.ID, env.Nonce, encoded); err != nil {
+	if err = c.Store.WithContext(ctx).AcceptRuntimeReport(node.ID, env.Nonce, encoded, rpcPrincipal(ctx).RoleSelectors(), nil); err != nil {
 		status := 500
 		if strings.Contains(err.Error(), "nonce already") {
 			status = 409
 		}
 		return rpcFailure(connectCodeHTTP(status), errors.New(err.Error()))
 	}
-	_ = c.Store.SetJSON("node_policy_roles:"+node.ID, rpcPrincipal(ctx).RoleSelectors())
 	return nil
 }
 
@@ -332,8 +341,13 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Snap
 	// Accepted reports are durable desired state. A bounded background worker
 	// reconciles DNS and Service approvals; external outages must not consume the
 	// heartbeat lease or queue callers behind cleanup/provider operations.
-	c.reportMu.Lock()
-	defer c.reportMu.Unlock()
+	unlock, lockErr := c.lockReport(ctx, envelope.NodeID)
+	if lockErr != nil {
+		return lockErr
+	}
+	defer unlock()
+	reader := c.readControl(ctx)
+	writer := c.Store.WithContext(ctx)
 	if err := ctx.Err(); err != nil {
 		code := connect.CodeCanceled
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -341,7 +355,7 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Snap
 		}
 		return rpcFailure(code, err)
 	}
-	if err := c.policyStorageError(); err != nil {
+	if err := reader.policyStorageError(); err != nil {
 		return rpcFailure(connectCodeHTTP(503), errors.New("Exposure policy unavailable; retry later"))
 	}
 	if err := envelope.Validate(time.Now(), 5*time.Minute); err != nil {
@@ -351,7 +365,7 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Snap
 		return rpcFailure(connectCodeHTTP(400), errors.New("loadbalancer_id is not accepted in runtime reports"))
 	}
 	p := rpcPrincipal(ctx)
-	node, nodeErr := c.Store.Node(strings.TrimSpace(envelope.NodeID))
+	node, nodeErr := reader.Store.Node(strings.TrimSpace(envelope.NodeID))
 	if nodeErr == nil && node.Mode == "loadbalancer" {
 		return c.acceptDirectReport(ctx, envelope, node)
 	}
@@ -359,12 +373,12 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Snap
 		return rpcFailure(connectCodeHTTP(403), errors.New(fmt.Sprintf("report node does not match registered tailnet identity (report=%s whois=%s stored=%s err=%v)", envelope.NodeID, p.NodeID, node.TailnetID, nodeErr)))
 	}
 	if node.ParentID != "" {
-		parent, e := c.Store.Node(node.ParentID)
+		parent, e := reader.Store.Node(node.ParentID)
 		if e != nil || parent.Revoked {
 			return rpcFailure(connectCodeHTTP(403), errors.New("controller revoked"))
 		}
 	}
-	revoked, err := c.Store.NodeRevoked(strings.TrimSpace(envelope.NodeID))
+	revoked, err := reader.Store.NodeRevoked(strings.TrimSpace(envelope.NodeID))
 	if err != nil {
 		return rpcFailure(connectCodeHTTP(http.StatusInternalServerError), errors.New(err.Error()))
 	}
@@ -386,7 +400,7 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Snap
 	}
 	gatewayIDs := []string{node.ID, node.ParentID}
 	roles := p.RoleSelectors()
-	applications, applicationsErr := c.Store.Applications()
+	applications, applicationsErr := reader.Store.Applications()
 	if applicationsErr != nil {
 		return rpcFailure(connectCodeHTTP(http.StatusInternalServerError), errors.New(applicationsErr.Error()))
 	}
@@ -400,7 +414,7 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Snap
 			claims[key] = e.ContainerID
 		}
 	}
-	reportPayload.Exposures = c.expandDockerAliases(reportPayload.Exposures, applications, node, roles)
+	reportPayload.Exposures = reader.expandDockerAliases(reportPayload.Exposures, applications, node, roles)
 	// Keep the authenticated snapshot for audit; derive only current backend
 	// assignments from it. A known retired claim cannot starve other apps.
 	filtered := reportPayload.Exposures[:0]
@@ -408,7 +422,7 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Snap
 		if node.Mode == "docker-gateway" {
 			app, found := approvedApplication(applications, exposure)
 			valid := found && applicationAllows(app, node) && contains(app.PublicHostnames, exposure.PublicHostname)
-			retired, e := c.Store.RetiredDockerExposure(node.ID, exposure.ApplicationID, exposure.PublicHostname, exposure.ServiceName, exposure.Port)
+			retired, e := reader.Store.RetiredDockerExposure(node.ID, exposure.ApplicationID, exposure.PublicHostname, exposure.ServiceName, exposure.Port)
 			if e != nil {
 				return rpcFailure(connect.CodeUnavailable, e)
 			}
@@ -416,7 +430,7 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Snap
 				continue
 			}
 			if valid {
-				ok, e := c.Store.DockerDeclarationAllowed(node.ID, app, exposure.ContainerID, true)
+				ok, e := reader.Store.DockerDeclarationAllowed(node.ID, app, exposure.ContainerID, true)
 				if e != nil {
 					return rpcFailure(connect.CodeUnavailable, e)
 				}
@@ -442,10 +456,10 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Snap
 		}
 		exposure.ApplicationID = application.ID
 		exposure.ServiceName = application.ServiceName
-		if !c.applicationAnyEdgeAllowed(application, gatewayIDs, roles) {
+		if !reader.applicationAnyEdgeAllowed(application, gatewayIDs, roles) {
 			return rpcFailure(connectCodeHTTP(403), errors.New("gateway exposure is not allowed by the control policy"))
 		}
-		if _, err := c.managedZone(exposure.PublicHostname); err != nil {
+		if _, err := reader.managedZone(exposure.PublicHostname); err != nil {
 			return rpcFailure(connectCodeHTTP(400), errors.New(err.Error()))
 		}
 
@@ -454,27 +468,18 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Snap
 	if err != nil {
 		return rpcFailure(connectCodeHTTP(http.StatusBadRequest), errors.New(err.Error()))
 	}
-	if err := c.Store.AcceptReport(strings.TrimSpace(envelope.NodeID), envelope.Nonce, payload); err != nil {
-		if strings.Contains(err.Error(), "nonce already used") {
-			return rpcFailure(connectCodeHTTP(http.StatusConflict), errors.New(err.Error()))
-		}
-		return rpcFailure(connectCodeHTTP(http.StatusInternalServerError), errors.New(err.Error()))
+	if err := configurationReadError(ctx, reader.Store); err != nil {
+		return err
 	}
-	_ = c.Store.SetJSON("node_policy_roles:"+node.ID, roles)
-	activeBackends := map[string]bool{}
+	assignments := make([]store.BackendAssignment, 0, len(reportPayload.Exposures))
 	for _, exposure := range reportPayload.Exposures {
-		activeBackends[backendRecordID(envelope.NodeID, exposure)] = true
-		if err := c.Store.UpsertRegisteredBackend(store.BackendAssignment{
-			ID: backendRecordID(envelope.NodeID, exposure), ApplicationID: exposure.ApplicationID, NodeID: envelope.NodeID,
-			ContainerID: exposure.ContainerID, BackendIP: exposure.BackendIP, BackendPort: exposure.Port,
-			Networks: exposure.Networks, Reachable: exposure.Reachable, ConfigRevision: envelope.Timestamp,
-			LastSeen: time.Now().Unix(),
-		}); err != nil {
-			return rpcFailure(connectCodeHTTP(http.StatusInternalServerError), errors.New(err.Error()))
-		}
+		assignments = append(assignments, store.BackendAssignment{ID: backendRecordID(envelope.NodeID, exposure), ApplicationID: exposure.ApplicationID, NodeID: envelope.NodeID, ContainerID: exposure.ContainerID, BackendIP: exposure.BackendIP, BackendPort: exposure.Port, Networks: exposure.Networks, Reachable: exposure.Reachable, ConfigRevision: envelope.Timestamp, LastSeen: time.Now().Unix()})
 	}
-	if err := c.Store.ReconcileBackends(envelope.NodeID, activeBackends); err != nil {
-		return rpcFailure(connectCodeHTTP(http.StatusInternalServerError), errors.New(err.Error()))
+	if err := writer.AcceptRuntimeReport(envelope.NodeID, envelope.Nonce, payload, roles, assignments); err != nil {
+		if strings.Contains(err.Error(), "nonce already used") {
+			return rpcFailure(connect.CodeAlreadyExists, err)
+		}
+		return rpcFailure(connect.CodeUnavailable, err)
 	}
 	return nil
 }

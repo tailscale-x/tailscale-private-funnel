@@ -324,6 +324,15 @@ func (s *Store) SaveReport(nodeID string, payload []byte) error {
 }
 
 func (s *Store) AcceptReport(nodeID, nonce string, payload []byte) error {
+	return s.acceptReport(nodeID, nonce, payload, nil, nil)
+}
+
+// AcceptRuntimeReport commits the snapshot, nonce, roles and complete backend set
+// together. Failure leaves the prior acknowledged state intact.
+func (s *Store) AcceptRuntimeReport(nodeID, nonce string, payload []byte, roles []string, backends []BackendAssignment) error {
+	return s.acceptReport(nodeID, nonce, payload, &roles, &backends)
+}
+func (s *Store) acceptReport(nodeID, nonce string, payload []byte, roles *[]string, backends *[]BackendAssignment) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -355,6 +364,30 @@ func (s *Store) AcceptReport(nodeID, nonce string, payload []byte) error {
 	}
 	if _, err := tx.Exec(`UPDATE nodes SET last_report=? WHERE id=?`, time.Now().Unix(), nodeID); err != nil {
 		return err
+	}
+	if roles != nil {
+		value, err := json.Marshal(*roles)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.Exec(`INSERT INTO settings(name,value,secret) VALUES(?,?,0) ON CONFLICT(name) DO UPDATE SET value=excluded.value,secret=0 WHERE settings.value<>excluded.value OR settings.secret<>0`, "node_policy_roles:"+nodeID, string(value)); err != nil {
+			return err
+		}
+	}
+	if backends != nil {
+		active := map[string]bool{}
+		for _, b := range *backends {
+			if b.NodeID != nodeID {
+				return fmt.Errorf("backend node does not match report")
+			}
+			if err := upsertBackend(tx, b, true); err != nil {
+				return err
+			}
+			active[b.ID] = true
+		}
+		if err := reconcileBackends(tx, nodeID, active); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -917,7 +950,16 @@ func (s *Store) UpsertBackend(sc BackendAssignment) error { return s.upsertBacke
 
 // Runtime reports cannot resurrect assignments after either identity is revoked.
 func (s *Store) UpsertRegisteredBackend(sc BackendAssignment) error { return s.upsertBackend(sc, true) }
+
+type backendSQL interface {
+	Exec(string, ...any) (sql.Result, error)
+	Query(string, ...any) (*sql.Rows, error)
+}
+
 func (s *Store) upsertBackend(sc BackendAssignment, enrolled bool) error {
+	return upsertBackend(s.db, sc, enrolled)
+}
+func upsertBackend(db backendSQL, sc BackendAssignment, enrolled bool) error {
 	networks, _ := json.Marshal(sc.Networks)
 	query := `INSERT INTO backend_assignments(id,application_id,node_id,container_id,backend_ip,backend_port,networks,reachable,config_revision,last_seen,revoked) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET application_id=excluded.application_id,node_id=excluded.node_id,container_id=excluded.container_id,backend_ip=excluded.backend_ip,backend_port=excluded.backend_port,networks=excluded.networks,reachable=excluded.reachable,config_revision=excluded.config_revision,last_seen=excluded.last_seen,revoked=excluded.revoked`
 	args := []any{sc.ID, sc.ApplicationID, sc.NodeID, sc.ContainerID, sc.BackendIP, sc.BackendPort, string(networks), boolInt(sc.Reachable), sc.ConfigRevision, sc.LastSeen, boolInt(sc.Revoked)}
@@ -925,7 +967,7 @@ func (s *Store) upsertBackend(sc BackendAssignment, enrolled bool) error {
 		query = strings.Replace(query, "VALUES(?,?,?,?,?,?,?,?,?,?,?)", "SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM nodes n WHERE n.id=? AND n.revoked=0 AND NOT EXISTS(SELECT 1 FROM component_instances i LEFT JOIN nodes p ON p.id=i.parent_id WHERE i.component_id=n.id AND i.parent_id<>'' AND (p.id IS NULL OR p.revoked<>0)))", 1)
 		args = append(args, sc.NodeID)
 	}
-	result, err := s.db.Exec(query, args...)
+	result, err := db.Exec(query, args...)
 	if err == nil && enrolled {
 		count, e := result.RowsAffected()
 		if e != nil {
@@ -939,7 +981,10 @@ func (s *Store) upsertBackend(sc BackendAssignment, enrolled bool) error {
 }
 
 func (s *Store) ReconcileBackends(nodeID string, active map[string]bool) error {
-	rows, err := s.db.Query(`SELECT id FROM backend_assignments WHERE node_id=?`, nodeID)
+	return reconcileBackends(s.db, nodeID, active)
+}
+func reconcileBackends(db backendSQL, nodeID string, active map[string]bool) error {
+	rows, err := db.Query(`SELECT id FROM backend_assignments WHERE node_id=? AND revoked=0`, nodeID)
 	if err != nil {
 		return err
 	}
@@ -958,7 +1003,7 @@ func (s *Store) ReconcileBackends(nodeID string, active map[string]bool) error {
 		return err
 	}
 	for _, id := range stale {
-		if _, err := s.db.Exec(`UPDATE backend_assignments SET revoked=1,last_seen=? WHERE id=?`, time.Now().Unix(), id); err != nil {
+		if _, err := db.Exec(`UPDATE backend_assignments SET revoked=1,last_seen=? WHERE id=?`, time.Now().Unix(), id); err != nil {
 			return err
 		}
 	}

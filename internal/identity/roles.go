@@ -90,6 +90,14 @@ func PolicyTemplate(installation string, port uint16) (Policy, error) {
 	p.TagOwners[control] = []string{"autogroup:admin", Tag(installation, Control)}
 	p.TagOwners[app] = []string{"autogroup:admin", Tag(installation, Control)}
 	p.Grants = []Grant{{runtime, []string{control}, []string{fmt.Sprintf("tcp:%d", port)}}, {[]string{"autogroup:owner", "autogroup:admin"}, []string{control}, []string{fmt.Sprintf("tcp:%d", port)}}, {[]string{Tag(installation, LoadBalancer)}, []string{app}, []string{"tcp:*"}}}
+	// Service-only access may leave a newly approved host absent from an
+	// existing client's peer map. ICMP keeps only these installation peers
+	// discoverable; backend TCP/UDP remains accessible solely via Services.
+	p.Grants = append(p.Grants, Grant{
+		Src: []string{Tag(installation, LoadBalancer)},
+		Dst: []string{Tag(installation, DockerGateway), Tag(installation, TailnetGateway), Tag(installation, KubernetesGateway)},
+		IP:  []string{"icmp:*"},
+	})
 	p.AutoApprovers.Services = map[string][]string{control: {Tag(installation, Control)}, app: {Tag(installation, DockerGateway), Tag(installation, TailnetGateway), Tag(installation, KubernetesGateway)}}
 	return p, nil
 }

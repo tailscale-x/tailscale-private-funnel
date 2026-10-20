@@ -54,7 +54,7 @@ spec:
         {{- else }}
         - namespaceSelector: {}
         {{- end }}
-      # Only verified node-local Pod endpoints are dialed by the process.
+      # Only verified ready Pod endpoints are dialed; local endpoints are preferred.
       ports: [{protocol: TCP, port: 1, endPort: 65535}]
     - to:
         - ipBlock:

@@ -156,3 +156,38 @@ After completion, another policy-authorized gateway may claim the hostname throu
 normal reporting and readiness checks. This is cleanup followed by fresh
 provisioning, not an implicit transfer or an ownership bypass. No SQL edits,
 unowned-record deletion, or Tailscale ACL changes are required.
+
+## Bounded runtime report processing
+
+Runtime authentication is verified once per request using WhoIs, installation role,
+component registration and active instance. The verified binding is reused only
+within that request; it is never cached between callers or requests. Revocation
+and parent checks remain enforced by the storage mutation.
+
+Report and Docker inventory ordering uses bounded, cancellation-aware component
+lock stripes. A slow component no longer holds one installation-wide report
+mutex. Report validation reads use an operation-scoped metadata view. Snapshot,
+nonce, roles, backend updates and removal of stale assignments commit in one
+transaction, so a failed write preserves the prior acknowledged state. Already
+revoked assignments are not rewritten on every report. Identical JSON settings
+are not updated, reducing PostgreSQL WAL traffic without weakening durability or
+increasing the serialized database connection pool.
+
+No HTTP timeout was extended and no readiness flag is forced true. A gateway
+still needs a successful publication acknowledgment before startup readiness.
+Continuous health verification also checks report freshness, active leases and
+public probes; startup readiness alone is not proof of continued control access.
+
+Bounded slow-RPC logs separate authorization and handler time, without payloads
+or credentials. Slow storage logs include operation type, source location and
+connection-pool statistics, never SQL text or arguments. Pool wait totals are
+process-wide cumulative values, not the wait of one individual request.
+
+A missing Tailscale Service peer is a distinct transport failure. Storage batching
+does not manufacture routes, replace identities, change ACLs or bypass approval.
+Follow the current CloudNativePG primary when inspecting data after failover.
+
+A previously configured load balancer starts its bound route cache before waiting
+for registration. Registration retries in the background; explicit authorization
+denial stops it. Fresh instances still require registration. This preserves the
+dataplane during control-Service loss without authorizing new assignments.

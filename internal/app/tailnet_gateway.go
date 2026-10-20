@@ -16,7 +16,7 @@ import (
 
 func runTailnetGateway(ctx context.Context, o Options, s tsconnection.Connection) error {
 	session := gateway.Session{Resolver: gateway.RPCResolver{BaseURL: o.ManagementURL, NodeID: loadBalancerNodeID(o.DataDir), Client: tsnetHTTPClient(s)}, Listeners: gateway.NewListenerManager(s), Agent: report.Agent{NodeID: loadBalancerNodeID(o.DataDir), ManagementURL: o.ManagementURL, DataDir: o.DataDir, HTTPClient: tsnetHTTPClient(s)}}
-	defer session.Listeners.Close()
+	defer drainGatewayListeners(session.Listeners)
 	reconcile := func() {
 		peers, err := gatewayPeers(ctx, s)
 		if err != nil {

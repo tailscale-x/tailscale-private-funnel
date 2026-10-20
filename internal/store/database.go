@@ -3,6 +3,12 @@ package store
 import (
 	"context"
 	"database/sql"
+	"log/slog"
+	"path/filepath"
+	"runtime"
+	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -41,15 +47,19 @@ func bind(q string, postgres bool) string {
 	return q
 }
 func (d *database) Exec(q string, args ...any) (sql.Result, error) {
+	defer d.observeSQL(time.Now(), "exec")
 	return d.DB.ExecContext(queryContext(d.ctx), bind(q, d.postgres), arguments(args, d.postgres)...)
 }
 func (d *database) Query(q string, args ...any) (*sql.Rows, error) {
+	defer d.observeSQL(time.Now(), "query")
 	return d.DB.QueryContext(queryContext(d.ctx), bind(q, d.postgres), arguments(args, d.postgres)...)
 }
 func (d *database) QueryRow(q string, args ...any) *sql.Row {
+	defer d.observeSQL(time.Now(), "query_row")
 	return d.DB.QueryRowContext(queryContext(d.ctx), bind(q, d.postgres), arguments(args, d.postgres)...)
 }
 func (d *database) Begin() (*transaction, error) {
+	defer d.observeSQL(time.Now(), "begin")
 	t, e := d.DB.BeginTx(queryContext(d.ctx), nil)
 	if e != nil {
 		return nil, e
@@ -88,4 +98,17 @@ func arguments(in []any, postgres bool) []any {
 		}
 	}
 	return out
+}
+
+// Pool wait is included. Never log query text or arguments, which may contain secrets.
+var slowSQLLog = rate.NewLimiter(rate.Every(2*time.Second), 4)
+
+func (d *database) observeSQL(start time.Time, operation string) {
+	elapsed := time.Since(start)
+	if elapsed < time.Second || !slowSQLLog.Allow() {
+		return
+	}
+	_, file, line, _ := runtime.Caller(2)
+	stats := d.DB.Stats()
+	slog.Warn("slow control storage operation", "operation", operation, "source", filepath.Base(file), "line", line, "elapsed", elapsed, "pool_in_use", stats.InUse, "pool_waits", stats.WaitCount, "pool_wait_total", stats.WaitDuration)
 }

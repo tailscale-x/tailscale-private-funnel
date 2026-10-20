@@ -83,7 +83,7 @@ func ForwardDial(ctx context.Context, listener net.Listener, target string, dial
 	if err := contextErr(ctx); err != nil {
 		return err
 	}
-	drainCtx, cancel := context.WithCancel(context.Background())
+	drainCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var active sync.WaitGroup
 	stop := context.AfterFunc(ctx, func() { _ = listener.Close() })
@@ -93,7 +93,7 @@ func ForwardDial(ctx context.Context, listener net.Listener, target string, dial
 		go func() { active.Wait(); close(done) }()
 		select {
 		case <-done:
-		case <-time.After(8 * time.Second):
+		case <-time.After(30 * time.Second):
 			cancel()
 			<-done
 		}

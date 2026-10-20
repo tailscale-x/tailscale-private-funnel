@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,12 @@ import (
 )
 
 func registerRuntime(ctx context.Context, mode string, o *Options, c tsconnection.Connection) (tsconnection.Connection, error) {
+	return registerRuntimeWithCache(ctx, mode, o, c, nil)
+}
+
+// Only Serve supplies a failure channel. A valid component-bound cache permits
+// retained dataplane startup; registration still gates all control operations.
+func registerRuntimeWithCache(ctx context.Context, mode string, o *Options, c tsconnection.Connection, failure chan<- error) (tsconnection.Connection, error) {
 	st, e := c.Up(ctx)
 	if e != nil {
 		return nil, e
@@ -67,22 +74,59 @@ func registerRuntime(ctx context.Context, mode string, o *Options, c tsconnectio
 		nodeUID = o.NodeUID
 	}
 	rpc := funnelv1connect.NewNodeServiceClient(tsnetHTTPClient(c), o.ManagementURL)
-	registerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	for {
-		_, e = rpc.RegisterComponent(registerCtx, connect.NewRequest(&v1.RegisterComponentRequest{ComponentId: o.ComponentID, InstanceId: o.InstanceID, Deployment: d, ParentId: o.ParentID, NodeUid: nodeUID}))
-		if e == nil {
-			break
+	request := &v1.RegisterComponentRequest{ComponentId: o.ComponentID, InstanceId: o.InstanceID, Deployment: d, ParentId: o.ParentID, NodeUid: nodeUID}
+	attempt := func(ctx context.Context) error {
+		registerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+		for {
+			_, e = rpc.RegisterComponent(registerCtx, connect.NewRequest(request))
+			if e == nil {
+				break
+			}
+			code := connect.CodeOf(e)
+			if code != connect.CodeAborted && code != connect.CodeUnavailable && code != connect.CodeDeadlineExceeded {
+				return e
+			}
+			select {
+			case <-registerCtx.Done():
+				return registerCtx.Err()
+			case <-time.After(2 * time.Second):
+			}
 		}
-		code := connect.CodeOf(e)
-		if code != connect.CodeAborted && code != connect.CodeUnavailable && code != connect.CodeDeadlineExceeded {
-			return nil, e
-		}
-		select {
-		case <-registerCtx.Done():
-			return nil, registerCtx.Err()
-		case <-time.After(2 * time.Second):
+		return nil
+	}
+	bound := &tsconnection.Bound{Connection: c, ComponentID: o.ComponentID, InstanceID: o.InstanceID}
+	if failure != nil && mode == "loadbalancer" {
+		if _, cacheErr := loadRouteCache(*o); cacheErr == nil {
+			go func() {
+				for {
+					err := attempt(ctx)
+					if err == nil || ctx.Err() != nil {
+						return
+					}
+					code := connect.CodeOf(err)
+					transient := code == connect.CodeAborted || code == connect.CodeUnavailable || code == connect.CodeDeadlineExceeded || errors.Is(err, context.DeadlineExceeded)
+					if !transient {
+						select {
+						case failure <- err:
+						case <-ctx.Done():
+						}
+						return
+					}
+					slog.Warn("retained load balancer awaiting control registration", "code", code.String())
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(5 * time.Second):
+					}
+				}
+			}()
+			return bound, nil
 		}
 	}
-	return &tsconnection.Bound{Connection: c, ComponentID: o.ComponentID, InstanceID: o.InstanceID}, nil
+	if err := attempt(ctx); err != nil {
+		return nil, err
+	}
+
+	return bound, nil
 }

@@ -93,7 +93,7 @@ func TestDirectCaddySSECompletesHTTP1AndHTTP2AcrossReload(t *testing.T) {
 	selected["automatic_https"] = map[string]any{"disable": true}
 	selected["tls_connection_policies"] = []any{map[string]any{}}
 	root["admin"] = map[string]any{"disabled": true}
-	root["apps"] = map[string]any{"http": map[string]any{"servers": map[string]any{"test": selected}}, "tls": map[string]any{"certificates": map[string]any{"load_pem": []any{map[string]any{"certificate": string(certPEM), "key": string(keyPEM)}}}}}
+	root["apps"] = map[string]any{"http": map[string]any{"servers": map[string]any{"test": selected}}, "tls": map[string]any{"disable_storage_clean": true, "certificates": map[string]any{"load_pem": []any{map[string]any{"certificate": string(certPEM), "key": string(keyPEM)}}}}}
 	raw, e = json.Marshal(root)
 	if e != nil {
 		t.Fatal(e)

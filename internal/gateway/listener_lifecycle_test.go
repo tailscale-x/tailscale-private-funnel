@@ -23,7 +23,7 @@ func (c *listenerFixtureConnection) ListenService(string, tsnet.ServiceMode) (ne
 	return net.Listen("tcp", "127.0.0.1:0")
 }
 func (c *listenerFixtureConnection) count() int { c.mu.Lock(); defer c.mu.Unlock(); return c.opens }
-func TestUnchangedServiceListenerSurvivesPollsAndOnlyChangedBackendReopens(t *testing.T) {
+func TestBackendChangesKeepServiceListenerOpen(t *testing.T) {
 	c := &listenerFixtureConnection{}
 	m := NewListenerManager(c)
 	defer m.Close()
@@ -39,8 +39,8 @@ func TestUnchangedServiceListenerSurvivesPollsAndOnlyChangedBackendReopens(t *te
 	if err := m.Listen(t.Context(), "svc:app", 80, "127.0.0.1:8001"); err != nil {
 		t.Fatal(err)
 	}
-	if c.count() != 2 {
-		t.Fatal("changed backend did not replace listener")
+	if c.count() != 1 {
+		t.Fatal("changed backend replaced stable listener")
 	}
 }
 func TestFencedServiceCannotReopenUntilLeaseReacquired(t *testing.T) {

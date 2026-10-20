@@ -36,7 +36,7 @@ type Control struct {
 	settingsMu        sync.Mutex
 	policyMu          sync.Mutex
 	cleanupMu         sync.Mutex
-	reportMu          sync.Mutex // Local report/state writes only; never external I/O.
+	reportLocks       [64]contextMutex // Bounded per-component serialization; no external I/O.
 	shutdownMu        sync.Mutex
 	serviceApprovalMu sync.Mutex
 	syncMu            contextMutex

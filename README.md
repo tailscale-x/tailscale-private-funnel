@@ -59,7 +59,7 @@ flowchart LR
   LB -->|Encrypted application Service TCP| K8s[Node-local Kubernetes forwarders]
   Docker -->|Direct container IP and port| Container[Approved Docker backend]
   Tailnet -->|Explicit tailnet grant| Machine[Selected backend machine]
-  K8s -->|Ready same-node endpoint only| Pod[Application Pod]
+  K8s -->|Verified ready Pod, local first| Pod[Application Pod]
   Runtime[Installation role-tagged runtimes] -->|WhoIs-authenticated control Service| Control[Private control]
   Humans[Authorized Owner/Admin] --> Control
   Control -->|Exact owned records only| DNS[DNS provider]
@@ -208,3 +208,6 @@ integration acceptance; local unit tests do not prove a live rollout. Build loca
 or in CI. See the [v4.0.1 rollout evidence](docs/verification/v4.0.1-rollout.md)
 and [fresh-name DNS fix](docs/verification/cloudflare-complete-names-20261019.md)
 for deployed artifacts, routing checks, and the stable/development release boundary.
+
+Service-host replacement acceptance and the required ICMP-only peer-discovery grant
+are recorded in [Service peer-discovery recovery](docs/verification/service-peer-discovery-20261020.md).

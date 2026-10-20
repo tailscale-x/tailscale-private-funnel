@@ -24,9 +24,39 @@ Tag owners include `autogroup:admin`. The installation control role also owns bo
 Service's configured TCP port. Human Owner/Admin devices can reach that Service.
 Load balancers can reach application Service TCP ports. Control hosts automatically
 advertise the control Service; gateway roles automatically advertise application
-Services through `autoApprovers.services`. The template grants no general
-component-device connectivity. Additional Tailnet backend access needs explicit
-administrator-managed grants.
+Services through `autoApprovers.services`.
+
+Load balancers also receive **ICMP-only** access to this installation’s Docker,
+Tailnet, and Kubernetes gateway devices. This keeps gateway peers discoverable
+before their Service advertisement changes; it opens no device TCP/UDP backend
+ports. [Tailscale documents ICMP as sufficient for peer discovery](https://tailscale.com/docs/features/app-connectors).
+The Service-specific requirement here is verified by [live host-replacement tests](verification/service-peer-discovery-20261020.md) with the pinned runtime.
+Keep this grant alongside the application-Service TCP grant and auto-approvers;
+Service approval alone does not guarantee an existing client receives the host route.
+There is no general component-device TCP/UDP connectivity. Additional Tailnet
+backend access needs explicit administrator-managed grants.
+
+For installation `main`, the peer-discovery grant is:
+
+```json
+{
+  "src": ["tag:tailscale-private-funnel-main-loadbalancer"],
+  "dst": [
+    "tag:tailscale-private-funnel-main-docker-gateway",
+    "tag:tailscale-private-funnel-main-tailnet-gateway",
+    "tag:tailscale-private-funnel-main-k8s-gateway"
+  ],
+  "ip": ["icmp:*"]
+}
+```
+
+Use your own installation slug consistently. This rule grants neither management
+access nor application TCP/UDP access to gateway device addresses. It is not a
+health-server port and requires no additional listener. Do not replace it with
+`tcp:*` access to gateway devices. When diagnosing Service turnover, verify the
+existing load balancer's peer map and test actual replacement hosts; a newly
+joined diagnostic client can mask missing updates on an older client.
+
 
 Different installations have different tags. Existing broad allows remain effective;
 the generated policy cannot subtract access already allowed by your tailnet.

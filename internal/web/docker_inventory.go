@@ -85,12 +85,15 @@ func (c *Control) acceptDockerInventory(ctx context.Context, env report.Snapshot
 		inv.Containers = append(inv.Containers, item)
 	}
 	// Serialize only local inventory/report writes, never external provisioning.
-	c.reportMu.Lock()
-	defer c.reportMu.Unlock()
+	unlock, err := c.lockReport(ctx, n.ID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	_, err = c.Store.AcceptDockerInventory(n.ID, env.Nonce, inv)
+	_, err = c.Store.WithContext(ctx).AcceptDockerInventory(n.ID, env.Nonce, inv)
 	if err != nil {
 		return rpcFailure(connect.CodeAborted, err)
 	}

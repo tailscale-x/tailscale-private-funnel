@@ -4,23 +4,50 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
+	"time"
+
+	"golang.org/x/time/rate"
 
 	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 	funnelv1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1/funnelv1connect"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/rpc"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
+
+type verifiedComponentContext struct{}
+
+var slowRPCLog = rate.NewLimiter(rate.Every(2*time.Second), 4)
 
 // rpcInterceptor derives authorization from the connection and the method's
 // protobuf options. No permission or identity supplied in metadata is trusted.
 func (c *Control) rpcInterceptor() connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
-		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		return func(ctx context.Context, req connect.AnyRequest) (response connect.AnyResponse, err error) {
+			start := time.Now()
+			var handlerAt, auditAt time.Time
+			defer func() {
+				if elapsed := time.Since(start); elapsed >= time.Second && slowRPCLog.Allow() {
+					if handlerAt.IsZero() {
+						handlerAt = time.Now()
+					}
+					if auditAt.IsZero() {
+						auditAt = handlerAt
+					}
+					code := "ok"
+					if err != nil {
+						code = connect.CodeOf(err).String()
+					}
+					node, _ := ctx.Value(verifiedComponentContext{}).(store.NodeRecord)
+					slog.Warn("slow control RPC", "procedure", req.Spec().Procedure, "component", node.ID, "elapsed", elapsed, "authorization_elapsed", handlerAt.Sub(start), "handler_elapsed", auditAt.Sub(handlerAt), "code", code, "context_error", ctx.Err())
+				}
+			}()
 			p, _ := ctx.Value(principalKey{}).(Principal)
 			if p.NodeID == "" {
 				return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("verified Tailscale identity required"))
@@ -54,11 +81,13 @@ func (c *Control) rpcInterceptor() connect.UnaryInterceptorFunc {
 			}
 			if permission == funnelv1.Permission_PERMISSION_NODE && req.Spec().Procedure != funnelv1connect.NodeServiceRegisterComponentProcedure {
 				ctx = context.WithValue(ctx, componentContext{}, componentContext{ID: req.Header().Get("Funnel-Component-ID"), Instance: req.Header().Get("Funnel-Instance-ID")})
+				var node store.NodeRecord
 				var err error
-				_, err = c.callerNodeContext(ctx, "")
+				node, err = c.callerNodeContext(ctx, "")
 				if err != nil {
 					return nil, rpcFailure(connect.CodePermissionDenied, err)
 				}
+				ctx = context.WithValue(ctx, verifiedComponentContext{}, node)
 			}
 			ctx = context.WithValue(ctx, principalKey{}, p)
 			actor := p.Login
@@ -79,7 +108,9 @@ func (c *Control) rpcInterceptor() connect.UnaryInterceptorFunc {
 				}
 			}
 			sensitive, _ := proto.GetExtension(method.Options(), funnelv1.E_Sensitive).(bool)
-			response, err := next(ctx, req)
+			handlerAt = time.Now()
+			response, err = next(ctx, req)
+			auditAt = time.Now()
 			if response != nil && sensitive {
 				response.Header().Set("Cache-Control", "no-store")
 			}
