@@ -92,12 +92,9 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 	agent := report.Agent{NodeID: state.NodeId, ManagementURL: state.ManagementUrl, DataDir: data, HTTPClient: httpClient}
 	listeners := gateway.NewListenerManager(s)
 	lease.attach(listeners)
-	defer listeners.Close()
 	defer func() {
 		ready.Store(false)
-		drain, stop := context.WithTimeout(context.Background(), 20*time.Second)
-		listeners.CloseWait(drain)
-		stop()
+		drainGatewayListeners(listeners)
 		final, stop := context.WithTimeout(context.Background(), 5*time.Second)
 		_ = agent.Send(final, nil)
 		stop()

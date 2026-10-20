@@ -1,5 +1,9 @@
 # Service-route code and artifact review — 20 October 2026
 
+> **Historical checkpoint.** The missing ICMP discovery grants were established
+> later. Use the [current diagnosis and runbook](../service-route-diagnostics.md);
+> unreleased/unresolved statements below refer to this checkpoint's time.
+
 ## Scope and status
 
 Review covers the routing-outage investigation: report starvation, DNS/route

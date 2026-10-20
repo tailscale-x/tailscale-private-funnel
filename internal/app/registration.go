@@ -76,57 +76,65 @@ func registerRuntimeWithCache(ctx context.Context, mode string, o *Options, c ts
 	rpc := funnelv1connect.NewNodeServiceClient(tsnetHTTPClient(c), o.ManagementURL)
 	request := &v1.RegisterComponentRequest{ComponentId: o.ComponentID, InstanceId: o.InstanceID, Deployment: d, ParentId: o.ParentID, NodeUid: nodeUID}
 	attempt := func(ctx context.Context) error {
-		registerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		defer cancel()
-		for {
-			_, e = rpc.RegisterComponent(registerCtx, connect.NewRequest(request))
-			if e == nil {
-				break
-			}
-			code := connect.CodeOf(e)
-			if code != connect.CodeAborted && code != connect.CodeUnavailable && code != connect.CodeDeadlineExceeded {
-				return e
-			}
-			select {
-			case <-registerCtx.Done():
-				return registerCtx.Err()
-			case <-time.After(2 * time.Second):
-			}
-		}
-		return nil
+		_, err := rpc.RegisterComponent(ctx, connect.NewRequest(request))
+		return err
 	}
 	bound := &tsconnection.Bound{Connection: c, ComponentID: o.ComponentID, InstanceID: o.InstanceID}
 	if failure != nil && mode == "loadbalancer" {
 		if _, cacheErr := loadRouteCache(*o); cacheErr == nil {
 			go func() {
-				for {
-					err := attempt(ctx)
-					if err == nil || ctx.Err() != nil {
-						return
+				var lastNotice time.Time
+				notice := func(err error) {
+					if now := time.Now(); lastNotice.IsZero() || now.Sub(lastNotice) >= 2*time.Minute {
+						slog.Warn("retained load balancer awaiting control registration", "code", connect.CodeOf(err).String())
+						lastNotice = now
 					}
-					code := connect.CodeOf(err)
-					transient := code == connect.CodeAborted || code == connect.CodeUnavailable || code == connect.CodeDeadlineExceeded || errors.Is(err, context.DeadlineExceeded)
-					if !transient {
-						select {
-						case failure <- err:
-						case <-ctx.Done():
-						}
-						return
-					}
-					slog.Warn("retained load balancer awaiting control registration", "code", code.String())
+				}
+				if err := retryRegistration(ctx, attempt, 2*time.Second, notice); err != nil && ctx.Err() == nil {
 					select {
+					case failure <- err:
 					case <-ctx.Done():
-						return
-					case <-time.After(5 * time.Second):
 					}
 				}
 			}()
 			return bound, nil
 		}
 	}
-	if err := attempt(ctx); err != nil {
+	registerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	if err := retryRegistration(registerCtx, attempt, 2*time.Second, nil); err != nil {
 		return nil, err
 	}
 
 	return bound, nil
+}
+
+// One retry policy serves fresh startup and retained edge recovery. The caller
+// supplies the lifetime: fresh registration is bounded; an authorized retained
+// edge retries until cancellation. Explicit denial always returns immediately.
+func retryRegistration(ctx context.Context, attempt func(context.Context) error, delay time.Duration, notice func(error)) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := attempt(ctx)
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		code := connect.CodeOf(err)
+		if code != connect.CodeAborted && code != connect.CodeUnavailable && code != connect.CodeDeadlineExceeded && !errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		if notice != nil {
+			notice(err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+	}
 }

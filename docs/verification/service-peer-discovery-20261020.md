@@ -90,8 +90,9 @@ Final verification:
   canonical checkout, retaining unrelated foreground-tunnel work.
 
 Final live acceptance completed on 20 October 2026.
-The policy remedy is live; generator/guidance changes are source changes for the
-next control artifact. No stable tag, release or production binary update was made.
+At this test checkpoint the policy remedy was live and generator/guidance changes
+were source-only. They subsequently shipped in v4.0.5; the control-host extension
+shipped in v4.0.6. See the [released rollout](released-v4.0.6-20261020.md).
 
 ## Scope and remaining limits
 
@@ -101,10 +102,10 @@ implementation or guarantee zero outage when the only eligible forwarder is stop
 Keep the earlier listener/draining and independent lease-renewal fixes; the policy
 addresses missing peer maps, not application draining or conflicting writers.
 
-The generated policy, API warning and control setup guidance now include this
-prerequisite. The live fix requires only the approved tailnet policy change; no
-production binary roll was needed for it. The updated generator will appear in
-the next control artifact. No release/tag was created.
+The generated policy, API warning and control setup guidance include this
+prerequisite in released artifacts. The live discovery repair itself required
+only the approved tailnet policy change, with no production binary roll. Later
+released binary updates included the separately tested lifecycle/report fixes.
 
 ## Evidence
 

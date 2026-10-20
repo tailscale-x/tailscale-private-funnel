@@ -1,5 +1,9 @@
 # Service lifecycle development rollout — 20 October 2026
 
+> **Historical checkpoint.** The missing ICMP discovery grants were established
+> later. Use the [current diagnosis and runbook](../service-route-diagnostics.md);
+> unreleased/unresolved statements below refer to this checkpoint's time.
+
 ## Artifact and deployment
 
 - Runtime version: `dev-v404-service-lifecycle-20261020`.

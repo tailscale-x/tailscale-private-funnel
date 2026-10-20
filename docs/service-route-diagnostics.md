@@ -67,7 +67,23 @@ dial plan and Disco path (direct, DERP or peer relay). It refuses kernel fallbac
 It never starts a second tsnet identity. Unlike passive logging, this command
 performs bounded active diagnostics; correlate its own timestamps with the failure.
 
-The Service-map delivery/selection issue remains under investigation. Do not
-replace identities, reset devices, or create diagnostic hosts automatically as a
-routing repair. See the [investigation](verification/service-route-root-cause-20261020.md)
-and [consolidation review](verification/service-route-consolidation-20261020.md).
+## Verified policy prerequisite
+
+The October investigation found that Service-only access omitted replacement
+Service hosts from existing clients' peer maps. Use both installation-scoped
+ICMP-only discovery grants in [Tailscale roles](TAILSCALE-ROLES.md):
+load balancers to gateway devices, and runtime consumers to control devices.
+These grants open no device TCP/UDP application ports. Funnel generates the
+policy; an administrator reviews and applies it.
+
+Check this prerequisite before pursuing transport or SDK recovery. An absent
+peer precedes direct/DERP/peer-relay selection. Once policy is correct, correlate
+map observations with Service approval, backend readiness, lease fencing and
+cluster events. Do not replace identities, reset devices, or create diagnostic
+hosts automatically as a routing repair.
+
+The [peer-discovery acceptance](verification/service-peer-discovery-20261020.md),
+[control replacement test](verification/control-peer-discovery-20261020.md), and
+[released rollout](verification/released-v4.0.6-20261020.md) supersede the earlier
+unresolved-policy hypothesis. Historical investigation notes retain their original
+test observations; they are not current operational instructions.

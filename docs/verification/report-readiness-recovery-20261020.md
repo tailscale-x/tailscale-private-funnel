@@ -1,5 +1,9 @@
 # Runtime report and edge-startup recovery — 20 October 2026
 
+> **Historical checkpoint.** The missing ICMP discovery grants were established
+> later. Use the [current diagnosis and runbook](../service-route-diagnostics.md);
+> unreleased/unresolved statements below refer to this checkpoint's time.
+
 ## Acceptance status
 
 Tiny's report handling and startup readiness recovered. Subsequent live verification found all 15 current runtime components with fresh health and unexpired leases, all eight DLKN HTTPRoutes and its Gateway Programmed at their current generations, and all nine public HTTPS health checks passing. The approved temporary policy diagnostic was removed and the exact original policy verified. This is a recovery observation, not a permanent fix for upstream Service-map notification.

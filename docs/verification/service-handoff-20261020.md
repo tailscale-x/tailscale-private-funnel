@@ -1,5 +1,9 @@
 # Service lifetime and Pod-move verification — 20 October 2026
 
+> **Historical checkpoint.** The missing ICMP discovery grants were established
+> later. Use the [current diagnosis and runbook](../service-route-diagnostics.md);
+> unreleased/unresolved statements below refer to this checkpoint's time.
+
 ## Scope and result
 
 Implemented in the checkout and tested using isolated fixture Pods on real DLKN

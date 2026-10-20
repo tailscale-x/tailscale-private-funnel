@@ -1,5 +1,9 @@
 # Service-route investigation and forwarder identity continuity — 20 October 2026
 
+> **Historical checkpoint.** The missing ICMP discovery grants were established
+> later. Use the [current diagnosis and runbook](../service-route-diagnostics.md);
+> unreleased/unresolved statements below refer to this checkpoint's time.
+
 For the subsequent local code cleanup and artifact inventory, see
 [the consolidation review](service-route-consolidation-20261020.md).
 
