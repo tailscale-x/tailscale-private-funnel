@@ -36,7 +36,7 @@ Service approval alone does not guarantee an existing client receives the host r
 There is no general component-device TCP/UDP connectivity. Additional Tailnet
 backend access needs explicit administrator-managed grants.
 
-For installation `main`, the peer-discovery grant is:
+For installation `main`, the application peer-discovery grant is:
 
 ```json
 {
@@ -46,6 +46,23 @@ For installation `main`, the peer-discovery grant is:
     "tag:tailscale-private-funnel-main-tailnet-gateway",
     "tag:tailscale-private-funnel-main-k8s-gateway"
   ],
+  "ip": ["icmp:*"]
+}
+```
+
+Runtime consumers (load balancers and gateways) also need ICMP-only visibility
+of replacement **control** Service hosts. Keep this second grant so control updates
+do not strand existing clients on a missing Service route:
+
+```json
+{
+  "src": [
+    "tag:tailscale-private-funnel-main-loadbalancer",
+    "tag:tailscale-private-funnel-main-docker-gateway",
+    "tag:tailscale-private-funnel-main-tailnet-gateway",
+    "tag:tailscale-private-funnel-main-k8s-gateway"
+  ],
+  "dst": ["tag:tailscale-private-funnel-main-control"],
   "ip": ["icmp:*"]
 }
 ```

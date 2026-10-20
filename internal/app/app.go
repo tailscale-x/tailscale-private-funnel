@@ -173,7 +173,7 @@ func controlWizard(o *Options) error {
 	b, _ := json.MarshalIndent(policy, "", "  ")
 	fmt.Println(string(b))
 	fmt.Println("Review and merge this policy in Tailscale. Funnel never applies it. Existing broad grants remain effective.")
-	fmt.Println("Keep the ICMP-only load-balancer-to-gateway grant: Service-host replacement tests with this runtime require minimal host visibility; it opens no backend TCP/UDP ports.")
+	fmt.Println("Keep the ICMP-only load-balancer-to-gateway and runtime-to-control grants: replacement Service hosts require minimal peer visibility; these open no device TCP/UDP ports.")
 	if o.Tailnet, err = read("Tailnet", o.Tailnet); err != nil {
 		return err
 	}
