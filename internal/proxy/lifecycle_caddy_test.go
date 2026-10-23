@@ -65,8 +65,9 @@ func TestTemporaryChallengeRouteCaddyLifecycle(t *testing.T) {
 		if e = json.Unmarshal(raw, &root); e != nil {
 			t.Fatal(e)
 		}
+		httpApp := root["apps"].(map[string]any)["http"].(map[string]any)
 		var selected map[string]any
-		for _, value := range root["apps"].(map[string]any)["http"].(map[string]any)["servers"].(map[string]any) {
+		for _, value := range httpApp["servers"].(map[string]any) {
 			server := value.(map[string]any)
 			for _, v := range server["listen"].([]any) {
 				if v == ":443" {
@@ -81,12 +82,14 @@ func TestTemporaryChallengeRouteCaddyLifecycle(t *testing.T) {
 		delete(selected, "tls_connection_policies")
 		selected["automatic_https"] = map[string]any{"disable": true}
 		root["admin"] = map[string]any{"disabled": true}
-		root["apps"] = map[string]any{"http": map[string]any{"servers": map[string]any{"test": selected}}, "tls": map[string]any{"disable_storage_clean": true}}
+		// Retain production's HTTP app settings, especially its drain budget.
+		httpApp["servers"] = map[string]any{"test": selected}
+		root["apps"] = map[string]any{"http": httpApp, "tls": map[string]any{"disable_storage_clean": true}}
 		raw, e = json.Marshal(root)
 		if e != nil {
 			t.Fatal(e)
 		}
-		if e = caddy.Load(raw, true); e != nil {
+		if e = caddy.Load(raw, false); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -139,14 +142,9 @@ func TestTemporaryChallengeRouteCaddyLifecycle(t *testing.T) {
 		if phase == "Pod replacement" {
 			solverAddress.Store(replacement.Listener.Addr().String())
 			want = "replacement-key"
-			client.CloseIdleConnections()
-			SetDialer(func(ctx context.Context, network, target string) (net.Conn, error) {
-				addr := harbor.Listener.Addr().String()
-				if target == "100.64.0.2:8089" {
-					addr = solverAddress.Load().(string)
-				}
-				return (&net.Dialer{}).DialContext(ctx, network, addr)
-			})
+			// Pod replacement closes only its own backend connections. Do not
+			// tear down the shared public probe client's Harbor connections.
+			solver.CloseClientConnections()
 		}
 		load(rules)
 		body, e := get("/.well-known/acme-challenge/token")

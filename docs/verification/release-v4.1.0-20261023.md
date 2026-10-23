@@ -51,3 +51,14 @@ Release publication is authorized; production deployment is separate. No live
 route, hostname policy, DNS record, database, identity or service was changed.
 Coordinate continuous Harbor health and registry probes for the post-deployment
 route/Pod/namespace lifecycle test before cert-manager staging issuance/renewal.
+
+The CI availability fixture caught a public-probe EOF while it forcibly reloaded
+unchanged configurations, discarded the production HTTP drain settings and reset
+the shared client's idle connections at solver replacement. The fixture now keeps
+the generated HTTP app settings, uses the production `caddy.Load(..., false)` path,
+and closes only the replaced solver's backend connections. Its no-error Harbor
+assertion remains strict, without request retries. Validation: 500 lifecycle
+repetitions, 25 repetitions with the race detector, and the full proxy suite in a
+fresh process pass. Repeating the entire proxy suite in one process exposes an
+existing SSE fixture certificate-cache isolation limitation; normal fresh-process
+suite execution remains the release gate.
