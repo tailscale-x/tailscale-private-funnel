@@ -90,7 +90,8 @@ current pool. Moving a Pod does not create a new Tailscale Service or identity.
 The pinned SDK cannot be assumed to deliver a replacement Service host to an
 already-connected client promptly. Approval and configuration acknowledgment are
 not client-route acknowledgments. Do not withdraw an old host merely because a
-replacement is marked ready. See [handoff verification](verification/service-handoff-20261020.md).
+replacement is marked ready. See [handoff verification](verification/service-handoff-20261020.md) and the
+[verified ICMP-only peer-discovery remedy](verification/service-peer-discovery-20261020.md).
 
 Ordinary embedded listener shutdown quiesces the acceptor and gives existing streams up to
 30 seconds (20 seconds in the forwarder shutdown budget) before final SDK Serve
@@ -101,8 +102,6 @@ New connections to a quiescing host can fail until routing selects another host.
 Revocation and assignment-lease loss cancel streams immediately. Killing a backend
 Pod cannot migrate its established TCP connections; applications still need their
 own readiness/termination drain for those connections.
-
-
 
 Standard Gateway API/Ingress validation, ReferenceGrant checks, route precedence,
 backend identity checks, prefix rewriting, status acknowledgments, and forwarding

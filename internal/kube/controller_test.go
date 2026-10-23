@@ -2,6 +2,7 @@ package kube
 
 import (
 	"context"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
 	"testing"
 
 	networking "k8s.io/api/networking/v1"
@@ -30,7 +31,7 @@ func TestStatusPreservesOtherControllersIncludingSameParent(t *testing.T) {
 		if e := f.Status().Update(ctx, &fresh); e != nil {
 			t.Fatal(e)
 		}
-		return Publication{Hosts: []string{"checkout.example.com"}}, nil
+		return Publication{Resources: nodeconfig.KubernetesResourceRevisions(result.Hosts)}, nil
 	}
 	if _, e := c.Reconcile(context.Background(), reconcile.Request{}); e != nil {
 		t.Fatal(e)

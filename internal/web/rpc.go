@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"golang.org/x/time/rate"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"

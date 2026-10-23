@@ -3,10 +3,11 @@ package web
 import (
 	"context"
 	"errors"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 )
 
 func TestReportSerializationIsComponentScopedAndCancelable(t *testing.T) {

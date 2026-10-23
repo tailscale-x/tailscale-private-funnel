@@ -25,7 +25,7 @@ func TestPolicySeparatesControlAndApplications(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(p.TagOwners) != 8 || len(p.Grants) != 3 {
+	if len(p.TagOwners) != 8 || len(p.Grants) != 5 {
 		t.Fatal(p)
 	}
 	issuer := IssuerTag("main")
@@ -94,16 +94,20 @@ func TestServicePeerDiscoveryDoesNotGrantBackendPorts(t *testing.T) {
 						continue
 					}
 					deviceGrants++
-					if !slices.Equal(g.Src, []string{Tag(installation, LoadBalancer)}) || !slices.Equal(g.IP, []string{"icmp:*"}) {
+					expectedSources := []string{Tag(installation, LoadBalancer)}
+					if role == Control {
+						expectedSources = []string{Tag(installation, LoadBalancer), Tag(installation, DockerGateway), Tag(installation, TailnetGateway), Tag(installation, KubernetesGateway)}
+					}
+					if !slices.Equal(g.Src, expectedSources) || !slices.Equal(g.IP, []string{"icmp:*"}) {
 						t.Fatalf("device application access broadened: %#v", g)
 					}
-					if role != DockerGateway && role != TailnetGateway && role != KubernetesGateway {
+					if role != Control && role != DockerGateway && role != TailnetGateway && role != KubernetesGateway {
 						t.Fatal("unexpected discovery destination", role)
 					}
 				}
 			}
 		}
-		if deviceGrants != 3 {
+		if deviceGrants != 4 {
 			t.Fatalf("discovery destinations: %d", deviceGrants)
 		}
 	}

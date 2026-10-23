@@ -42,7 +42,7 @@ type Result struct {
 }
 
 func resourceID(o client.Object) string {
-	return fmt.Sprintf("%T:%s/%s:%s", o, o.GetNamespace(), o.GetName(), o.GetUID())
+	return fmt.Sprintf("%T:%s/%s:%s:%d", o, o.GetNamespace(), o.GetName(), o.GetUID(), o.GetGeneration())
 }
 func wanted(ns string, options Options) bool {
 	if len(options.Namespaces) == 0 {
@@ -323,7 +323,16 @@ func Translate(ctx context.Context, c client.Client, options Options) (Result, e
 	sort.Strings(keys)
 	for _, host := range keys {
 		h := hosts[host]
-		sort.SliceStable(h.Rules, func(i, j int) bool { return matchPrecedes(h.Rules[i].Matches[0], h.Rules[j].Matches[0]) })
+		order := make([]int, len(h.Rules))
+		for i := range order {
+			order[i] = i
+		}
+		sort.SliceStable(order, func(i, j int) bool { return matchPrecedes(h.Rules[order[i]].Matches[0], h.Rules[order[j]].Matches[0]) })
+		rules, ids := make([]proxy.HTTPRule, len(order)), make([]string, len(order))
+		for i, original := range order {
+			rules[i], ids[i] = h.Rules[original], h.ResourceIDs[original]
+		}
+		h.Rules, h.ResourceIDs = rules, ids
 		result.Hosts = append(result.Hosts, *h)
 	}
 	return result, nil

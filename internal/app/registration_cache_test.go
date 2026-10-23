@@ -1,21 +1,22 @@
 package app
 
 import (
-	"connectrpc.com/connect"
 	"context"
 	"errors"
-	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1/funnelv1connect"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/identity"
-	"github.com/tailscale-x/tailscale-private-funnel/internal/tsconnection"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"tailscale.com/ipn/ipnstate"
-	"tailscale.com/types/views"
 	"testing"
 	"time"
+
+	"connectrpc.com/connect"
+	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1/funnelv1connect"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/identity"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tsconnection"
+	"tailscale.com/ipn/ipnstate"
+	"tailscale.com/types/views"
 )
 
 type registrationConnection struct {

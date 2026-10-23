@@ -3,11 +3,12 @@ package store
 import (
 	"context"
 	"database/sql"
-	"golang.org/x/time/rate"
 	"log/slog"
 	"path/filepath"
 	"runtime"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/jmoiron/sqlx"
 )

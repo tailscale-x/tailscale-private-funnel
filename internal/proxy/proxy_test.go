@@ -92,7 +92,9 @@ func testEdgeHeaders(t *testing.T, clientIP string, direct bool) {
 	delete(selected, "tls_connection_policies")
 	selected["automatic_https"] = map[string]any{"disable": true}
 	root["admin"] = map[string]any{"disabled": true}
-	root["apps"] = map[string]any{"http": map[string]any{"servers": map[string]any{"test": selected}}}
+	// Certificate-storage maintenance is unrelated to this HTTP header contract.
+	// Disable its background writes so TempDir cleanup cannot race Caddy.
+	root["apps"] = map[string]any{"http": map[string]any{"servers": map[string]any{"test": selected}}, "tls": map[string]any{"disable_storage_clean": true}}
 	raw, _ = json.Marshal(root)
 	if err = caddy.Load(raw, true); err != nil {
 		t.Fatal(err)

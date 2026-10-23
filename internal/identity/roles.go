@@ -97,6 +97,13 @@ func PolicyTemplate(installation string, port uint16) (Policy, error) {
 		Dst: []string{Tag(installation, DockerGateway), Tag(installation, TailnetGateway), Tag(installation, KubernetesGateway)},
 		IP:  []string{"icmp:*"},
 	})
+	// Runtime consumers also need visibility of replacement control-Service hosts.
+	// This is peer discovery only; management remains on the control Service.
+	p.Grants = append(p.Grants, Grant{
+		Src: []string{Tag(installation, LoadBalancer), Tag(installation, DockerGateway), Tag(installation, TailnetGateway), Tag(installation, KubernetesGateway)},
+		Dst: []string{Tag(installation, Control)},
+		IP:  []string{"icmp:*"},
+	})
 	p.AutoApprovers.Services = map[string][]string{control: {Tag(installation, Control)}, app: {Tag(installation, DockerGateway), Tag(installation, TailnetGateway), Tag(installation, KubernetesGateway)}}
 	return p, nil
 }

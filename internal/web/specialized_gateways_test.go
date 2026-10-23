@@ -41,7 +41,7 @@ func TestProgrammingWaitsForCurrentRouteAcknowledgment(t *testing.T) {
 	if err := s.UpsertApplication(a); err != nil {
 		t.Fatal(err)
 	}
-	_ = s.SetJSON("node_sent_config:edge-id", map[string]any{"revision": "acked", "routes": []proxy.Route{{Hostname: "app.example.com", Service: a.ServiceFQDN, Port: 8080, Rules: a.HTTPRules}}})
+	_ = s.SetJSON("node_applied_config:edge-id", map[string]any{"revision": "acked", "at": time.Now().Unix(), "routes": []proxy.Route{{Hostname: "app.example.com", Service: a.ServiceFQDN, Port: 8080, Rules: a.HTTPRules}}})
 	_ = s.SetJSON("node_config_ack:edge-id", map[string]any{"revision": "acked", "at": time.Now().Unix()})
 	if len(c.publishedGatewayHosts()) != 1 {
 		t.Fatal("acknowledged route not published")
