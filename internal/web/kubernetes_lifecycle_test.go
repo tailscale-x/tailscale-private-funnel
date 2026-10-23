@@ -206,3 +206,32 @@ func TestKubernetesRuleLifecycleReadinessAndAcknowledgment(t *testing.T) {
 		t.Fatal("policy denial retained traffic", cfg.Routes)
 	}
 }
+
+func TestKubernetesWeightedRuleWaitsForEveryBackend(t *testing.T) {
+	c, s, ctx := retentionFixture(t)
+	apps, err := s.Applications()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := apps[0]
+	first := proxy.Backend{Key: "first", ServiceName: a.ServiceName, Service: a.ServiceFQDN, Port: a.ServicePort, Weight: 1}
+	second := proxy.Backend{Key: "second", ServiceName: "svc:second", Service: "100.64.0.99", Port: 8089, Weight: 1}
+	a.HTTPRules = []proxy.HTTPRule{{Matches: []proxy.Match{{Path: "/"}}, Backends: []proxy.Backend{first, second}}}
+	a.HTTPBackends = []proxy.Backend{first, second}
+	if err = s.UpsertApplication(a); err != nil {
+		t.Fatal(err)
+	}
+	// The fixture has a reachable report only for the first Service. Do not
+	// publish a weighted rule whose second backend has never passed readiness.
+	env, err := c.nodeConfiguration(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg nodeconfig.Configuration
+	if err = json.Unmarshal(env.Payload, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Routes) != 0 {
+		t.Fatal("weighted rule published before all backends were ready", cfg.Routes)
+	}
+}

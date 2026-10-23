@@ -22,6 +22,12 @@ func (s *Store) ReserveTunnelBootstrap(device string, now time.Time) error {
 		return err
 	}
 	defer tx.Rollback()
+	// Serialize the installation-wide budget before reading either counter.
+	// PostgreSQL holds this row lock until commit, including for a no-op update;
+	// this also initializes the counter safely for concurrent first requests.
+	if _, err = tx.Exec(`INSERT INTO settings(name,value,secret) VALUES(?, ?, 0) ON CONFLICT(name) DO UPDATE SET value=settings.value`, "tunnel_bootstrap:global", `{"window":0,"count":0}`); err != nil {
+		return err
+	}
 	window := now.Unix() / 60
 	for _, limit := range []struct {
 		key string

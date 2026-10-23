@@ -122,9 +122,8 @@ policy rejection, ownership conflicts, lease expiry and scoped cleanup. Opt-in
 synthetic DNS, and an external untagged Mac runner. See the verification results
 below; a cross-build alone does not prove Mac forwarding.
 
-The separate [reconciliation fix rollout](verification/reconciliation-starvation-20261019.md)
-remains the deployed development control. This feature does not migrate or publish
-live deployments by itself.
+Release publication does not update existing deployments. See the
+[v4.1.0 upgrade notes](releases/v4.1.0.md) before using the new command.
 
 ### Mac acceptance, 2026-10-19
 

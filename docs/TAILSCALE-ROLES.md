@@ -205,7 +205,7 @@ forwarding headers, streaming, and WebSocket behavior.
 See the [local verification record](qa-tailscale-native-roles.md) for passing gates
 and the real-tailnet acceptance checks still required before production use.
 
-## Foreground local tunnels (development)
+## Foreground local tunnels
 
 The default `tunnel` mode phones home through an existing host connection without
 requiring a host tag or human management role. Any verified peer allowed to reach
