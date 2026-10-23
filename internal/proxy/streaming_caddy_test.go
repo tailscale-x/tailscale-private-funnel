@@ -100,7 +100,14 @@ func TestDirectCaddySSECompletesHTTP1AndHTTP2AcrossReload(t *testing.T) {
 	}
 	defer caddy.Stop()
 	for reload := 0; reload < 2; reload++ {
-		if e = caddy.Load(raw, true); e != nil {
+		// Exercise a real changed configuration through the production shared
+		// listener path, including TLS, HTTP/2 and HTTP/3 listener setup.
+		selected["max_header_bytes"] = 1<<20 + reload
+		raw, e = json.Marshal(root)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = loadPublicConfig(raw); e != nil {
 			t.Fatal(e)
 		}
 		for _, h2 := range []bool{false, true} {

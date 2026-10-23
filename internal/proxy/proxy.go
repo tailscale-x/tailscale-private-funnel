@@ -62,7 +62,7 @@ func Start(mode, listen string, dial func(context.Context, string, string) (net.
 		return fmt.Errorf("adapt embedded Caddy config: %w", err)
 	}
 	_ = warnings
-	if err := caddy.Load(b, false); err != nil {
+	if err := loadPublicConfig(b); err != nil {
 		return fmt.Errorf("load embedded Caddy config: %w", err)
 	}
 	reloadState.Lock()
@@ -88,7 +88,36 @@ func ReloadRoutes(routes []Route) error {
 	if err != nil {
 		return err
 	}
-	return caddy.Load(b, false)
+	return loadPublicConfig(b)
+}
+
+func loadPublicConfig(raw []byte) error {
+	var config map[string]any
+	if err := json.Unmarshal(raw, &config); err != nil {
+		return err
+	}
+	apps, _ := config["apps"].(map[string]any)
+	httpApp, _ := apps["http"].(map[string]any)
+	servers, _ := httpApp["servers"].(map[string]any)
+	for _, value := range servers {
+		server, _ := value.(map[string]any)
+		addresses, _ := server["listen"].([]any)
+		for i, address := range addresses {
+			parsed, err := caddy.ParseNetworkAddress(address.(string))
+			if err != nil {
+				return err
+			}
+			if parsed.Network == "tcp" {
+				parsed.Network = "funnel"
+				addresses[i] = parsed.String()
+			}
+		}
+	}
+	raw, err := json.Marshal(config)
+	if err != nil {
+		return err
+	}
+	return caddy.Load(raw, false)
 }
 
 func configureStorage(dataDir string) error {
