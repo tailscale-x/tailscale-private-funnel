@@ -724,6 +724,9 @@ func fetchLoadBalancerConfig(ctx context.Context, client *http.Client, managemen
 }
 
 func reportLoadBalancerPeers(ctx context.Context, s tsconnection.Connection, o Options) {
+	// Finish before the next 30-second poll, even with many pending backends.
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
 	nodeID := loadBalancerNodeID(o.DataDir)
 	if nodeID == "" || o.ManagementURL == "" {
 		return

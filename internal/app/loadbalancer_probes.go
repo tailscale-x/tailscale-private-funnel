@@ -37,36 +37,47 @@ func probeLoadBalancerBackends(ctx context.Context, dial func(context.Context, s
 	}
 	results := make([][]report.Exposure, len(targets))
 	var wg sync.WaitGroup
-	slots := make(chan struct{}, 8)
-	for i, t := range targets {
+	jobs := make(chan int)
+	for worker := 0; worker < min(8, len(targets)); worker++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			select {
-			case slots <- struct{}{}:
-			case <-ctx.Done():
-				return
-			}
-			defer func() { <-slots }()
-			reachable := t.address == "" && len(t.app.HTTPRules) > 0 && len(t.app.HTTPBackends) == 0
-			if !reachable {
-				probe, cancel := context.WithTimeout(ctx, 5*time.Second)
-				conn, err := dial(probe, "tcp", net.JoinHostPort(t.address, strconv.Itoa(int(t.port))))
-				cancel()
-				if conn != nil {
-					_ = conn.Close()
+			for i := range jobs {
+				if ctx.Err() != nil {
+					continue
 				}
-				reachable = err == nil
-			}
-			port := t.port
-			if t.app.BackendSource != "kubernetes" {
-				port = t.app.BackendPort
-			}
-			for _, host := range t.app.PublicHostnames {
-				results[i] = append(results[i], report.Exposure{ApplicationID: t.app.ID, ServiceName: t.name, PublicHostname: host, BackendHostname: t.name, BackendIP: t.address, Port: port, Protocol: "http", Reachable: reachable})
+				t := targets[i]
+				reachable := t.address == "" && len(t.app.HTTPRules) > 0 && len(t.app.HTTPBackends) == 0
+				if !reachable {
+					probe, cancel := context.WithTimeout(ctx, 5*time.Second)
+					conn, err := dial(probe, "tcp", net.JoinHostPort(t.address, strconv.Itoa(int(t.port))))
+					cancel()
+					if conn != nil {
+						_ = conn.Close()
+					}
+					reachable = err == nil
+				}
+				port := t.port
+				if t.app.BackendSource != "kubernetes" {
+					port = t.app.BackendPort
+				}
+				for _, host := range t.app.PublicHostnames {
+					results[i] = append(results[i], report.Exposure{ApplicationID: t.app.ID, ServiceName: t.name, PublicHostname: host, BackendHostname: t.name, BackendIP: t.address, Port: port, Protocol: "http", Reachable: reachable})
+				}
 			}
 		}()
 	}
+	for i := range targets {
+		select {
+		case jobs <- i:
+		case <-ctx.Done():
+			break
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	close(jobs)
 	wg.Wait()
 	var out []report.Exposure
 	for _, result := range results {

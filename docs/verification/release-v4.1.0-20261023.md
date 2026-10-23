@@ -9,6 +9,8 @@ identity state, HANDOFF.md or RESUME_PROMPT.md is included.
 
 - Ordinary and Caddy Go suites; `go vet ./...`.
 - Targeted lifecycle, foreground-tunnel and bootstrap-budget race tests.
+- Eight-worker backend probing with cancellation coverage and a total 25-second
+  pass budget so pending backends cannot accumulate overlapping probe passes.
 - PostgreSQL 16 and 18 storage, control, registration and management RPC contracts.
 - Real API-server operator tests with pinned envtest tooling and Kubernetes 1.35.
 - Real Docker streaming and backend replacement regression with a disposable fixture.

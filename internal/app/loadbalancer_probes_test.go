@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync/atomic"
 	"testing"
@@ -47,5 +48,41 @@ func TestLoadBalancerProbesEveryKubernetesBackendConcurrently(t *testing.T) {
 	}
 	if peak.Load() != 2 {
 		t.Fatal("pending solver serialized healthy backend probe", peak.Load())
+	}
+}
+
+func TestLoadBalancerProbesBoundWorkAndHonorCancellation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	app := store.ApplicationRecord{ID: "many", Enabled: true, BackendSource: "kubernetes", PublicHostnames: []string{"many.example.com"}, HTTPRules: []proxy.HTTPRule{{Matches: []proxy.Match{{Path: "/"}}}}}
+	for i := 0; i < 32; i++ {
+		app.HTTPBackends = append(app.HTTPBackends, proxy.Backend{ServiceName: fmt.Sprintf("svc:%d", i), Service: "100.64.0.1", Port: 8080})
+	}
+	started := make(chan struct{})
+	var calls atomic.Int32
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		probeLoadBalancerBackends(ctx, func(ctx context.Context, _, _ string) (net.Conn, error) {
+			if calls.Add(1) == 8 {
+				close(started)
+			}
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}, []store.ApplicationRecord{app})
+	}()
+	select {
+	case <-started:
+	case <-ctx.Done():
+		t.Fatal("probes did not start")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("cancelled probes did not finish")
+	}
+	if calls.Load() != 8 {
+		t.Fatalf("started additional backend probes after cancellation: %d", calls.Load())
 	}
 }
