@@ -34,6 +34,7 @@ Typed runtime payload model: `funnel.v1.ConfigurationPayload`. Authenticate thro
 
 | Field | Type | Notes |
 |---|---|---|
+| `publishedResources` | map | Resource identity/generation to effective rule revision installed by an edge. |
 | `kubernetesErrors` | map | Per-resource reconciliation failures; unrelated hosts remain operational. |
 | `publishedAddresses` | list of string |  |
 | `publishedHostnames` | list of string |  |
@@ -834,6 +835,7 @@ Typed runtime payload model: `funnel.v1.ConfigurationPayload`. Authenticate thro
 
 | Field | Type | Notes |
 |---|---|---|
+| `publishedResources` | map | Resource identity/generation to effective rule revision installed by an edge. |
 | `kubernetesErrors` | map | Per-resource reconciliation failures; unrelated hosts remain operational. |
 | `publishedAddresses` | list of string |  |
 | `publishedHostnames` | list of string |  |
@@ -865,6 +867,7 @@ Typed runtime payload model: `funnel.v1.ConfigurationPayload`. Authenticate thro
 
 | Field | Type | Notes |
 |---|---|---|
+| `publishedResources` | map | Resource identity/generation to effective rule revision installed by an edge. |
 | `kubernetesErrors` | map | Per-resource reconciliation failures; unrelated hosts remain operational. |
 | `publishedAddresses` | list of string |  |
 | `publishedHostnames` | list of string |  |

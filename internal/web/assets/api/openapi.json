@@ -397,6 +397,15 @@
             "title": "published_hostnames",
             "type": "array"
           },
+          "publishedResources": {
+            "additionalProperties": {
+              "title": "value",
+              "type": "string"
+            },
+            "description": "Resource identity/generation to effective rule revision installed by an edge.",
+            "title": "published_resources",
+            "type": "object"
+          },
           "revision": {
             "title": "revision",
             "type": "string"

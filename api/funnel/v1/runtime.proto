@@ -212,6 +212,8 @@ message HTTPRoute {
   uint32 port = 4;
 }
 message ConfigurationPayload {
+  // Resource identity/generation to effective rule revision installed by an edge.
+  map<string, string> published_resources = 11;
   // Per-resource reconciliation failures; unrelated hosts remain operational.
   map<string, string> kubernetes_errors = 10;
   repeated string published_addresses = 1;

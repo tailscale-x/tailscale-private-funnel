@@ -160,6 +160,7 @@ func (c *Control) nodeConfiguration(ctx context.Context) (report.Snapshot, error
 		var snapshot nodeconfig.KubernetesSnapshot
 		_ = c.Store.GetJSON("node_kubernetes:"+id, &snapshot)
 		config.KubernetesErrors = snapshot.Errors
+		config.PublishedResources = c.publishedKubernetesResources(id, snapshot, apps)
 	}
 	_ = c.Store.GetJSON("node_probes:"+node.ID, &config.Probes)
 	config.PublishedHostnames = c.publishedGatewayHosts()
@@ -187,6 +188,11 @@ func (c *Control) loadBalancerConfiguration(ctx context.Context) (report.Snapsho
 	if err != nil || node.Revoked || node.Mode != "loadbalancer" {
 		return report.Snapshot{}, rpcFailure(connectCodeHTTP(403), errors.New("registered load balancer identity required"))
 	}
+	unlock, lockErr := c.lockReport(ctx, node.ID)
+	if lockErr != nil {
+		return report.Snapshot{}, lockErr
+	}
+	defer unlock()
 	writer := c.Store.WithContext(ctx)
 	if err := writer.SetJSON("node_policy_roles:"+node.ID, rpcPrincipal(ctx).RoleSelectors()); err != nil {
 		return report.Snapshot{}, rpcFailure(connect.CodeUnavailable, err)
@@ -249,6 +255,18 @@ func (c *Control) loadBalancerConfiguration(ctx context.Context) (report.Snapsho
 						break
 					}
 				}
+			}
+			if app.BackendSource == "kubernetes" && len(app.HTTPRules) > 0 {
+				partial := c.kubernetesRoute(node, app, host, previous, allowed, eligible)
+				// Send desired backends for probing even while individual rules
+				// wait for their Service to become reachable.
+				if allowed {
+					hosts = append(hosts, host)
+				}
+				if len(partial.Rules) > 0 {
+					routes = append(routes, partial)
+				}
+				continue
 			}
 			if !eligible && !retained {
 				continue
@@ -313,7 +331,7 @@ func (c *Control) acceptDirectReport(ctx context.Context, env report.Snapshot, n
 	for _, e := range p.Exposures {
 		valid := false
 		for _, app := range apps {
-			if app.Enabled && app.ID == e.ApplicationID && app.BackendPort == e.Port && contains(app.PublicHostnames, e.PublicHostname) && reader.selected(e.PublicHostname, node.ID) && app.ServiceName == e.ServiceName && e.ContainerID == "" {
+			if app.Enabled && app.ID == e.ApplicationID && ((app.BackendPort == e.Port && app.ServiceName == e.ServiceName) || (app.BackendSource == "kubernetes" && kubernetesBackendMatches(app, e.ServiceName, e.Port))) && contains(app.PublicHostnames, e.PublicHostname) && reader.selected(e.PublicHostname, node.ID) && e.ContainerID == "" {
 				valid = true
 				break
 			}
@@ -721,7 +739,7 @@ func (c *Control) acceptKubernetesSnapshot(ctx context.Context, env report.Snaps
 	}
 	seen := map[string]bool{}
 	for _, host := range snapshot.Hosts {
-		if policy.ValidateHostname(host.Hostname) != nil || seen[host.Hostname] || len(host.Rules) == 0 || len(host.Rules) > 100 {
+		if policy.ValidateHostname(host.Hostname) != nil || seen[host.Hostname] || len(host.Rules) == 0 || len(host.Rules) > 100 || (len(host.ResourceIDs) > 0 && len(host.ResourceIDs) != len(host.Rules)) {
 			return report.Snapshot{}, rpcFailure(connectCodeHTTP(400), errors.New("invalid or duplicate hostname"))
 		}
 		seen[host.Hostname] = true

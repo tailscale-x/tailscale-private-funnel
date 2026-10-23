@@ -53,8 +53,10 @@ func runKubernetesGateway(ctx context.Context, o Options, s tsconnection.Connect
 			return kube.Publication{}, err
 		}
 
-		readyHosts := []string{}
-		readyHosts = append(readyHosts, config.PublishedHostnames...)
-		return kube.Publication{Hosts: readyHosts, Addresses: config.PublishedAddresses, Problems: config.KubernetesErrors}, nil
+		resources := config.PublishedResources
+		if resources == nil {
+			resources = map[string]string{}
+		}
+		return kube.Publication{Resources: resources, Addresses: config.PublishedAddresses, Problems: config.KubernetesErrors}, nil
 	})
 }

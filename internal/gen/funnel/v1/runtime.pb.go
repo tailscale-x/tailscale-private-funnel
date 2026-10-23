@@ -1344,6 +1344,8 @@ func (x *HTTPRoute) GetPort() uint32 {
 
 type ConfigurationPayload struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
+	// Resource identity/generation to effective rule revision installed by an edge.
+	PublishedResources map[string]string `protobuf:"bytes,11,rep,name=published_resources,json=publishedResources,proto3" json:"published_resources,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Per-resource reconciliation failures; unrelated hosts remain operational.
 	KubernetesErrors   map[string]string     `protobuf:"bytes,10,rep,name=kubernetes_errors,json=kubernetesErrors,proto3" json:"kubernetes_errors,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	PublishedAddresses []string              `protobuf:"bytes,1,rep,name=published_addresses,json=publishedAddresses,proto3" json:"published_addresses,omitempty"`
@@ -1387,6 +1389,13 @@ func (x *ConfigurationPayload) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ConfigurationPayload.ProtoReflect.Descriptor instead.
 func (*ConfigurationPayload) Descriptor() ([]byte, []int) {
 	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ConfigurationPayload) GetPublishedResources() map[string]string {
+	if x != nil {
+		return x.PublishedResources
+	}
+	return nil
 }
 
 func (x *ConfigurationPayload) GetKubernetesErrors() map[string]string {
@@ -2032,8 +2041,9 @@ const file_funnel_v1_runtime_proto_rawDesc = "" +
 	"\x05rules\x18\x01 \x03(\v2\x13.funnel.v1.HTTPRuleR\x05rules\x12\x1a\n" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x18\n" +
 	"\aservice\x18\x03 \x01(\tR\aservice\x12\x12\n" +
-	"\x04port\x18\x04 \x01(\rR\x04port\"\xb3\x04\n" +
-	"\x14ConfigurationPayload\x12b\n" +
+	"\x04port\x18\x04 \x01(\rR\x04port\"\xe4\x05\n" +
+	"\x14ConfigurationPayload\x12h\n" +
+	"\x13published_resources\x18\v \x03(\v27.funnel.v1.ConfigurationPayload.PublishedResourcesEntryR\x12publishedResources\x12b\n" +
 	"\x11kubernetes_errors\x18\n" +
 	" \x03(\v25.funnel.v1.ConfigurationPayload.KubernetesErrorsEntryR\x10kubernetesErrors\x12/\n" +
 	"\x13published_addresses\x18\x01 \x03(\tR\x12publishedAddresses\x12/\n" +
@@ -2044,7 +2054,10 @@ const file_funnel_v1_runtime_proto_rawDesc = "" +
 	"\brevision\x18\x06 \x01(\tR\brevision\x12A\n" +
 	"\fapplications\x18\a \x03(\v2\x1d.funnel.v1.RuntimeApplicationR\fapplications\x12#\n" +
 	"\rlabel_aliases\x18\b \x03(\tR\flabelAliases\x12\x1b\n" +
-	"\tissued_at\x18\t \x01(\x03R\bissuedAt\x1aC\n" +
+	"\tissued_at\x18\t \x01(\x03R\bissuedAt\x1aE\n" +
+	"\x17PublishedResourcesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aC\n" +
 	"\x15KubernetesErrorsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\")\n" +
@@ -2130,7 +2143,7 @@ func file_funnel_v1_runtime_proto_rawDescGZIP() []byte {
 	return file_funnel_v1_runtime_proto_rawDescData
 }
 
-var file_funnel_v1_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_funnel_v1_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_funnel_v1_runtime_proto_goTypes = []any{
 	(*ResolveApplicationRequest)(nil), // 0: funnel.v1.ResolveApplicationRequest
 	(*ConfigAck)(nil),                 // 1: funnel.v1.ConfigAck
@@ -2160,19 +2173,20 @@ var file_funnel_v1_runtime_proto_goTypes = []any{
 	nil,                               // 25: funnel.v1.HTTPMatch.QueryEntry
 	nil,                               // 26: funnel.v1.HeaderFilter.SetEntry
 	nil,                               // 27: funnel.v1.HeaderFilter.AddEntry
-	nil,                               // 28: funnel.v1.ConfigurationPayload.KubernetesErrorsEntry
-	nil,                               // 29: funnel.v1.DockerInventoryContainer.LabelsEntry
-	(*PrefixRewrite)(nil),             // 30: funnel.v1.PrefixRewrite
-	(*Probe)(nil),                     // 31: funnel.v1.Probe
-	(*DeploymentRequest)(nil),         // 32: funnel.v1.DeploymentRequest
-	(*Empty)(nil),                     // 33: funnel.v1.Empty
-	(*ExposureReport)(nil),            // 34: funnel.v1.ExposureReport
-	(*PeerSnapshot)(nil),              // 35: funnel.v1.PeerSnapshot
-	(*Nodes)(nil),                     // 36: funnel.v1.Nodes
-	(*TestResult)(nil),                // 37: funnel.v1.TestResult
+	nil,                               // 28: funnel.v1.ConfigurationPayload.PublishedResourcesEntry
+	nil,                               // 29: funnel.v1.ConfigurationPayload.KubernetesErrorsEntry
+	nil,                               // 30: funnel.v1.DockerInventoryContainer.LabelsEntry
+	(*PrefixRewrite)(nil),             // 31: funnel.v1.PrefixRewrite
+	(*Probe)(nil),                     // 32: funnel.v1.Probe
+	(*DeploymentRequest)(nil),         // 33: funnel.v1.DeploymentRequest
+	(*Empty)(nil),                     // 34: funnel.v1.Empty
+	(*ExposureReport)(nil),            // 35: funnel.v1.ExposureReport
+	(*PeerSnapshot)(nil),              // 36: funnel.v1.PeerSnapshot
+	(*Nodes)(nil),                     // 37: funnel.v1.Nodes
+	(*TestResult)(nil),                // 38: funnel.v1.TestResult
 }
 var file_funnel_v1_runtime_proto_depIdxs = []int32{
-	30, // 0: funnel.v1.ResolveApplicationRequest.rewrite:type_name -> funnel.v1.PrefixRewrite
+	31, // 0: funnel.v1.ResolveApplicationRequest.rewrite:type_name -> funnel.v1.PrefixRewrite
 	4,  // 1: funnel.v1.PublicEndpointPayload.ingress:type_name -> funnel.v1.PublicIngress
 	23, // 2: funnel.v1.KubernetesPayload.errors:type_name -> funnel.v1.KubernetesPayload.ErrorsEntry
 	7,  // 3: funnel.v1.KubernetesPayload.hosts:type_name -> funnel.v1.KubernetesHost
@@ -2183,7 +2197,7 @@ var file_funnel_v1_runtime_proto_depIdxs = []int32{
 	25, // 8: funnel.v1.HTTPMatch.query:type_name -> funnel.v1.HTTPMatch.QueryEntry
 	26, // 9: funnel.v1.HeaderFilter.set:type_name -> funnel.v1.HeaderFilter.SetEntry
 	27, // 10: funnel.v1.HeaderFilter.add:type_name -> funnel.v1.HeaderFilter.AddEntry
-	30, // 11: funnel.v1.HTTPRule.rewrite:type_name -> funnel.v1.PrefixRewrite
+	31, // 11: funnel.v1.HTTPRule.rewrite:type_name -> funnel.v1.PrefixRewrite
 	10, // 12: funnel.v1.HTTPRule.matches:type_name -> funnel.v1.HTTPMatch
 	9,  // 13: funnel.v1.HTTPRule.backends:type_name -> funnel.v1.HTTPBackend
 	11, // 14: funnel.v1.HTTPRule.request_headers:type_name -> funnel.v1.HeaderFilter
@@ -2192,52 +2206,53 @@ var file_funnel_v1_runtime_proto_depIdxs = []int32{
 	13, // 17: funnel.v1.RuntimeApplication.http_rules:type_name -> funnel.v1.HTTPRule
 	9,  // 18: funnel.v1.RuntimeApplication.http_backends:type_name -> funnel.v1.HTTPBackend
 	13, // 19: funnel.v1.HTTPRoute.rules:type_name -> funnel.v1.HTTPRule
-	28, // 20: funnel.v1.ConfigurationPayload.kubernetes_errors:type_name -> funnel.v1.ConfigurationPayload.KubernetesErrorsEntry
-	15, // 21: funnel.v1.ConfigurationPayload.routes:type_name -> funnel.v1.HTTPRoute
-	31, // 22: funnel.v1.ConfigurationPayload.probes:type_name -> funnel.v1.Probe
-	14, // 23: funnel.v1.ConfigurationPayload.applications:type_name -> funnel.v1.RuntimeApplication
-	19, // 24: funnel.v1.DockerInventoryPayload.containers:type_name -> funnel.v1.DockerInventoryContainer
-	29, // 25: funnel.v1.DockerInventoryContainer.labels:type_name -> funnel.v1.DockerInventoryContainer.LabelsEntry
-	32, // 26: funnel.v1.RegisterComponentRequest.deployment:type_name -> funnel.v1.DeploymentRequest
-	20, // 27: funnel.v1.NodeService.RegisterComponent:input_type -> funnel.v1.RegisterComponentRequest
-	33, // 28: funnel.v1.NodeService.GetConfig:input_type -> funnel.v1.Empty
-	0,  // 29: funnel.v1.NodeService.ResolveApplication:input_type -> funnel.v1.ResolveApplicationRequest
-	1,  // 30: funnel.v1.NodeService.Acknowledge:input_type -> funnel.v1.ConfigAck
-	2,  // 31: funnel.v1.NodeService.ReportHealth:input_type -> funnel.v1.NodeHealth
-	34, // 32: funnel.v1.NodeService.SubmitReport:input_type -> funnel.v1.ExposureReport
-	18, // 33: funnel.v1.NodeService.SubmitDockerInventory:input_type -> funnel.v1.DockerInventoryPayload
-	35, // 34: funnel.v1.NodeService.SubmitPeers:input_type -> funnel.v1.PeerSnapshot
-	6,  // 35: funnel.v1.NodeService.SubmitKubernetes:input_type -> funnel.v1.KubernetesPayload
-	3,  // 36: funnel.v1.NodeService.SubmitPublicEndpoint:input_type -> funnel.v1.PublicEndpointPayload
-	33, // 37: funnel.v1.NodeService.ListForwarders:input_type -> funnel.v1.Empty
-	17, // 38: funnel.v1.NodeService.Shutdown:input_type -> funnel.v1.ShutdownRequest
-	33, // 39: funnel.v1.BrokerService.OpenSession:input_type -> funnel.v1.Empty
-	33, // 40: funnel.v1.BrokerService.GetConfig:input_type -> funnel.v1.Empty
-	33, // 41: funnel.v1.BrokerService.RenewLease:input_type -> funnel.v1.Empty
-	33, // 42: funnel.v1.BrokerService.ReleaseLease:input_type -> funnel.v1.Empty
-	33, // 43: funnel.v1.WorkloadBootstrapService.IssueKey:input_type -> funnel.v1.Empty
-	21, // 44: funnel.v1.NodeService.RegisterComponent:output_type -> funnel.v1.RegisteredComponent
-	16, // 45: funnel.v1.NodeService.GetConfig:output_type -> funnel.v1.ConfigurationPayload
-	16, // 46: funnel.v1.NodeService.ResolveApplication:output_type -> funnel.v1.ConfigurationPayload
-	33, // 47: funnel.v1.NodeService.Acknowledge:output_type -> funnel.v1.Empty
-	33, // 48: funnel.v1.NodeService.ReportHealth:output_type -> funnel.v1.Empty
-	33, // 49: funnel.v1.NodeService.SubmitReport:output_type -> funnel.v1.Empty
-	33, // 50: funnel.v1.NodeService.SubmitDockerInventory:output_type -> funnel.v1.Empty
-	33, // 51: funnel.v1.NodeService.SubmitPeers:output_type -> funnel.v1.Empty
-	33, // 52: funnel.v1.NodeService.SubmitKubernetes:output_type -> funnel.v1.Empty
-	33, // 53: funnel.v1.NodeService.SubmitPublicEndpoint:output_type -> funnel.v1.Empty
-	36, // 54: funnel.v1.NodeService.ListForwarders:output_type -> funnel.v1.Nodes
-	37, // 55: funnel.v1.NodeService.Shutdown:output_type -> funnel.v1.TestResult
-	5,  // 56: funnel.v1.BrokerService.OpenSession:output_type -> funnel.v1.BrokerSession
-	16, // 57: funnel.v1.BrokerService.GetConfig:output_type -> funnel.v1.ConfigurationPayload
-	33, // 58: funnel.v1.BrokerService.RenewLease:output_type -> funnel.v1.Empty
-	33, // 59: funnel.v1.BrokerService.ReleaseLease:output_type -> funnel.v1.Empty
-	22, // 60: funnel.v1.WorkloadBootstrapService.IssueKey:output_type -> funnel.v1.WorkloadBootstrap
-	44, // [44:61] is the sub-list for method output_type
-	27, // [27:44] is the sub-list for method input_type
-	27, // [27:27] is the sub-list for extension type_name
-	27, // [27:27] is the sub-list for extension extendee
-	0,  // [0:27] is the sub-list for field type_name
+	28, // 20: funnel.v1.ConfigurationPayload.published_resources:type_name -> funnel.v1.ConfigurationPayload.PublishedResourcesEntry
+	29, // 21: funnel.v1.ConfigurationPayload.kubernetes_errors:type_name -> funnel.v1.ConfigurationPayload.KubernetesErrorsEntry
+	15, // 22: funnel.v1.ConfigurationPayload.routes:type_name -> funnel.v1.HTTPRoute
+	32, // 23: funnel.v1.ConfigurationPayload.probes:type_name -> funnel.v1.Probe
+	14, // 24: funnel.v1.ConfigurationPayload.applications:type_name -> funnel.v1.RuntimeApplication
+	19, // 25: funnel.v1.DockerInventoryPayload.containers:type_name -> funnel.v1.DockerInventoryContainer
+	30, // 26: funnel.v1.DockerInventoryContainer.labels:type_name -> funnel.v1.DockerInventoryContainer.LabelsEntry
+	33, // 27: funnel.v1.RegisterComponentRequest.deployment:type_name -> funnel.v1.DeploymentRequest
+	20, // 28: funnel.v1.NodeService.RegisterComponent:input_type -> funnel.v1.RegisterComponentRequest
+	34, // 29: funnel.v1.NodeService.GetConfig:input_type -> funnel.v1.Empty
+	0,  // 30: funnel.v1.NodeService.ResolveApplication:input_type -> funnel.v1.ResolveApplicationRequest
+	1,  // 31: funnel.v1.NodeService.Acknowledge:input_type -> funnel.v1.ConfigAck
+	2,  // 32: funnel.v1.NodeService.ReportHealth:input_type -> funnel.v1.NodeHealth
+	35, // 33: funnel.v1.NodeService.SubmitReport:input_type -> funnel.v1.ExposureReport
+	18, // 34: funnel.v1.NodeService.SubmitDockerInventory:input_type -> funnel.v1.DockerInventoryPayload
+	36, // 35: funnel.v1.NodeService.SubmitPeers:input_type -> funnel.v1.PeerSnapshot
+	6,  // 36: funnel.v1.NodeService.SubmitKubernetes:input_type -> funnel.v1.KubernetesPayload
+	3,  // 37: funnel.v1.NodeService.SubmitPublicEndpoint:input_type -> funnel.v1.PublicEndpointPayload
+	34, // 38: funnel.v1.NodeService.ListForwarders:input_type -> funnel.v1.Empty
+	17, // 39: funnel.v1.NodeService.Shutdown:input_type -> funnel.v1.ShutdownRequest
+	34, // 40: funnel.v1.BrokerService.OpenSession:input_type -> funnel.v1.Empty
+	34, // 41: funnel.v1.BrokerService.GetConfig:input_type -> funnel.v1.Empty
+	34, // 42: funnel.v1.BrokerService.RenewLease:input_type -> funnel.v1.Empty
+	34, // 43: funnel.v1.BrokerService.ReleaseLease:input_type -> funnel.v1.Empty
+	34, // 44: funnel.v1.WorkloadBootstrapService.IssueKey:input_type -> funnel.v1.Empty
+	21, // 45: funnel.v1.NodeService.RegisterComponent:output_type -> funnel.v1.RegisteredComponent
+	16, // 46: funnel.v1.NodeService.GetConfig:output_type -> funnel.v1.ConfigurationPayload
+	16, // 47: funnel.v1.NodeService.ResolveApplication:output_type -> funnel.v1.ConfigurationPayload
+	34, // 48: funnel.v1.NodeService.Acknowledge:output_type -> funnel.v1.Empty
+	34, // 49: funnel.v1.NodeService.ReportHealth:output_type -> funnel.v1.Empty
+	34, // 50: funnel.v1.NodeService.SubmitReport:output_type -> funnel.v1.Empty
+	34, // 51: funnel.v1.NodeService.SubmitDockerInventory:output_type -> funnel.v1.Empty
+	34, // 52: funnel.v1.NodeService.SubmitPeers:output_type -> funnel.v1.Empty
+	34, // 53: funnel.v1.NodeService.SubmitKubernetes:output_type -> funnel.v1.Empty
+	34, // 54: funnel.v1.NodeService.SubmitPublicEndpoint:output_type -> funnel.v1.Empty
+	37, // 55: funnel.v1.NodeService.ListForwarders:output_type -> funnel.v1.Nodes
+	38, // 56: funnel.v1.NodeService.Shutdown:output_type -> funnel.v1.TestResult
+	5,  // 57: funnel.v1.BrokerService.OpenSession:output_type -> funnel.v1.BrokerSession
+	16, // 58: funnel.v1.BrokerService.GetConfig:output_type -> funnel.v1.ConfigurationPayload
+	34, // 59: funnel.v1.BrokerService.RenewLease:output_type -> funnel.v1.Empty
+	34, // 60: funnel.v1.BrokerService.ReleaseLease:output_type -> funnel.v1.Empty
+	22, // 61: funnel.v1.WorkloadBootstrapService.IssueKey:output_type -> funnel.v1.WorkloadBootstrap
+	45, // [45:62] is the sub-list for method output_type
+	28, // [28:45] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_funnel_v1_runtime_proto_init() }
@@ -2254,7 +2269,7 @@ func file_funnel_v1_runtime_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_funnel_v1_runtime_proto_rawDesc), len(file_funnel_v1_runtime_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   30,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   3,
 		},
