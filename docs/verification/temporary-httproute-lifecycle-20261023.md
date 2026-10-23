@@ -37,7 +37,7 @@ explain possible latency; no exact attribution of the live 69 seconds is claimed
 - Retain unchanged Kubernetes rules independently while still applying current
   application membership, gateway authorization, hostname policy and revocation.
   Removed or changed rules are not retained. New rules wait for all their backend
-  Services to be reachable from that edge; weighted backends stay one readiness unit.
+  Services to be reachable from that edge; positive-weight backends stay one readiness unit.
 - Probe every Kubernetes backend with bounded concurrency and authenticate each
   backend report against its control-owned application binding. This does not
   create a new Tailscale identity or bypass Service access/approval.

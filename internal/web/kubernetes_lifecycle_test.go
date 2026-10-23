@@ -234,4 +234,19 @@ func TestKubernetesWeightedRuleWaitsForEveryBackend(t *testing.T) {
 	if len(cfg.Routes) != 0 {
 		t.Fatal("weighted rule published before all backends were ready", cfg.Routes)
 	}
+	// A zero-weight backend carries no traffic and must not hold the rule pending.
+	a.HTTPRules[0].Backends[1].Weight = 0
+	if err = s.UpsertApplication(a); err != nil {
+		t.Fatal(err)
+	}
+	env, err = c.nodeConfiguration(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal(env.Payload, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Routes) != 1 {
+		t.Fatal("zero-weight backend blocked ready rule", cfg.Routes)
+	}
 }

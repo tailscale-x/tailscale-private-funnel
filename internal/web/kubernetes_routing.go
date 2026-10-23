@@ -39,6 +39,9 @@ func (c *Control) kubernetesRoute(n store.NodeRecord, a store.ApplicationRecord,
 			ready = ready && eligible
 		}
 		for _, b := range rule.Backends {
+			if b.Weight == 0 {
+				continue
+			}
 			found := false
 			for _, e := range c.freshReport(n) {
 				if e.ApplicationID == a.ID && e.PublicHostname == host && e.Reachable && e.ServiceName == b.ServiceName && e.Port == b.Port {
