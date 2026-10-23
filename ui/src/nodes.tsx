@@ -96,6 +96,7 @@ export function NodesPage({
         </Field>
       ) : null}
       <ErrorMessage error={nodes.error || action.error} />
+      {!loadbalancers ? <Panel title="Expose a local port"><p>For a local HTTP service, run a foreground tunnel using the host’s connected Tailscale daemon. No Docker or service installation.</p><a className="pf-text-link" href="/tunnel">Generate a local tunnel command</a></Panel> : null}
       {action.data ? <Alert>{action.data.message}</Alert> : null}
       <Panel title="Node inventory">
         <Table
@@ -115,12 +116,14 @@ export function NodesPage({
                 <small className="pf-help">{n.hostname}</small>
                 <code>{n.tailnetId || "Awaiting registration"}</code><small className="pf-help">{n.tailscaleConnection || "Embedded"}{n.instanceId ? ` · instance ${n.instanceId.slice(0,8)} · generation ${n.generation}` : ""}</small>
               </td>
-              <td>{n.mode}</td>
+              <td>{n.runtime === "foreground-tunnel" ? "Local tunnel" : n.mode}</td>
               <td>
                 <Badge
-                  ok={!n.disabled && fresh(n.lastReport)}
+                  ok={!n.disabled && fresh(n.lastReport) && (n.runtime !== "foreground-tunnel" || n.publicReady)}
                   label={
-                    n.disabled
+                    n.runtime === "foreground-tunnel" && !n.disabled
+                      ? n.lastReport === 0n ? "Stopped" : !fresh(n.lastReport) ? "Offline" : n.publicReady ? "Ready" : "Waiting / check diagnostics"
+                      : n.disabled
                       ? "Disabled"
                       : fresh(n.lastReport)
                         ? "Reporting"
@@ -132,7 +135,7 @@ export function NodesPage({
               <td>
                 <div className="pf-react-actions">
                   {n.deployment?.resourceName && admin ? <a className="pf-text-link" href={"/deploy/actions?node_id="+encodeURIComponent(n.id)}>Generate deployment instructions</a> : null}
-                  {n.mode === "tailnet-gateway" && !n.disabled ? (
+                  {n.mode === "tailnet-gateway" && n.runtime !== "foreground-tunnel" && !n.disabled ? (
                     <a
                       href={
                         "/tailnet-exposures?gateway_id=" +

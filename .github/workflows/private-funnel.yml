@@ -11,6 +11,22 @@ permissions:
   packages: write
 
 jobs:
+  macos-tunnel:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Test Apple Silicon foreground tunnel portability
+        env:
+          GOMAXPROCS: 2
+        run: |
+          test "$(uname -m)" = arm64
+          go test -p 1 ./internal/tunnel ./internal/tsconnection ./cmd/tailscale-private-funnel
+          go test -p 1 ./internal/app -run TestForegroundTunnel
+          CGO_ENABLED=0 go build -p 1 -tags caddy -o /tmp/tailscale-private-funnel ./cmd/tailscale-private-funnel
+          /tmp/tailscale-private-funnel tunnel --help
   test:
     runs-on: ubuntu-latest
     steps:
@@ -87,7 +103,7 @@ jobs:
           go test ./internal/web -run 'TestPostgres|TestRPCMetadataRole|TestRPCProviderRename|TestRPCPolicyLifecycle|TestRPCNodeReport|TestRoleRegistrationAndManagementSeparation|TestRPCDNSApproval' -count=1
 
   binaries:
-    needs: [test, postgres]
+    needs: [test, postgres, macos-tunnel]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

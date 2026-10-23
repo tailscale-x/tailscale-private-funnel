@@ -8,6 +8,14 @@ import "funnel/v1/provisioning.proto";
 
 option go_package = "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1;funnelv1";
 service NodeService {
+  // Advertise one foreground localhost tunnel; requires the Tailnet gateway role.
+  rpc AdvertiseTunnel(LocalTunnelRequest) returns (LocalTunnelStatus) {
+    option (permission) = PERMISSION_NODE;
+  }
+  // Retire only the caller's local tunnel; DNS cleanup is asynchronous.
+  rpc WithdrawTunnel(Empty) returns (TestResult) {
+    option (permission) = PERMISSION_NODE;
+  }
   // Role-authorized registration. Identity and role come only from WhoIs.
   rpc RegisterComponent(RegisterComponentRequest) returns (RegisteredComponent) {
     option (permission) = PERMISSION_NODE;
@@ -59,6 +67,18 @@ service NodeService {
   rpc Shutdown(ShutdownRequest) returns (TestResult) {
     option (permission) = PERMISSION_NODE;
   }
+}
+
+message LocalTunnelRequest {
+  string hostname = 1;
+  uint32 port = 2 [(buf.validate.field).uint32 = {gt:0,lte:65535}];
+  string local_address = 3;
+}
+message LocalTunnelStatus {
+  RuntimeApplication application = 1;
+  string public_url = 2;
+  bool ready = 3;
+  string message = 4;
 }
 
 message ResolveApplicationRequest {

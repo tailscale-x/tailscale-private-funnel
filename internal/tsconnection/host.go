@@ -192,15 +192,24 @@ func (h *Host) locked(fn func(map[string]ownedService) error) error {
 	}
 	lock := h.LockPath
 	if lock == "" {
-		socket := "default"
-		if h.Client != nil {
-			socket = h.Client.Socket
+		if h.deviceID == "" {
+			return errors.New("verified host identity required before locking Service configuration")
 		}
-		dir := "/run/tailscale-private-funnel"
-		if e := os.MkdirAll(dir, 0700); e != nil {
-			return fmt.Errorf("host-scoped lock directory unavailable; prepare the package RuntimeDirectory: %w", e)
+		// One daemon-wide lock across components, independent of systemd or the
+		// user's home. Refuse cross-user ownership instead of weakening mode 0700.
+		dir := filepath.Join("/var/tmp", fmt.Sprintf("tailscale-private-funnel-host-%x", sha256.Sum256([]byte(h.deviceID))))
+		if e := os.Mkdir(dir, 0700); e != nil && !os.IsExist(e) {
+			return fmt.Errorf("host lock unavailable: %w", e)
 		}
-		lock = filepath.Join(dir, fmt.Sprintf("host-%x.lock", sha256.Sum256([]byte(socket))))
+		info, e := os.Lstat(dir)
+		if e != nil {
+			return e
+		}
+		owner, ok := info.Sys().(*syscall.Stat_t)
+		if !info.IsDir() || info.Mode().Perm() != 0700 || !ok || int(owner.Uid) != os.Geteuid() {
+			return errors.New("host lock directory has unsafe ownership; components sharing a daemon must run as the same OS user")
+		}
+		lock = filepath.Join(dir, "daemon.lock")
 	}
 	fd, e := syscall.Open(lock, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW, 0600)
 	if e != nil {

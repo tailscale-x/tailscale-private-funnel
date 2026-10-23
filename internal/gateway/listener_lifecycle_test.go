@@ -3,30 +3,14 @@ package gateway
 import (
 	"context"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/tsconnection"
-	"net"
 	"sync"
-	"tailscale.com/tsnet"
 	"testing"
 	"time"
 )
 
-type listenerFixtureConnection struct {
-	tsconnection.Connection
-	mu    sync.Mutex
-	opens int
-}
-
-func (c *listenerFixtureConnection) ListenService(string, tsnet.ServiceMode) (net.Listener, error) {
-	c.mu.Lock()
-	c.opens++
-	c.mu.Unlock()
-	return net.Listen("tcp", "127.0.0.1:0")
-}
-func (c *listenerFixtureConnection) count() int { c.mu.Lock(); defer c.mu.Unlock(); return c.opens }
-func TestUnchangedServiceListenerSurvivesPollsAndOnlyChangedBackendReopens(t *testing.T) {
+func TestBackendChangesKeepServiceListenerOpen(t *testing.T) {
 	c := &listenerFixtureConnection{}
-	m := NewListenerManager(c)
-	defer m.Close()
+	m := listenerManagerFixture(t, c)
 	for i := 0; i < 20; i++ {
 		if err := m.Listen(t.Context(), "svc:app", 80, "127.0.0.1:8000"); err != nil {
 			t.Fatal(err)
@@ -39,13 +23,13 @@ func TestUnchangedServiceListenerSurvivesPollsAndOnlyChangedBackendReopens(t *te
 	if err := m.Listen(t.Context(), "svc:app", 80, "127.0.0.1:8001"); err != nil {
 		t.Fatal(err)
 	}
-	if c.count() != 2 {
-		t.Fatal("changed backend did not replace listener")
+	if c.count() != 1 {
+		t.Fatal("changed backend replaced stable listener")
 	}
 }
 func TestFencedServiceCannotReopenUntilLeaseReacquired(t *testing.T) {
 	c := &listenerFixtureConnection{}
-	m := NewListenerManager(c)
+	m := listenerManagerFixture(t, c)
 	if err := m.Listen(t.Context(), "svc:app", 80, "127.0.0.1:8000"); err != nil {
 		t.Fatal(err)
 	}
@@ -72,10 +56,11 @@ func TestFencedServiceCannotReopenUntilLeaseReacquired(t *testing.T) {
 
 type withdrawalFixture struct {
 	tsconnection.Connection
-	mu          sync.Mutex
-	target      string
-	withdrawing chan struct{}
-	finish      chan struct{}
+	withdrawOnce sync.Once
+	mu           sync.Mutex
+	target       string
+	withdrawing  chan struct{}
+	finish       chan struct{}
 }
 
 func (f *withdrawalFixture) ForwardService(_ context.Context, _ string, _ uint16, target string) error {
@@ -85,7 +70,7 @@ func (f *withdrawalFixture) ForwardService(_ context.Context, _ string, _ uint16
 	return nil
 }
 func (f *withdrawalFixture) RemoveService(context.Context, string, uint16) error {
-	close(f.withdrawing)
+	f.withdrawOnce.Do(func() { close(f.withdrawing) })
 	<-f.finish
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -95,7 +80,7 @@ func (f *withdrawalFixture) RemoveService(context.Context, string, uint16) error
 
 func TestReconciliationWithdrawalCannotEraseReplacementAdvertisement(t *testing.T) {
 	f := &withdrawalFixture{withdrawing: make(chan struct{}), finish: make(chan struct{})}
-	m := NewListenerManager(f)
+	m := listenerManagerFixture(t, f)
 	if err := m.Listen(t.Context(), "svc:app", 80, "old:80"); err != nil {
 		t.Fatal(err)
 	}

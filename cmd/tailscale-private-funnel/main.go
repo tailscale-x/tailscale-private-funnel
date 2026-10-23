@@ -49,6 +49,7 @@ func NewRoot(version string) *cobra.Command {
 	native.AddCommand(nativeRuntime())
 	kube.AddCommand(kubernetesRuntime())
 	root.AddCommand(native, kube, management, &cobra.Command{Use: "version", Args: cobra.NoArgs, Run: func(c *cobra.Command, _ []string) { fmt.Fprintln(c.OutOrStdout(), version) }})
+	root.AddCommand(tunnelCommand())
 	// Groups must reject unknown commands rather than silently printing help.
 	var strict func(*cobra.Command)
 	strict = func(c *cobra.Command) {

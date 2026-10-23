@@ -13,6 +13,7 @@ import (
 var ErrInstanceConflict = errors.New("component assignment lease is held by another instance")
 
 type Registration struct {
+	Runtime      string   `json:"runtime,omitempty"`
 	ComponentID  string   `json:"component_id"`
 	InstanceID   string   `json:"instance_id"`
 	DeviceID     string   `json:"device_id"`
@@ -108,7 +109,7 @@ func (s *Store) RegisterComponent(r Registration, now time.Time) (Instance, erro
 		if e = json.Unmarshal([]byte(raw), &existing); e != nil {
 			return out, e
 		}
-		if existing.Installation != r.Installation || existing.Mode != r.Mode || existing.Connection != r.Connection || existing.ParentID != r.ParentID {
+		if existing.Installation != r.Installation || existing.Mode != r.Mode || existing.Connection != r.Connection || existing.ParentID != r.ParentID || existing.Runtime != r.Runtime {
 			return out, errors.New("component installation, role, and connection mode are immutable")
 		}
 	} else if e != sql.ErrNoRows {

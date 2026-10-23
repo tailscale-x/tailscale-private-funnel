@@ -11,6 +11,8 @@ enum Permission {
   PERMISSION_OPERATOR = 2;
   PERMISSION_ADMIN = 3;
   PERMISSION_NODE = 4;
+  // Any verified tailnet peer; no human management role or runtime registration.
+  PERMISSION_TAILNET = 5;
   PERMISSION_BROKER = 6;
 }
 extend google.protobuf.MethodOptions {

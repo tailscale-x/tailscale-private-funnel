@@ -22,6 +22,7 @@ import { ExposuresPage, TailnetPage } from "./exposures";
 import { ControlsPage } from "./installation";
 import { DeploymentWizard, DeploymentActions } from "./deployment";
 import { OperationsPage, DNSPage } from "./operations";
+import { TunnelPage } from "./tunnel";
 import "./responsive.css";
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -179,6 +180,7 @@ function Route() {
   if (path === "/settings") return <SettingsPage />;
   if (path === "/access") return <AccessPage />;
   if (path === "/tailnet-exposures") return <TailnetPage />;
+  if (path === "/tunnel") return <TunnelPage />;
   if (path === "/exposures" || path === "/applications")
     return <ExposuresPage applications={path === "/applications"} />;
   if (path === "/operations") return <OperationsPage />;

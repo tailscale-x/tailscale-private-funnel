@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tunnel"
 )
 
 // cleanupRevokedNode touches only this enrolled identity and application-owned
@@ -29,6 +30,11 @@ func (c *Control) cleanupRevokedNodeLocked(ctx context.Context, n store.NodeReco
 
 	if !n.Revoked {
 		return fmt.Errorf("node must be revoked before cleanup")
+	}
+	if reg, e := c.Store.ComponentRegistration(n.ID); e == nil && reg.Runtime == tunnel.Runtime {
+		if _, e = c.Store.WithContext(ctx).RetireLocalTunnel(n.ID, 0); e != nil {
+			return e
+		}
 	}
 	if n.Mode == "k8s-gateway" {
 		if e := c.withdrawKubernetesGateway(n.ID); e != nil {

@@ -71,6 +71,41 @@ No input fields.
 
 DeploymentService authorizes deployments. Execution is performed by a generated installer on the target.
 
+### BootstrapTunnel
+
+Phone home using existing host connectivity. Issues only the installation
+ Tailnet gateway role, never a caller-selected role or management permission.
+
+- RPC: `/funnel.v1.DeploymentService/BootstrapTunnel`
+- Permission: `PERMISSION_TAILNET`
+- Input: `funnel.v1.TunnelBootstrapRequest`
+- Output: `funnel.v1.TunnelBootstrap`
+
+| Field | Type | Notes |
+|---|---|---|
+| `installation` | string |  |
+| `name` | string |  |
+| `hostname` | string |  |
+| `port` | uint32 |  |
+| `localAddress` | string |  |
+
+### TunnelInstructions
+
+Render a secret-free foreground command; no registration or DNS mutation.
+
+- RPC: `/funnel.v1.DeploymentService/TunnelInstructions`
+- Permission: `PERMISSION_VIEWER`
+- Input: `funnel.v1.TunnelInstructionsRequest`
+- Output: `funnel.v1.DeploymentInstructions`
+
+| Field | Type | Notes |
+|---|---|---|
+| `hostname` | string |  |
+| `port` | uint32 |  |
+| `localAddress` | string |  |
+| `name` | string |  |
+| `tailscaleConnection` | string |  |
+
 ### Instructions
 
 Resolve deployment choices without creating bootstrap keys.
@@ -801,6 +836,32 @@ No input fields.
 ## funnel.v1.NodeService
 
 
+
+### AdvertiseTunnel
+
+Advertise one foreground localhost tunnel; requires the Tailnet gateway role.
+
+- RPC: `/funnel.v1.NodeService/AdvertiseTunnel`
+- Permission: `PERMISSION_NODE`
+- Input: `funnel.v1.LocalTunnelRequest`
+- Output: `funnel.v1.LocalTunnelStatus`
+
+| Field | Type | Notes |
+|---|---|---|
+| `hostname` | string |  |
+| `port` | uint32 |  |
+| `localAddress` | string |  |
+
+### WithdrawTunnel
+
+Retire only the caller's local tunnel; DNS cleanup is asynchronous.
+
+- RPC: `/funnel.v1.NodeService/WithdrawTunnel`
+- Permission: `PERMISSION_NODE`
+- Input: `funnel.v1.Empty`
+- Output: `funnel.v1.TestResult`
+
+No input fields.
 
 ### RegisterComponent
 

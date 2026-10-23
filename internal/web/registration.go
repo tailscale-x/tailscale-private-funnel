@@ -11,6 +11,7 @@ import (
 	"github.com/tailscale-x/tailscale-private-funnel/internal/identity"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tunnel"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -48,10 +49,17 @@ func (s *nodeRPC) RegisterComponent(ctx context.Context, r *connect.Request[v1.R
 	if connection == "host" && d.Target == "kubernetes" {
 		return nil, rpcFailure(connect.CodeInvalidArgument, errors.New("Kubernetes requires embedded Tailscale"))
 	}
+	if d.Runtime != "" && d.Runtime != tunnel.Runtime {
+		return nil, rpcFailure(connect.CodeInvalidArgument, errors.New("unsupported runtime"))
+	}
+	if d.Runtime == tunnel.Runtime && (d.Mode != "tailnet-gateway" || d.Target != "native") {
+		return nil, rpcFailure(connect.CodeInvalidArgument, errors.New("local tunnels require a native Tailnet gateway"))
+	}
 	if d.Name == "" || len([]rune(d.Name)) > 128 {
 		return nil, rpcFailure(connect.CodeInvalidArgument, errors.New("component display name required"))
 	}
 	reg := store.Registration{ComponentID: r.Msg.ComponentId, InstanceID: r.Msg.InstanceId, DeviceID: p.NodeID, Installation: d.Installation, Mode: d.Mode, Name: strings.TrimSpace(d.Name), Hostname: p.Hostname, Connection: connection, ParentID: r.Msg.ParentId, Addresses: p.Addresses}
+	reg.Runtime = d.Runtime
 	if r.Msg.NodeUid != "" {
 		if d.Mode != "k8s-gateway" || r.Msg.ParentId == "" {
 			return nil, rpcFailure(connect.CodePermissionDenied, errors.New("forwarder requires its logical gateway"))

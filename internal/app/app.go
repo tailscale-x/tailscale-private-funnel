@@ -173,6 +173,7 @@ func controlWizard(o *Options) error {
 	b, _ := json.MarshalIndent(policy, "", "  ")
 	fmt.Println(string(b))
 	fmt.Println("Review and merge this policy in Tailscale. Funnel never applies it. Existing broad grants remain effective.")
+	fmt.Println("Keep the ICMP-only load-balancer-to-gateway grant: Service-host replacement tests with this runtime require minimal host visibility; it opens no backend TCP/UDP ports.")
 	if o.Tailnet, err = read("Tailnet", o.Tailnet); err != nil {
 		return err
 	}
@@ -339,6 +340,9 @@ func serveOptions(mode string, o Options) (Options, error) {
 }
 
 func Serve(ctx context.Context, mode string, o Options) error {
+	ctx, cancelRuntime := context.WithCancel(ctx)
+	defer cancelRuntime()
+	registrationFailure := make(chan error, 1)
 	var err error
 	o, err = serveOptions(mode, o)
 	if err != nil {
@@ -459,7 +463,7 @@ func Serve(ctx context.Context, mode string, o Options) error {
 		return err
 	}
 	if mode != "control" {
-		s, err = registerRuntime(ctx, mode, &o, s)
+		s, err = registerRuntimeWithCache(ctx, mode, &o, s, registrationFailure)
 		if err != nil {
 			return err
 		}
@@ -595,8 +599,12 @@ func Serve(ctx context.Context, mode string, o Options) error {
 				}
 			}()
 		}
-		<-ctx.Done()
-		return nil
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-registrationFailure:
+			return fmt.Errorf("load balancer registration rejected: %w", err)
+		}
 	}
 	if mode == "tailnet-gateway" {
 		return runTailnetGateway(ctx, o, s)
@@ -796,6 +804,7 @@ func runGatewaySupervisor(ctx context.Context, o Options, s tsconnection.Connect
 	var configRevision string
 	resolver := gateway.RPCResolver{BaseURL: o.ManagementURL, NodeID: nodeID, Client: managementClient, Revision: &configRevision}
 	listenerManager := gateway.NewListenerManager(s)
+	defer drainGatewayListeners(listenerManager)
 	go func() { <-ctx.Done(); listenerManager.Close() }()
 	supervisor := gateway.Config{Docker: client, NodeID: nodeID, LabelKeys: o.LabelKeys, DenyNetworks: o.DenyNetworks, Resolver: resolver, ListenerManager: listenerManager, DeferListenerCleanup: true}
 	var reconcileMu sync.Mutex

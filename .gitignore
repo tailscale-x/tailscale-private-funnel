@@ -49,3 +49,6 @@ dist
 *.pem
 .wrangler
 worker-configuration.d.ts
+
+# Private development relocation bundle (credentials, backups, evidence)
+/.handoff/

@@ -22,6 +22,134 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type LocalTunnelRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Hostname      string                 `protobuf:"bytes,1,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	Port          uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
+	LocalAddress  string                 `protobuf:"bytes,3,opt,name=local_address,json=localAddress,proto3" json:"local_address,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LocalTunnelRequest) Reset() {
+	*x = LocalTunnelRequest{}
+	mi := &file_funnel_v1_runtime_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LocalTunnelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LocalTunnelRequest) ProtoMessage() {}
+
+func (x *LocalTunnelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_funnel_v1_runtime_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LocalTunnelRequest.ProtoReflect.Descriptor instead.
+func (*LocalTunnelRequest) Descriptor() ([]byte, []int) {
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *LocalTunnelRequest) GetHostname() string {
+	if x != nil {
+		return x.Hostname
+	}
+	return ""
+}
+
+func (x *LocalTunnelRequest) GetPort() uint32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *LocalTunnelRequest) GetLocalAddress() string {
+	if x != nil {
+		return x.LocalAddress
+	}
+	return ""
+}
+
+type LocalTunnelStatus struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Application   *RuntimeApplication    `protobuf:"bytes,1,opt,name=application,proto3" json:"application,omitempty"`
+	PublicUrl     string                 `protobuf:"bytes,2,opt,name=public_url,json=publicUrl,proto3" json:"public_url,omitempty"`
+	Ready         bool                   `protobuf:"varint,3,opt,name=ready,proto3" json:"ready,omitempty"`
+	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LocalTunnelStatus) Reset() {
+	*x = LocalTunnelStatus{}
+	mi := &file_funnel_v1_runtime_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LocalTunnelStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LocalTunnelStatus) ProtoMessage() {}
+
+func (x *LocalTunnelStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_funnel_v1_runtime_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LocalTunnelStatus.ProtoReflect.Descriptor instead.
+func (*LocalTunnelStatus) Descriptor() ([]byte, []int) {
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *LocalTunnelStatus) GetApplication() *RuntimeApplication {
+	if x != nil {
+		return x.Application
+	}
+	return nil
+}
+
+func (x *LocalTunnelStatus) GetPublicUrl() string {
+	if x != nil {
+		return x.PublicUrl
+	}
+	return ""
+}
+
+func (x *LocalTunnelStatus) GetReady() bool {
+	if x != nil {
+		return x.Ready
+	}
+	return false
+}
+
+func (x *LocalTunnelStatus) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
 type ResolveApplicationRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PathPrefix    string                 `protobuf:"bytes,3,opt,name=path_prefix,json=pathPrefix,proto3" json:"path_prefix,omitempty"`
@@ -34,7 +162,7 @@ type ResolveApplicationRequest struct {
 
 func (x *ResolveApplicationRequest) Reset() {
 	*x = ResolveApplicationRequest{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[0]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46,7 +174,7 @@ func (x *ResolveApplicationRequest) String() string {
 func (*ResolveApplicationRequest) ProtoMessage() {}
 
 func (x *ResolveApplicationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[0]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,7 +187,7 @@ func (x *ResolveApplicationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveApplicationRequest.ProtoReflect.Descriptor instead.
 func (*ResolveApplicationRequest) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{0}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ResolveApplicationRequest) GetPathPrefix() string {
@@ -100,7 +228,7 @@ type ConfigAck struct {
 
 func (x *ConfigAck) Reset() {
 	*x = ConfigAck{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[1]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -112,7 +240,7 @@ func (x *ConfigAck) String() string {
 func (*ConfigAck) ProtoMessage() {}
 
 func (x *ConfigAck) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[1]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -125,7 +253,7 @@ func (x *ConfigAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigAck.ProtoReflect.Descriptor instead.
 func (*ConfigAck) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{1}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ConfigAck) GetRevision() string {
@@ -163,7 +291,7 @@ type NodeHealth struct {
 
 func (x *NodeHealth) Reset() {
 	*x = NodeHealth{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[2]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -175,7 +303,7 @@ func (x *NodeHealth) String() string {
 func (*NodeHealth) ProtoMessage() {}
 
 func (x *NodeHealth) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[2]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -188,7 +316,7 @@ func (x *NodeHealth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeHealth.ProtoReflect.Descriptor instead.
 func (*NodeHealth) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{2}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *NodeHealth) GetLastReport() int64 {
@@ -295,7 +423,7 @@ type PublicEndpointPayload struct {
 
 func (x *PublicEndpointPayload) Reset() {
 	*x = PublicEndpointPayload{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[3]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -307,7 +435,7 @@ func (x *PublicEndpointPayload) String() string {
 func (*PublicEndpointPayload) ProtoMessage() {}
 
 func (x *PublicEndpointPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[3]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -320,7 +448,7 @@ func (x *PublicEndpointPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicEndpointPayload.ProtoReflect.Descriptor instead.
 func (*PublicEndpointPayload) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{3}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PublicEndpointPayload) GetNamespace() string {
@@ -369,7 +497,7 @@ type PublicIngress struct {
 
 func (x *PublicIngress) Reset() {
 	*x = PublicIngress{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[4]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -381,7 +509,7 @@ func (x *PublicIngress) String() string {
 func (*PublicIngress) ProtoMessage() {}
 
 func (x *PublicIngress) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[4]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -394,7 +522,7 @@ func (x *PublicIngress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicIngress.ProtoReflect.Descriptor instead.
 func (*PublicIngress) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{4}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *PublicIngress) GetIp() string {
@@ -431,7 +559,7 @@ type BrokerSession struct {
 
 func (x *BrokerSession) Reset() {
 	*x = BrokerSession{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[5]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -443,7 +571,7 @@ func (x *BrokerSession) String() string {
 func (*BrokerSession) ProtoMessage() {}
 
 func (x *BrokerSession) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[5]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -456,7 +584,7 @@ func (x *BrokerSession) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BrokerSession.ProtoReflect.Descriptor instead.
 func (*BrokerSession) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{5}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *BrokerSession) GetNodeUid() string {
@@ -506,7 +634,7 @@ type KubernetesPayload struct {
 
 func (x *KubernetesPayload) Reset() {
 	*x = KubernetesPayload{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[6]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -518,7 +646,7 @@ func (x *KubernetesPayload) String() string {
 func (*KubernetesPayload) ProtoMessage() {}
 
 func (x *KubernetesPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[6]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -531,7 +659,7 @@ func (x *KubernetesPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesPayload.ProtoReflect.Descriptor instead.
 func (*KubernetesPayload) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{6}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *KubernetesPayload) GetErrors() map[string]string {
@@ -574,7 +702,7 @@ type KubernetesHost struct {
 
 func (x *KubernetesHost) Reset() {
 	*x = KubernetesHost{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[7]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -586,7 +714,7 @@ func (x *KubernetesHost) String() string {
 func (*KubernetesHost) ProtoMessage() {}
 
 func (x *KubernetesHost) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[7]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -599,7 +727,7 @@ func (x *KubernetesHost) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KubernetesHost.ProtoReflect.Descriptor instead.
 func (*KubernetesHost) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{7}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *KubernetesHost) GetHostname() string {
@@ -642,7 +770,7 @@ type PodEndpoint struct {
 
 func (x *PodEndpoint) Reset() {
 	*x = PodEndpoint{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[8]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -654,7 +782,7 @@ func (x *PodEndpoint) String() string {
 func (*PodEndpoint) ProtoMessage() {}
 
 func (x *PodEndpoint) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[8]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -667,7 +795,7 @@ func (x *PodEndpoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PodEndpoint.ProtoReflect.Descriptor instead.
 func (*PodEndpoint) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{8}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *PodEndpoint) GetAddress() string {
@@ -713,7 +841,7 @@ type HTTPBackend struct {
 
 func (x *HTTPBackend) Reset() {
 	*x = HTTPBackend{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[9]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -725,7 +853,7 @@ func (x *HTTPBackend) String() string {
 func (*HTTPBackend) ProtoMessage() {}
 
 func (x *HTTPBackend) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[9]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -738,7 +866,7 @@ func (x *HTTPBackend) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HTTPBackend.ProtoReflect.Descriptor instead.
 func (*HTTPBackend) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{9}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *HTTPBackend) GetEndpoints() []*PodEndpoint {
@@ -803,7 +931,7 @@ type HTTPMatch struct {
 
 func (x *HTTPMatch) Reset() {
 	*x = HTTPMatch{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[10]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -815,7 +943,7 @@ func (x *HTTPMatch) String() string {
 func (*HTTPMatch) ProtoMessage() {}
 
 func (x *HTTPMatch) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[10]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -828,7 +956,7 @@ func (x *HTTPMatch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HTTPMatch.ProtoReflect.Descriptor instead.
 func (*HTTPMatch) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{10}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *HTTPMatch) GetPath() string {
@@ -877,7 +1005,7 @@ type HeaderFilter struct {
 
 func (x *HeaderFilter) Reset() {
 	*x = HeaderFilter{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[11]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -889,7 +1017,7 @@ func (x *HeaderFilter) String() string {
 func (*HeaderFilter) ProtoMessage() {}
 
 func (x *HeaderFilter) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[11]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -902,7 +1030,7 @@ func (x *HeaderFilter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeaderFilter.ProtoReflect.Descriptor instead.
 func (*HeaderFilter) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{11}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *HeaderFilter) GetSet() map[string]string {
@@ -938,7 +1066,7 @@ type HTTPRedirect struct {
 
 func (x *HTTPRedirect) Reset() {
 	*x = HTTPRedirect{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[12]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -950,7 +1078,7 @@ func (x *HTTPRedirect) String() string {
 func (*HTTPRedirect) ProtoMessage() {}
 
 func (x *HTTPRedirect) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[12]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -963,7 +1091,7 @@ func (x *HTTPRedirect) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HTTPRedirect.ProtoReflect.Descriptor instead.
 func (*HTTPRedirect) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{12}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *HTTPRedirect) GetScheme() string {
@@ -1013,7 +1141,7 @@ type HTTPRule struct {
 
 func (x *HTTPRule) Reset() {
 	*x = HTTPRule{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[13]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1025,7 +1153,7 @@ func (x *HTTPRule) String() string {
 func (*HTTPRule) ProtoMessage() {}
 
 func (x *HTTPRule) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[13]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1038,7 +1166,7 @@ func (x *HTTPRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HTTPRule.ProtoReflect.Descriptor instead.
 func (*HTTPRule) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{13}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *HTTPRule) GetRewrite() *PrefixRewrite {
@@ -1141,7 +1269,7 @@ type RuntimeApplication struct {
 
 func (x *RuntimeApplication) Reset() {
 	*x = RuntimeApplication{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[14]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1153,7 +1281,7 @@ func (x *RuntimeApplication) String() string {
 func (*RuntimeApplication) ProtoMessage() {}
 
 func (x *RuntimeApplication) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[14]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1166,7 +1294,7 @@ func (x *RuntimeApplication) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeApplication.ProtoReflect.Descriptor instead.
 func (*RuntimeApplication) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{14}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *RuntimeApplication) GetHttpRules() []*HTTPRule {
@@ -1286,7 +1414,7 @@ type HTTPRoute struct {
 
 func (x *HTTPRoute) Reset() {
 	*x = HTTPRoute{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[15]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1298,7 +1426,7 @@ func (x *HTTPRoute) String() string {
 func (*HTTPRoute) ProtoMessage() {}
 
 func (x *HTTPRoute) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[15]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1311,7 +1439,7 @@ func (x *HTTPRoute) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HTTPRoute.ProtoReflect.Descriptor instead.
 func (*HTTPRoute) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{15}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *HTTPRoute) GetRules() []*HTTPRule {
@@ -1361,7 +1489,7 @@ type ConfigurationPayload struct {
 
 func (x *ConfigurationPayload) Reset() {
 	*x = ConfigurationPayload{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[16]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1373,7 +1501,7 @@ func (x *ConfigurationPayload) String() string {
 func (*ConfigurationPayload) ProtoMessage() {}
 
 func (x *ConfigurationPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[16]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1386,7 +1514,7 @@ func (x *ConfigurationPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigurationPayload.ProtoReflect.Descriptor instead.
 func (*ConfigurationPayload) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{16}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ConfigurationPayload) GetKubernetesErrors() map[string]string {
@@ -1469,7 +1597,7 @@ type ShutdownRequest struct {
 
 func (x *ShutdownRequest) Reset() {
 	*x = ShutdownRequest{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[17]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1481,7 +1609,7 @@ func (x *ShutdownRequest) String() string {
 func (*ShutdownRequest) ProtoMessage() {}
 
 func (x *ShutdownRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[17]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1494,7 +1622,7 @@ func (x *ShutdownRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShutdownRequest.ProtoReflect.Descriptor instead.
 func (*ShutdownRequest) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{17}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ShutdownRequest) GetRemove() bool {
@@ -1517,7 +1645,7 @@ type DockerInventoryPayload struct {
 
 func (x *DockerInventoryPayload) Reset() {
 	*x = DockerInventoryPayload{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[18]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1529,7 +1657,7 @@ func (x *DockerInventoryPayload) String() string {
 func (*DockerInventoryPayload) ProtoMessage() {}
 
 func (x *DockerInventoryPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[18]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1542,7 +1670,7 @@ func (x *DockerInventoryPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DockerInventoryPayload.ProtoReflect.Descriptor instead.
 func (*DockerInventoryPayload) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{18}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *DockerInventoryPayload) GetRevision() int64 {
@@ -1584,7 +1712,7 @@ type DockerInventoryContainer struct {
 
 func (x *DockerInventoryContainer) Reset() {
 	*x = DockerInventoryContainer{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[19]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1596,7 +1724,7 @@ func (x *DockerInventoryContainer) String() string {
 func (*DockerInventoryContainer) ProtoMessage() {}
 
 func (x *DockerInventoryContainer) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[19]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1609,7 +1737,7 @@ func (x *DockerInventoryContainer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DockerInventoryContainer.ProtoReflect.Descriptor instead.
 func (*DockerInventoryContainer) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{19}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *DockerInventoryContainer) GetId() string {
@@ -1646,7 +1774,7 @@ type RegisterComponentRequest struct {
 
 func (x *RegisterComponentRequest) Reset() {
 	*x = RegisterComponentRequest{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[20]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1658,7 +1786,7 @@ func (x *RegisterComponentRequest) String() string {
 func (*RegisterComponentRequest) ProtoMessage() {}
 
 func (x *RegisterComponentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[20]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1671,7 +1799,7 @@ func (x *RegisterComponentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterComponentRequest.ProtoReflect.Descriptor instead.
 func (*RegisterComponentRequest) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{20}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *RegisterComponentRequest) GetComponentId() string {
@@ -1722,7 +1850,7 @@ type RegisteredComponent struct {
 
 func (x *RegisteredComponent) Reset() {
 	*x = RegisteredComponent{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[21]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1734,7 +1862,7 @@ func (x *RegisteredComponent) String() string {
 func (*RegisteredComponent) ProtoMessage() {}
 
 func (x *RegisteredComponent) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[21]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1747,7 +1875,7 @@ func (x *RegisteredComponent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisteredComponent.ProtoReflect.Descriptor instead.
 func (*RegisteredComponent) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{21}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *RegisteredComponent) GetComponentId() string {
@@ -1802,7 +1930,7 @@ type WorkloadBootstrap struct {
 
 func (x *WorkloadBootstrap) Reset() {
 	*x = WorkloadBootstrap{}
-	mi := &file_funnel_v1_runtime_proto_msgTypes[22]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1814,7 +1942,7 @@ func (x *WorkloadBootstrap) String() string {
 func (*WorkloadBootstrap) ProtoMessage() {}
 
 func (x *WorkloadBootstrap) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_runtime_proto_msgTypes[22]
+	mi := &file_funnel_v1_runtime_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1827,7 +1955,7 @@ func (x *WorkloadBootstrap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkloadBootstrap.ProtoReflect.Descriptor instead.
 func (*WorkloadBootstrap) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{22}
+	return file_funnel_v1_runtime_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *WorkloadBootstrap) GetAuthKey() string {
@@ -1897,7 +2025,17 @@ var File_funnel_v1_runtime_proto protoreflect.FileDescriptor
 
 const file_funnel_v1_runtime_proto_rawDesc = "" +
 	"\n" +
-	"\x17funnel/v1/runtime.proto\x12\tfunnel.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1afunnel/v1/management.proto\x1a\x17funnel/v1/options.proto\x1a\x1cfunnel/v1/provisioning.proto\"\xbc\x01\n" +
+	"\x17funnel/v1/runtime.proto\x12\tfunnel.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1afunnel/v1/management.proto\x1a\x17funnel/v1/options.proto\x1a\x1cfunnel/v1/provisioning.proto\"v\n" +
+	"\x12LocalTunnelRequest\x12\x1a\n" +
+	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x1f\n" +
+	"\x04port\x18\x02 \x01(\rB\v\xbaH\b*\x06\x18\xff\xff\x03 \x00R\x04port\x12#\n" +
+	"\rlocal_address\x18\x03 \x01(\tR\flocalAddress\"\xa3\x01\n" +
+	"\x11LocalTunnelStatus\x12?\n" +
+	"\vapplication\x18\x01 \x01(\v2\x1d.funnel.v1.RuntimeApplicationR\vapplication\x12\x1d\n" +
+	"\n" +
+	"public_url\x18\x02 \x01(\tR\tpublicUrl\x12\x14\n" +
+	"\x05ready\x18\x03 \x01(\bR\x05ready\x12\x18\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\"\xbc\x01\n" +
 	"\x19ResolveApplicationRequest\x12\x1f\n" +
 	"\vpath_prefix\x18\x03 \x01(\tR\n" +
 	"pathPrefix\x122\n" +
@@ -2095,8 +2233,10 @@ const file_funnel_v1_runtime_proto_rawDesc = "" +
 	"\bnode_uid\x18\a \x01(\tR\anodeUid\x12\x1b\n" +
 	"\tnode_name\x18\b \x01(\tR\bnodeName\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\t \x01(\x03R\texpiresAt2\xe7\b\n" +
-	"\vNodeService\x12^\n" +
+	"expires_at\x18\t \x01(\x03R\texpiresAt2\xfe\t\n" +
+	"\vNodeService\x12T\n" +
+	"\x0fAdvertiseTunnel\x12\x1d.funnel.v1.LocalTunnelRequest\x1a\x1c.funnel.v1.LocalTunnelStatus\"\x04\x88\xb5\x18\x04\x12?\n" +
+	"\x0eWithdrawTunnel\x12\x10.funnel.v1.Empty\x1a\x15.funnel.v1.TestResult\"\x04\x88\xb5\x18\x04\x12^\n" +
 	"\x11RegisterComponent\x12#.funnel.v1.RegisterComponentRequest\x1a\x1e.funnel.v1.RegisteredComponent\"\x04\x88\xb5\x18\x04\x12f\n" +
 	"\tGetConfig\x12\x10.funnel.v1.Empty\x1a\x1f.funnel.v1.ConfigurationPayload\"&\x88\xb5\x18\x04\xa2\xb5\x18\x1efunnel.v1.ConfigurationPayload\x12\x83\x01\n" +
 	"\x12ResolveApplication\x12$.funnel.v1.ResolveApplicationRequest\x1a\x1f.funnel.v1.ConfigurationPayload\"&\x88\xb5\x18\x04\xa2\xb5\x18\x1efunnel.v1.ConfigurationPayload\x12;\n" +
@@ -2130,114 +2270,121 @@ func file_funnel_v1_runtime_proto_rawDescGZIP() []byte {
 	return file_funnel_v1_runtime_proto_rawDescData
 }
 
-var file_funnel_v1_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_funnel_v1_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
 var file_funnel_v1_runtime_proto_goTypes = []any{
-	(*ResolveApplicationRequest)(nil), // 0: funnel.v1.ResolveApplicationRequest
-	(*ConfigAck)(nil),                 // 1: funnel.v1.ConfigAck
-	(*NodeHealth)(nil),                // 2: funnel.v1.NodeHealth
-	(*PublicEndpointPayload)(nil),     // 3: funnel.v1.PublicEndpointPayload
-	(*PublicIngress)(nil),             // 4: funnel.v1.PublicIngress
-	(*BrokerSession)(nil),             // 5: funnel.v1.BrokerSession
-	(*KubernetesPayload)(nil),         // 6: funnel.v1.KubernetesPayload
-	(*KubernetesHost)(nil),            // 7: funnel.v1.KubernetesHost
-	(*PodEndpoint)(nil),               // 8: funnel.v1.PodEndpoint
-	(*HTTPBackend)(nil),               // 9: funnel.v1.HTTPBackend
-	(*HTTPMatch)(nil),                 // 10: funnel.v1.HTTPMatch
-	(*HeaderFilter)(nil),              // 11: funnel.v1.HeaderFilter
-	(*HTTPRedirect)(nil),              // 12: funnel.v1.HTTPRedirect
-	(*HTTPRule)(nil),                  // 13: funnel.v1.HTTPRule
-	(*RuntimeApplication)(nil),        // 14: funnel.v1.RuntimeApplication
-	(*HTTPRoute)(nil),                 // 15: funnel.v1.HTTPRoute
-	(*ConfigurationPayload)(nil),      // 16: funnel.v1.ConfigurationPayload
-	(*ShutdownRequest)(nil),           // 17: funnel.v1.ShutdownRequest
-	(*DockerInventoryPayload)(nil),    // 18: funnel.v1.DockerInventoryPayload
-	(*DockerInventoryContainer)(nil),  // 19: funnel.v1.DockerInventoryContainer
-	(*RegisterComponentRequest)(nil),  // 20: funnel.v1.RegisterComponentRequest
-	(*RegisteredComponent)(nil),       // 21: funnel.v1.RegisteredComponent
-	(*WorkloadBootstrap)(nil),         // 22: funnel.v1.WorkloadBootstrap
-	nil,                               // 23: funnel.v1.KubernetesPayload.ErrorsEntry
-	nil,                               // 24: funnel.v1.HTTPMatch.HeadersEntry
-	nil,                               // 25: funnel.v1.HTTPMatch.QueryEntry
-	nil,                               // 26: funnel.v1.HeaderFilter.SetEntry
-	nil,                               // 27: funnel.v1.HeaderFilter.AddEntry
-	nil,                               // 28: funnel.v1.ConfigurationPayload.KubernetesErrorsEntry
-	nil,                               // 29: funnel.v1.DockerInventoryContainer.LabelsEntry
-	(*PrefixRewrite)(nil),             // 30: funnel.v1.PrefixRewrite
-	(*Probe)(nil),                     // 31: funnel.v1.Probe
-	(*DeploymentRequest)(nil),         // 32: funnel.v1.DeploymentRequest
-	(*Empty)(nil),                     // 33: funnel.v1.Empty
-	(*ExposureReport)(nil),            // 34: funnel.v1.ExposureReport
-	(*PeerSnapshot)(nil),              // 35: funnel.v1.PeerSnapshot
-	(*Nodes)(nil),                     // 36: funnel.v1.Nodes
-	(*TestResult)(nil),                // 37: funnel.v1.TestResult
+	(*LocalTunnelRequest)(nil),        // 0: funnel.v1.LocalTunnelRequest
+	(*LocalTunnelStatus)(nil),         // 1: funnel.v1.LocalTunnelStatus
+	(*ResolveApplicationRequest)(nil), // 2: funnel.v1.ResolveApplicationRequest
+	(*ConfigAck)(nil),                 // 3: funnel.v1.ConfigAck
+	(*NodeHealth)(nil),                // 4: funnel.v1.NodeHealth
+	(*PublicEndpointPayload)(nil),     // 5: funnel.v1.PublicEndpointPayload
+	(*PublicIngress)(nil),             // 6: funnel.v1.PublicIngress
+	(*BrokerSession)(nil),             // 7: funnel.v1.BrokerSession
+	(*KubernetesPayload)(nil),         // 8: funnel.v1.KubernetesPayload
+	(*KubernetesHost)(nil),            // 9: funnel.v1.KubernetesHost
+	(*PodEndpoint)(nil),               // 10: funnel.v1.PodEndpoint
+	(*HTTPBackend)(nil),               // 11: funnel.v1.HTTPBackend
+	(*HTTPMatch)(nil),                 // 12: funnel.v1.HTTPMatch
+	(*HeaderFilter)(nil),              // 13: funnel.v1.HeaderFilter
+	(*HTTPRedirect)(nil),              // 14: funnel.v1.HTTPRedirect
+	(*HTTPRule)(nil),                  // 15: funnel.v1.HTTPRule
+	(*RuntimeApplication)(nil),        // 16: funnel.v1.RuntimeApplication
+	(*HTTPRoute)(nil),                 // 17: funnel.v1.HTTPRoute
+	(*ConfigurationPayload)(nil),      // 18: funnel.v1.ConfigurationPayload
+	(*ShutdownRequest)(nil),           // 19: funnel.v1.ShutdownRequest
+	(*DockerInventoryPayload)(nil),    // 20: funnel.v1.DockerInventoryPayload
+	(*DockerInventoryContainer)(nil),  // 21: funnel.v1.DockerInventoryContainer
+	(*RegisterComponentRequest)(nil),  // 22: funnel.v1.RegisterComponentRequest
+	(*RegisteredComponent)(nil),       // 23: funnel.v1.RegisteredComponent
+	(*WorkloadBootstrap)(nil),         // 24: funnel.v1.WorkloadBootstrap
+	nil,                               // 25: funnel.v1.KubernetesPayload.ErrorsEntry
+	nil,                               // 26: funnel.v1.HTTPMatch.HeadersEntry
+	nil,                               // 27: funnel.v1.HTTPMatch.QueryEntry
+	nil,                               // 28: funnel.v1.HeaderFilter.SetEntry
+	nil,                               // 29: funnel.v1.HeaderFilter.AddEntry
+	nil,                               // 30: funnel.v1.ConfigurationPayload.KubernetesErrorsEntry
+	nil,                               // 31: funnel.v1.DockerInventoryContainer.LabelsEntry
+	(*PrefixRewrite)(nil),             // 32: funnel.v1.PrefixRewrite
+	(*Probe)(nil),                     // 33: funnel.v1.Probe
+	(*DeploymentRequest)(nil),         // 34: funnel.v1.DeploymentRequest
+	(*Empty)(nil),                     // 35: funnel.v1.Empty
+	(*ExposureReport)(nil),            // 36: funnel.v1.ExposureReport
+	(*PeerSnapshot)(nil),              // 37: funnel.v1.PeerSnapshot
+	(*TestResult)(nil),                // 38: funnel.v1.TestResult
+	(*Nodes)(nil),                     // 39: funnel.v1.Nodes
 }
 var file_funnel_v1_runtime_proto_depIdxs = []int32{
-	30, // 0: funnel.v1.ResolveApplicationRequest.rewrite:type_name -> funnel.v1.PrefixRewrite
-	4,  // 1: funnel.v1.PublicEndpointPayload.ingress:type_name -> funnel.v1.PublicIngress
-	23, // 2: funnel.v1.KubernetesPayload.errors:type_name -> funnel.v1.KubernetesPayload.ErrorsEntry
-	7,  // 3: funnel.v1.KubernetesPayload.hosts:type_name -> funnel.v1.KubernetesHost
-	13, // 4: funnel.v1.KubernetesHost.rules:type_name -> funnel.v1.HTTPRule
-	9,  // 5: funnel.v1.KubernetesHost.backends:type_name -> funnel.v1.HTTPBackend
-	8,  // 6: funnel.v1.HTTPBackend.endpoints:type_name -> funnel.v1.PodEndpoint
-	24, // 7: funnel.v1.HTTPMatch.headers:type_name -> funnel.v1.HTTPMatch.HeadersEntry
-	25, // 8: funnel.v1.HTTPMatch.query:type_name -> funnel.v1.HTTPMatch.QueryEntry
-	26, // 9: funnel.v1.HeaderFilter.set:type_name -> funnel.v1.HeaderFilter.SetEntry
-	27, // 10: funnel.v1.HeaderFilter.add:type_name -> funnel.v1.HeaderFilter.AddEntry
-	30, // 11: funnel.v1.HTTPRule.rewrite:type_name -> funnel.v1.PrefixRewrite
-	10, // 12: funnel.v1.HTTPRule.matches:type_name -> funnel.v1.HTTPMatch
-	9,  // 13: funnel.v1.HTTPRule.backends:type_name -> funnel.v1.HTTPBackend
-	11, // 14: funnel.v1.HTTPRule.request_headers:type_name -> funnel.v1.HeaderFilter
-	11, // 15: funnel.v1.HTTPRule.response_headers:type_name -> funnel.v1.HeaderFilter
-	12, // 16: funnel.v1.HTTPRule.redirect:type_name -> funnel.v1.HTTPRedirect
-	13, // 17: funnel.v1.RuntimeApplication.http_rules:type_name -> funnel.v1.HTTPRule
-	9,  // 18: funnel.v1.RuntimeApplication.http_backends:type_name -> funnel.v1.HTTPBackend
-	13, // 19: funnel.v1.HTTPRoute.rules:type_name -> funnel.v1.HTTPRule
-	28, // 20: funnel.v1.ConfigurationPayload.kubernetes_errors:type_name -> funnel.v1.ConfigurationPayload.KubernetesErrorsEntry
-	15, // 21: funnel.v1.ConfigurationPayload.routes:type_name -> funnel.v1.HTTPRoute
-	31, // 22: funnel.v1.ConfigurationPayload.probes:type_name -> funnel.v1.Probe
-	14, // 23: funnel.v1.ConfigurationPayload.applications:type_name -> funnel.v1.RuntimeApplication
-	19, // 24: funnel.v1.DockerInventoryPayload.containers:type_name -> funnel.v1.DockerInventoryContainer
-	29, // 25: funnel.v1.DockerInventoryContainer.labels:type_name -> funnel.v1.DockerInventoryContainer.LabelsEntry
-	32, // 26: funnel.v1.RegisterComponentRequest.deployment:type_name -> funnel.v1.DeploymentRequest
-	20, // 27: funnel.v1.NodeService.RegisterComponent:input_type -> funnel.v1.RegisterComponentRequest
-	33, // 28: funnel.v1.NodeService.GetConfig:input_type -> funnel.v1.Empty
-	0,  // 29: funnel.v1.NodeService.ResolveApplication:input_type -> funnel.v1.ResolveApplicationRequest
-	1,  // 30: funnel.v1.NodeService.Acknowledge:input_type -> funnel.v1.ConfigAck
-	2,  // 31: funnel.v1.NodeService.ReportHealth:input_type -> funnel.v1.NodeHealth
-	34, // 32: funnel.v1.NodeService.SubmitReport:input_type -> funnel.v1.ExposureReport
-	18, // 33: funnel.v1.NodeService.SubmitDockerInventory:input_type -> funnel.v1.DockerInventoryPayload
-	35, // 34: funnel.v1.NodeService.SubmitPeers:input_type -> funnel.v1.PeerSnapshot
-	6,  // 35: funnel.v1.NodeService.SubmitKubernetes:input_type -> funnel.v1.KubernetesPayload
-	3,  // 36: funnel.v1.NodeService.SubmitPublicEndpoint:input_type -> funnel.v1.PublicEndpointPayload
-	33, // 37: funnel.v1.NodeService.ListForwarders:input_type -> funnel.v1.Empty
-	17, // 38: funnel.v1.NodeService.Shutdown:input_type -> funnel.v1.ShutdownRequest
-	33, // 39: funnel.v1.BrokerService.OpenSession:input_type -> funnel.v1.Empty
-	33, // 40: funnel.v1.BrokerService.GetConfig:input_type -> funnel.v1.Empty
-	33, // 41: funnel.v1.BrokerService.RenewLease:input_type -> funnel.v1.Empty
-	33, // 42: funnel.v1.BrokerService.ReleaseLease:input_type -> funnel.v1.Empty
-	33, // 43: funnel.v1.WorkloadBootstrapService.IssueKey:input_type -> funnel.v1.Empty
-	21, // 44: funnel.v1.NodeService.RegisterComponent:output_type -> funnel.v1.RegisteredComponent
-	16, // 45: funnel.v1.NodeService.GetConfig:output_type -> funnel.v1.ConfigurationPayload
-	16, // 46: funnel.v1.NodeService.ResolveApplication:output_type -> funnel.v1.ConfigurationPayload
-	33, // 47: funnel.v1.NodeService.Acknowledge:output_type -> funnel.v1.Empty
-	33, // 48: funnel.v1.NodeService.ReportHealth:output_type -> funnel.v1.Empty
-	33, // 49: funnel.v1.NodeService.SubmitReport:output_type -> funnel.v1.Empty
-	33, // 50: funnel.v1.NodeService.SubmitDockerInventory:output_type -> funnel.v1.Empty
-	33, // 51: funnel.v1.NodeService.SubmitPeers:output_type -> funnel.v1.Empty
-	33, // 52: funnel.v1.NodeService.SubmitKubernetes:output_type -> funnel.v1.Empty
-	33, // 53: funnel.v1.NodeService.SubmitPublicEndpoint:output_type -> funnel.v1.Empty
-	36, // 54: funnel.v1.NodeService.ListForwarders:output_type -> funnel.v1.Nodes
-	37, // 55: funnel.v1.NodeService.Shutdown:output_type -> funnel.v1.TestResult
-	5,  // 56: funnel.v1.BrokerService.OpenSession:output_type -> funnel.v1.BrokerSession
-	16, // 57: funnel.v1.BrokerService.GetConfig:output_type -> funnel.v1.ConfigurationPayload
-	33, // 58: funnel.v1.BrokerService.RenewLease:output_type -> funnel.v1.Empty
-	33, // 59: funnel.v1.BrokerService.ReleaseLease:output_type -> funnel.v1.Empty
-	22, // 60: funnel.v1.WorkloadBootstrapService.IssueKey:output_type -> funnel.v1.WorkloadBootstrap
-	44, // [44:61] is the sub-list for method output_type
-	27, // [27:44] is the sub-list for method input_type
-	27, // [27:27] is the sub-list for extension type_name
-	27, // [27:27] is the sub-list for extension extendee
-	0,  // [0:27] is the sub-list for field type_name
+	16, // 0: funnel.v1.LocalTunnelStatus.application:type_name -> funnel.v1.RuntimeApplication
+	32, // 1: funnel.v1.ResolveApplicationRequest.rewrite:type_name -> funnel.v1.PrefixRewrite
+	6,  // 2: funnel.v1.PublicEndpointPayload.ingress:type_name -> funnel.v1.PublicIngress
+	25, // 3: funnel.v1.KubernetesPayload.errors:type_name -> funnel.v1.KubernetesPayload.ErrorsEntry
+	9,  // 4: funnel.v1.KubernetesPayload.hosts:type_name -> funnel.v1.KubernetesHost
+	15, // 5: funnel.v1.KubernetesHost.rules:type_name -> funnel.v1.HTTPRule
+	11, // 6: funnel.v1.KubernetesHost.backends:type_name -> funnel.v1.HTTPBackend
+	10, // 7: funnel.v1.HTTPBackend.endpoints:type_name -> funnel.v1.PodEndpoint
+	26, // 8: funnel.v1.HTTPMatch.headers:type_name -> funnel.v1.HTTPMatch.HeadersEntry
+	27, // 9: funnel.v1.HTTPMatch.query:type_name -> funnel.v1.HTTPMatch.QueryEntry
+	28, // 10: funnel.v1.HeaderFilter.set:type_name -> funnel.v1.HeaderFilter.SetEntry
+	29, // 11: funnel.v1.HeaderFilter.add:type_name -> funnel.v1.HeaderFilter.AddEntry
+	32, // 12: funnel.v1.HTTPRule.rewrite:type_name -> funnel.v1.PrefixRewrite
+	12, // 13: funnel.v1.HTTPRule.matches:type_name -> funnel.v1.HTTPMatch
+	11, // 14: funnel.v1.HTTPRule.backends:type_name -> funnel.v1.HTTPBackend
+	13, // 15: funnel.v1.HTTPRule.request_headers:type_name -> funnel.v1.HeaderFilter
+	13, // 16: funnel.v1.HTTPRule.response_headers:type_name -> funnel.v1.HeaderFilter
+	14, // 17: funnel.v1.HTTPRule.redirect:type_name -> funnel.v1.HTTPRedirect
+	15, // 18: funnel.v1.RuntimeApplication.http_rules:type_name -> funnel.v1.HTTPRule
+	11, // 19: funnel.v1.RuntimeApplication.http_backends:type_name -> funnel.v1.HTTPBackend
+	15, // 20: funnel.v1.HTTPRoute.rules:type_name -> funnel.v1.HTTPRule
+	30, // 21: funnel.v1.ConfigurationPayload.kubernetes_errors:type_name -> funnel.v1.ConfigurationPayload.KubernetesErrorsEntry
+	17, // 22: funnel.v1.ConfigurationPayload.routes:type_name -> funnel.v1.HTTPRoute
+	33, // 23: funnel.v1.ConfigurationPayload.probes:type_name -> funnel.v1.Probe
+	16, // 24: funnel.v1.ConfigurationPayload.applications:type_name -> funnel.v1.RuntimeApplication
+	21, // 25: funnel.v1.DockerInventoryPayload.containers:type_name -> funnel.v1.DockerInventoryContainer
+	31, // 26: funnel.v1.DockerInventoryContainer.labels:type_name -> funnel.v1.DockerInventoryContainer.LabelsEntry
+	34, // 27: funnel.v1.RegisterComponentRequest.deployment:type_name -> funnel.v1.DeploymentRequest
+	0,  // 28: funnel.v1.NodeService.AdvertiseTunnel:input_type -> funnel.v1.LocalTunnelRequest
+	35, // 29: funnel.v1.NodeService.WithdrawTunnel:input_type -> funnel.v1.Empty
+	22, // 30: funnel.v1.NodeService.RegisterComponent:input_type -> funnel.v1.RegisterComponentRequest
+	35, // 31: funnel.v1.NodeService.GetConfig:input_type -> funnel.v1.Empty
+	2,  // 32: funnel.v1.NodeService.ResolveApplication:input_type -> funnel.v1.ResolveApplicationRequest
+	3,  // 33: funnel.v1.NodeService.Acknowledge:input_type -> funnel.v1.ConfigAck
+	4,  // 34: funnel.v1.NodeService.ReportHealth:input_type -> funnel.v1.NodeHealth
+	36, // 35: funnel.v1.NodeService.SubmitReport:input_type -> funnel.v1.ExposureReport
+	20, // 36: funnel.v1.NodeService.SubmitDockerInventory:input_type -> funnel.v1.DockerInventoryPayload
+	37, // 37: funnel.v1.NodeService.SubmitPeers:input_type -> funnel.v1.PeerSnapshot
+	8,  // 38: funnel.v1.NodeService.SubmitKubernetes:input_type -> funnel.v1.KubernetesPayload
+	5,  // 39: funnel.v1.NodeService.SubmitPublicEndpoint:input_type -> funnel.v1.PublicEndpointPayload
+	35, // 40: funnel.v1.NodeService.ListForwarders:input_type -> funnel.v1.Empty
+	19, // 41: funnel.v1.NodeService.Shutdown:input_type -> funnel.v1.ShutdownRequest
+	35, // 42: funnel.v1.BrokerService.OpenSession:input_type -> funnel.v1.Empty
+	35, // 43: funnel.v1.BrokerService.GetConfig:input_type -> funnel.v1.Empty
+	35, // 44: funnel.v1.BrokerService.RenewLease:input_type -> funnel.v1.Empty
+	35, // 45: funnel.v1.BrokerService.ReleaseLease:input_type -> funnel.v1.Empty
+	35, // 46: funnel.v1.WorkloadBootstrapService.IssueKey:input_type -> funnel.v1.Empty
+	1,  // 47: funnel.v1.NodeService.AdvertiseTunnel:output_type -> funnel.v1.LocalTunnelStatus
+	38, // 48: funnel.v1.NodeService.WithdrawTunnel:output_type -> funnel.v1.TestResult
+	23, // 49: funnel.v1.NodeService.RegisterComponent:output_type -> funnel.v1.RegisteredComponent
+	18, // 50: funnel.v1.NodeService.GetConfig:output_type -> funnel.v1.ConfigurationPayload
+	18, // 51: funnel.v1.NodeService.ResolveApplication:output_type -> funnel.v1.ConfigurationPayload
+	35, // 52: funnel.v1.NodeService.Acknowledge:output_type -> funnel.v1.Empty
+	35, // 53: funnel.v1.NodeService.ReportHealth:output_type -> funnel.v1.Empty
+	35, // 54: funnel.v1.NodeService.SubmitReport:output_type -> funnel.v1.Empty
+	35, // 55: funnel.v1.NodeService.SubmitDockerInventory:output_type -> funnel.v1.Empty
+	35, // 56: funnel.v1.NodeService.SubmitPeers:output_type -> funnel.v1.Empty
+	35, // 57: funnel.v1.NodeService.SubmitKubernetes:output_type -> funnel.v1.Empty
+	35, // 58: funnel.v1.NodeService.SubmitPublicEndpoint:output_type -> funnel.v1.Empty
+	39, // 59: funnel.v1.NodeService.ListForwarders:output_type -> funnel.v1.Nodes
+	38, // 60: funnel.v1.NodeService.Shutdown:output_type -> funnel.v1.TestResult
+	7,  // 61: funnel.v1.BrokerService.OpenSession:output_type -> funnel.v1.BrokerSession
+	18, // 62: funnel.v1.BrokerService.GetConfig:output_type -> funnel.v1.ConfigurationPayload
+	35, // 63: funnel.v1.BrokerService.RenewLease:output_type -> funnel.v1.Empty
+	35, // 64: funnel.v1.BrokerService.ReleaseLease:output_type -> funnel.v1.Empty
+	24, // 65: funnel.v1.WorkloadBootstrapService.IssueKey:output_type -> funnel.v1.WorkloadBootstrap
+	47, // [47:66] is the sub-list for method output_type
+	28, // [28:47] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_funnel_v1_runtime_proto_init() }
@@ -2254,7 +2401,7 @@ func file_funnel_v1_runtime_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_funnel_v1_runtime_proto_rawDesc), len(file_funnel_v1_runtime_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   30,
+			NumMessages:   32,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

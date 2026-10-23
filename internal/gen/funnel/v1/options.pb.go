@@ -31,7 +31,9 @@ const (
 	Permission_PERMISSION_OPERATOR    Permission = 2
 	Permission_PERMISSION_ADMIN       Permission = 3
 	Permission_PERMISSION_NODE        Permission = 4
-	Permission_PERMISSION_BROKER      Permission = 6
+	// Any verified tailnet peer; no human management role or runtime registration.
+	Permission_PERMISSION_TAILNET Permission = 5
+	Permission_PERMISSION_BROKER  Permission = 6
 )
 
 // Enum value maps for Permission.
@@ -42,6 +44,7 @@ var (
 		2: "PERMISSION_OPERATOR",
 		3: "PERMISSION_ADMIN",
 		4: "PERMISSION_NODE",
+		5: "PERMISSION_TAILNET",
 		6: "PERMISSION_BROKER",
 	}
 	Permission_value = map[string]int32{
@@ -50,6 +53,7 @@ var (
 		"PERMISSION_OPERATOR":    2,
 		"PERMISSION_ADMIN":       3,
 		"PERMISSION_NODE":        4,
+		"PERMISSION_TAILNET":     5,
 		"PERMISSION_BROKER":      6,
 	}
 )
@@ -162,14 +166,15 @@ var File_funnel_v1_options_proto protoreflect.FileDescriptor
 
 const file_funnel_v1_options_proto_rawDesc = "" +
 	"\n" +
-	"\x17funnel/v1/options.proto\x12\tfunnel.v1\x1a google/protobuf/descriptor.proto*\x9a\x01\n" +
+	"\x17funnel/v1/options.proto\x12\tfunnel.v1\x1a google/protobuf/descriptor.proto*\xb2\x01\n" +
 	"\n" +
 	"Permission\x12\x1a\n" +
 	"\x16PERMISSION_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11PERMISSION_VIEWER\x10\x01\x12\x17\n" +
 	"\x13PERMISSION_OPERATOR\x10\x02\x12\x14\n" +
 	"\x10PERMISSION_ADMIN\x10\x03\x12\x13\n" +
-	"\x0fPERMISSION_NODE\x10\x04\x12\x15\n" +
+	"\x0fPERMISSION_NODE\x10\x04\x12\x16\n" +
+	"\x12PERMISSION_TAILNET\x10\x05\x12\x15\n" +
 	"\x11PERMISSION_BROKER\x10\x06:W\n" +
 	"\n" +
 	"permission\x12\x1e.google.protobuf.MethodOptions\x18ц\x03 \x01(\x0e2\x15.funnel.v1.PermissionR\n" +

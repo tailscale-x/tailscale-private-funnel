@@ -33,6 +33,12 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// DeploymentServiceBootstrapTunnelProcedure is the fully-qualified name of the DeploymentService's
+	// BootstrapTunnel RPC.
+	DeploymentServiceBootstrapTunnelProcedure = "/funnel.v1.DeploymentService/BootstrapTunnel"
+	// DeploymentServiceTunnelInstructionsProcedure is the fully-qualified name of the
+	// DeploymentService's TunnelInstructions RPC.
+	DeploymentServiceTunnelInstructionsProcedure = "/funnel.v1.DeploymentService/TunnelInstructions"
 	// DeploymentServiceInstructionsProcedure is the fully-qualified name of the DeploymentService's
 	// Instructions RPC.
 	DeploymentServiceInstructionsProcedure = "/funnel.v1.DeploymentService/Instructions"
@@ -43,6 +49,11 @@ const (
 
 // DeploymentServiceClient is a client for the funnel.v1.DeploymentService service.
 type DeploymentServiceClient interface {
+	// Phone home using existing host connectivity. Issues only the installation
+	// Tailnet gateway role, never a caller-selected role or management permission.
+	BootstrapTunnel(context.Context, *connect.Request[v1.TunnelBootstrapRequest]) (*connect.Response[v1.TunnelBootstrap], error)
+	// Render a secret-free foreground command; no registration or DNS mutation.
+	TunnelInstructions(context.Context, *connect.Request[v1.TunnelInstructionsRequest]) (*connect.Response[v1.DeploymentInstructions], error)
 	// Resolve deployment choices without creating bootstrap keys.
 	Instructions(context.Context, *connect.Request[v1.DeploymentRequest]) (*connect.Response[v1.DeploymentInstructions], error)
 	// Mint one-use Tailscale bootstrap credentials, without server-side execution.
@@ -60,6 +71,18 @@ func NewDeploymentServiceClient(httpClient connect.HTTPClient, baseURL string, o
 	baseURL = strings.TrimRight(baseURL, "/")
 	deploymentServiceMethods := v1.File_funnel_v1_provisioning_proto.Services().ByName("DeploymentService").Methods()
 	return &deploymentServiceClient{
+		bootstrapTunnel: connect.NewClient[v1.TunnelBootstrapRequest, v1.TunnelBootstrap](
+			httpClient,
+			baseURL+DeploymentServiceBootstrapTunnelProcedure,
+			connect.WithSchema(deploymentServiceMethods.ByName("BootstrapTunnel")),
+			connect.WithClientOptions(opts...),
+		),
+		tunnelInstructions: connect.NewClient[v1.TunnelInstructionsRequest, v1.DeploymentInstructions](
+			httpClient,
+			baseURL+DeploymentServiceTunnelInstructionsProcedure,
+			connect.WithSchema(deploymentServiceMethods.ByName("TunnelInstructions")),
+			connect.WithClientOptions(opts...),
+		),
 		instructions: connect.NewClient[v1.DeploymentRequest, v1.DeploymentInstructions](
 			httpClient,
 			baseURL+DeploymentServiceInstructionsProcedure,
@@ -77,8 +100,20 @@ func NewDeploymentServiceClient(httpClient connect.HTTPClient, baseURL string, o
 
 // deploymentServiceClient implements DeploymentServiceClient.
 type deploymentServiceClient struct {
-	instructions *connect.Client[v1.DeploymentRequest, v1.DeploymentInstructions]
-	authorize    *connect.Client[v1.DeploymentRequest, v1.DeploymentInstructions]
+	bootstrapTunnel    *connect.Client[v1.TunnelBootstrapRequest, v1.TunnelBootstrap]
+	tunnelInstructions *connect.Client[v1.TunnelInstructionsRequest, v1.DeploymentInstructions]
+	instructions       *connect.Client[v1.DeploymentRequest, v1.DeploymentInstructions]
+	authorize          *connect.Client[v1.DeploymentRequest, v1.DeploymentInstructions]
+}
+
+// BootstrapTunnel calls funnel.v1.DeploymentService.BootstrapTunnel.
+func (c *deploymentServiceClient) BootstrapTunnel(ctx context.Context, req *connect.Request[v1.TunnelBootstrapRequest]) (*connect.Response[v1.TunnelBootstrap], error) {
+	return c.bootstrapTunnel.CallUnary(ctx, req)
+}
+
+// TunnelInstructions calls funnel.v1.DeploymentService.TunnelInstructions.
+func (c *deploymentServiceClient) TunnelInstructions(ctx context.Context, req *connect.Request[v1.TunnelInstructionsRequest]) (*connect.Response[v1.DeploymentInstructions], error) {
+	return c.tunnelInstructions.CallUnary(ctx, req)
 }
 
 // Instructions calls funnel.v1.DeploymentService.Instructions.
@@ -93,6 +128,11 @@ func (c *deploymentServiceClient) Authorize(ctx context.Context, req *connect.Re
 
 // DeploymentServiceHandler is an implementation of the funnel.v1.DeploymentService service.
 type DeploymentServiceHandler interface {
+	// Phone home using existing host connectivity. Issues only the installation
+	// Tailnet gateway role, never a caller-selected role or management permission.
+	BootstrapTunnel(context.Context, *connect.Request[v1.TunnelBootstrapRequest]) (*connect.Response[v1.TunnelBootstrap], error)
+	// Render a secret-free foreground command; no registration or DNS mutation.
+	TunnelInstructions(context.Context, *connect.Request[v1.TunnelInstructionsRequest]) (*connect.Response[v1.DeploymentInstructions], error)
 	// Resolve deployment choices without creating bootstrap keys.
 	Instructions(context.Context, *connect.Request[v1.DeploymentRequest]) (*connect.Response[v1.DeploymentInstructions], error)
 	// Mint one-use Tailscale bootstrap credentials, without server-side execution.
@@ -106,6 +146,18 @@ type DeploymentServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	deploymentServiceMethods := v1.File_funnel_v1_provisioning_proto.Services().ByName("DeploymentService").Methods()
+	deploymentServiceBootstrapTunnelHandler := connect.NewUnaryHandler(
+		DeploymentServiceBootstrapTunnelProcedure,
+		svc.BootstrapTunnel,
+		connect.WithSchema(deploymentServiceMethods.ByName("BootstrapTunnel")),
+		connect.WithHandlerOptions(opts...),
+	)
+	deploymentServiceTunnelInstructionsHandler := connect.NewUnaryHandler(
+		DeploymentServiceTunnelInstructionsProcedure,
+		svc.TunnelInstructions,
+		connect.WithSchema(deploymentServiceMethods.ByName("TunnelInstructions")),
+		connect.WithHandlerOptions(opts...),
+	)
 	deploymentServiceInstructionsHandler := connect.NewUnaryHandler(
 		DeploymentServiceInstructionsProcedure,
 		svc.Instructions,
@@ -120,6 +172,10 @@ func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.H
 	)
 	return "/funnel.v1.DeploymentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case DeploymentServiceBootstrapTunnelProcedure:
+			deploymentServiceBootstrapTunnelHandler.ServeHTTP(w, r)
+		case DeploymentServiceTunnelInstructionsProcedure:
+			deploymentServiceTunnelInstructionsHandler.ServeHTTP(w, r)
 		case DeploymentServiceInstructionsProcedure:
 			deploymentServiceInstructionsHandler.ServeHTTP(w, r)
 		case DeploymentServiceAuthorizeProcedure:
@@ -132,6 +188,14 @@ func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.H
 
 // UnimplementedDeploymentServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedDeploymentServiceHandler struct{}
+
+func (UnimplementedDeploymentServiceHandler) BootstrapTunnel(context.Context, *connect.Request[v1.TunnelBootstrapRequest]) (*connect.Response[v1.TunnelBootstrap], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.DeploymentService.BootstrapTunnel is not implemented"))
+}
+
+func (UnimplementedDeploymentServiceHandler) TunnelInstructions(context.Context, *connect.Request[v1.TunnelInstructionsRequest]) (*connect.Response[v1.DeploymentInstructions], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.DeploymentService.TunnelInstructions is not implemented"))
+}
 
 func (UnimplementedDeploymentServiceHandler) Instructions(context.Context, *connect.Request[v1.DeploymentRequest]) (*connect.Response[v1.DeploymentInstructions], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.DeploymentService.Instructions is not implemented"))

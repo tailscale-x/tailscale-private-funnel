@@ -20,7 +20,7 @@ func TestAgentDocumentationUsesRunningReleaseAndLiveSettings(t *testing.T) {
 		if response.Code != 200 || response.Header().Get("Cache-Control") != "no-cache" {
 			t.Fatalf("response: %d %v", response.Code, response.Header())
 		}
-		for _, want := range []string{"releases/download/v3.1.0/tailscale-private-funnel-linux-amd64", "tailscale-private-funnel-linux-arm64", "tailscale-private-funnel-darwin-arm64", "SHA256SUMS", "--version 'v3.1.0'", "manage whoami --control-url '" + controlURL + "' --output json", "native gateways create", "k8s gateways create", "15 minutes", "## Start here", "/docs/api.md"} {
+		for _, want := range []string{"releases/download/v3.1.0/tailscale-private-funnel-linux-amd64", "tailscale-private-funnel-linux-arm64", "tailscale-private-funnel-darwin-arm64", "SHA256SUMS", "--version 'v3.1.0'", "manage whoami --control-url '" + controlURL + "' --output json", "native gateways create", "k8s gateways create", "15 minutes", "## Start here", "/docs/api.md", "## Foreground local HTTP tunnel", "tunnel 8080 --hostname app.example.com --control-url", "tag:tailscale-private-funnel-main-tailnet-gateway", "--output json for newline-delimited progress events"} {
 			if !strings.Contains(body, want) {
 				t.Errorf("missing %q", want)
 			}

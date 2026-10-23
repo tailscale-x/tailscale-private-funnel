@@ -92,12 +92,9 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 	agent := report.Agent{NodeID: state.NodeId, ManagementURL: state.ManagementUrl, DataDir: data, HTTPClient: httpClient}
 	listeners := gateway.NewListenerManager(s)
 	lease.attach(listeners)
-	defer listeners.Close()
 	defer func() {
 		ready.Store(false)
-		drain, stop := context.WithTimeout(context.Background(), 10*time.Second)
-		listeners.CloseWait(drain)
-		stop()
+		drainGatewayListeners(listeners)
 		final, stop := context.WithTimeout(context.Background(), 5*time.Second)
 		_ = agent.Send(final, nil)
 		stop()
@@ -111,6 +108,8 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 	resolver := gateway.RPCResolver{NodeID: state.NodeId, BaseURL: state.ManagementUrl, Client: httpClient}
 	session := gateway.Session{Resolver: resolver, Listeners: listeners, Agent: agent}
 	pools := map[string]*gateway.LocalPool{}
+	continuity := map[string]*gateway.BackendContinuity{}
+	poolStates := map[string]string{}
 	tick := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
 	for {
@@ -133,6 +132,7 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 			endpointCount := 0
 			counted := map[string]bool{}
 			advertiseError := false
+			unreachableServices := []string{}
 			for _, app := range config.Applications {
 				if app.BackendSource != "kubernetes" {
 					continue
@@ -141,24 +141,47 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 				for _, backend := range app.HTTPBackends {
 					pool := pools[backend.Key]
 					if pool == nil {
-						pool = &gateway.LocalPool{}
+						pool = &gateway.LocalPool{AllowRemote: true}
 						pools[backend.Key] = pool
+						continuity[backend.Key] = &gateway.BackendContinuity{}
 					}
 					pool.Update(backend.Endpoints, state.NodeUid, state.NodeName)
 					if !counted[backend.Key] {
 						endpointCount += pool.Count()
 						counted[backend.Key] = true
 					}
+					// New hosts advertise only with a local backend. Existing hosts can
+					// keep serving verified remote endpoints after a Pod move.
+					// This avoids coupling Service-host lifetime to Pod placement.
+					if pool.Count() == 0 && !listeners.Has(backend.ServiceName, backend.Port) {
+						continue
+					}
 					probe, stop := context.WithTimeout(ctx, 3*time.Second)
-					reachable := pool.Ready(probe)
+					reachable := false
+					if listeners.Has(backend.ServiceName, backend.Port) {
+						reachable = pool.Ready(probe)
+					} else {
+						reachable = pool.ReadyLocal(probe)
+					}
 					stop()
+					stateKey := fmt.Sprintf("%d/%d/%t", pool.Count(), pool.RemoteCount(), reachable)
+					if poolStates[backend.Key] != stateKey {
+						slog.Info("Service backend pool changed", "service", backend.ServiceName, "local_endpoints", pool.Count(), "remote_endpoints", pool.RemoteCount(), "reachable", reachable)
+						poolStates[backend.Key] = stateKey
+					}
 					if !reachable {
+						unreachableServices = append(unreachableServices, "Service "+backend.ServiceName+": no reachable approved backend")
+						if continuity[backend.Key].Keep(listeners.Has(backend.ServiceName, backend.Port), false, time.Now()) {
+							services = append(services, backend.ServiceName)
+							continue
+						}
 						listeners.Remove(backend.ServiceName, backend.Port)
 						continue
 					}
+					continuity[backend.Key].Keep(listeners.Has(backend.ServiceName, backend.Port), true, time.Now())
 					if err = listeners.ListenDial(ctx, backend.ServiceName, backend.Port, backend.Key, pool.Dial); err != nil {
 						advertiseError = true
-						slog.Warn("local Service listener unavailable", "service", backend.ServiceName, "error", err)
+						slog.Warn("Service listener unavailable", "service", backend.ServiceName, "error", err)
 						continue
 					}
 					services = append(services, backend.ServiceName)
@@ -166,6 +189,13 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 				}
 				for _, host := range app.PublicHostnames {
 					runtimes = append(runtimes, gateway.Runtime{Spec: gateway.Spec{Hostname: host, Port: app.BackendPort, Protocol: "http"}, Assignment: gateway.Assignment{ApplicationID: app.ID, ServiceName: app.ServiceName, ServicePort: app.ServicePort, Enabled: true}, BackendHostname: "kubernetes", Reachable: any})
+				}
+			}
+			for key := range pools {
+				if !counted[key] {
+					delete(pools, key)
+					delete(continuity, key)
+					delete(poolStates, key)
 				}
 			}
 			unique := []string{}
@@ -190,7 +220,7 @@ func ServeKubernetesForwarder(ctx context.Context, o Options) error {
 					reason = "No authorized applications"
 				}
 			}
-			session.HealthExtras = map[string]any{"node_uid": state.NodeUid, "node_name": state.NodeName, "local_endpoints": endpointCount, "withdrawal_reason": reason, "advertised_services": services}
+			session.HealthExtras = map[string]any{"node_uid": state.NodeUid, "node_name": state.NodeName, "local_endpoints": endpointCount, "errors": unreachableServices, "withdrawal_reason": reason, "advertised_services": services}
 			publishCtx, stopPublish := context.WithTimeout(ctx, 30*time.Second)
 			err = session.Publish(publishCtx, config, runtimes, services)
 			stopPublish()

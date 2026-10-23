@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,12 @@ import (
 )
 
 func registerRuntime(ctx context.Context, mode string, o *Options, c tsconnection.Connection) (tsconnection.Connection, error) {
+	return registerRuntimeWithCache(ctx, mode, o, c, nil)
+}
+
+// Only Serve supplies a failure channel. A valid component-bound cache permits
+// retained dataplane startup; registration still gates all control operations.
+func registerRuntimeWithCache(ctx context.Context, mode string, o *Options, c tsconnection.Connection, failure chan<- error) (tsconnection.Connection, error) {
 	st, e := c.Up(ctx)
 	if e != nil {
 		return nil, e
@@ -56,6 +63,7 @@ func registerRuntime(ctx context.Context, mode string, o *Options, c tsconnectio
 	if o.KubeNamespace != "" {
 		d.Target = "kubernetes"
 	}
+	d.Runtime = o.Runtime
 	if d.ResourceName == "" {
 		d.ResourceName = o.ComponentID
 	} else {
@@ -67,22 +75,67 @@ func registerRuntime(ctx context.Context, mode string, o *Options, c tsconnectio
 		nodeUID = o.NodeUID
 	}
 	rpc := funnelv1connect.NewNodeServiceClient(tsnetHTTPClient(c), o.ManagementURL)
-	registerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	for {
-		_, e = rpc.RegisterComponent(registerCtx, connect.NewRequest(&v1.RegisterComponentRequest{ComponentId: o.ComponentID, InstanceId: o.InstanceID, Deployment: d, ParentId: o.ParentID, NodeUid: nodeUID}))
-		if e == nil {
-			break
-		}
-		code := connect.CodeOf(e)
-		if code != connect.CodeAborted && code != connect.CodeUnavailable && code != connect.CodeDeadlineExceeded {
-			return nil, e
-		}
-		select {
-		case <-registerCtx.Done():
-			return nil, registerCtx.Err()
-		case <-time.After(2 * time.Second):
+	request := &v1.RegisterComponentRequest{ComponentId: o.ComponentID, InstanceId: o.InstanceID, Deployment: d, ParentId: o.ParentID, NodeUid: nodeUID}
+	attempt := func(ctx context.Context) error {
+		_, err := rpc.RegisterComponent(ctx, connect.NewRequest(request))
+		return err
+	}
+	bound := &tsconnection.Bound{Connection: c, ComponentID: o.ComponentID, InstanceID: o.InstanceID}
+	if failure != nil && mode == "loadbalancer" {
+		if _, cacheErr := loadRouteCache(*o); cacheErr == nil {
+			go func() {
+				var lastNotice time.Time
+				notice := func(err error) {
+					if now := time.Now(); lastNotice.IsZero() || now.Sub(lastNotice) >= 2*time.Minute {
+						slog.Warn("retained load balancer awaiting control registration", "code", connect.CodeOf(err).String())
+						lastNotice = now
+					}
+				}
+				if err := retryRegistration(ctx, attempt, 2*time.Second, notice); err != nil && ctx.Err() == nil {
+					select {
+					case failure <- err:
+					case <-ctx.Done():
+					}
+				}
+			}()
+			return bound, nil
 		}
 	}
-	return &tsconnection.Bound{Connection: c, ComponentID: o.ComponentID, InstanceID: o.InstanceID}, nil
+	registerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	if err := retryRegistration(registerCtx, attempt, 2*time.Second, nil); err != nil {
+		return nil, err
+	}
+
+	return bound, nil
+}
+
+// One retry policy serves fresh startup and retained edge recovery. The caller
+// supplies the lifetime: fresh registration is bounded; an authorized retained
+// edge retries until cancellation. Explicit denial always returns immediately.
+func retryRegistration(ctx context.Context, attempt func(context.Context) error, delay time.Duration, notice func(error)) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := attempt(ctx)
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		code := connect.CodeOf(err)
+		if code != connect.CodeAborted && code != connect.CodeUnavailable && code != connect.CodeDeadlineExceeded && !errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		if notice != nil {
+			notice(err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+	}
 }

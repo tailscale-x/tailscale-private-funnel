@@ -101,5 +101,5 @@ func (s *managementRPC) RolePolicy(ctx context.Context, r *connect.Request[v1.Ro
 	if e != nil {
 		return nil, rpcFailure(connect.CodeInvalidArgument, e)
 	}
-	return connect.NewResponse(&v1.RolePolicyTemplate{Installation: s.c.installation(), PolicyJson: string(func() []byte { out, _ := json.MarshalIndent(b, "", "  "); return out }()), Warnings: []string{"Review and merge this policy in Tailscale; Funnel never applies it.", "Existing broad grants remain effective and can weaken installation isolation.", "Tailnet backend access requires an explicit administrator-managed grant."}}), nil
+	return connect.NewResponse(&v1.RolePolicyTemplate{Installation: s.c.installation(), PolicyJson: string(func() []byte { out, _ := json.MarshalIndent(b, "", "  "); return out }()), Warnings: []string{"Review and merge this policy in Tailscale; Funnel never applies it.", "Existing broad grants remain effective and can weaken installation isolation.", "Load balancers need ICMP-only access to this installation’s gateway devices for Tailscale Service peer discovery; backend TCP/UDP remains Service-only.", "Tailnet backend access requires an explicit administrator-managed grant."}}), nil
 }

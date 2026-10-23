@@ -37,6 +37,12 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// NodeServiceAdvertiseTunnelProcedure is the fully-qualified name of the NodeService's
+	// AdvertiseTunnel RPC.
+	NodeServiceAdvertiseTunnelProcedure = "/funnel.v1.NodeService/AdvertiseTunnel"
+	// NodeServiceWithdrawTunnelProcedure is the fully-qualified name of the NodeService's
+	// WithdrawTunnel RPC.
+	NodeServiceWithdrawTunnelProcedure = "/funnel.v1.NodeService/WithdrawTunnel"
 	// NodeServiceRegisterComponentProcedure is the fully-qualified name of the NodeService's
 	// RegisterComponent RPC.
 	NodeServiceRegisterComponentProcedure = "/funnel.v1.NodeService/RegisterComponent"
@@ -87,6 +93,10 @@ const (
 
 // NodeServiceClient is a client for the funnel.v1.NodeService service.
 type NodeServiceClient interface {
+	// Advertise one foreground localhost tunnel; requires the Tailnet gateway role.
+	AdvertiseTunnel(context.Context, *connect.Request[v1.LocalTunnelRequest]) (*connect.Response[v1.LocalTunnelStatus], error)
+	// Retire only the caller's local tunnel; DNS cleanup is asynchronous.
+	WithdrawTunnel(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.TestResult], error)
 	// Role-authorized registration. Identity and role come only from WhoIs.
 	RegisterComponent(context.Context, *connect.Request[v1.RegisterComponentRequest]) (*connect.Response[v1.RegisteredComponent], error)
 	GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.ConfigurationPayload], error)
@@ -117,6 +127,18 @@ func NewNodeServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 	baseURL = strings.TrimRight(baseURL, "/")
 	nodeServiceMethods := v1.File_funnel_v1_runtime_proto.Services().ByName("NodeService").Methods()
 	return &nodeServiceClient{
+		advertiseTunnel: connect.NewClient[v1.LocalTunnelRequest, v1.LocalTunnelStatus](
+			httpClient,
+			baseURL+NodeServiceAdvertiseTunnelProcedure,
+			connect.WithSchema(nodeServiceMethods.ByName("AdvertiseTunnel")),
+			connect.WithClientOptions(opts...),
+		),
+		withdrawTunnel: connect.NewClient[v1.Empty, v1.TestResult](
+			httpClient,
+			baseURL+NodeServiceWithdrawTunnelProcedure,
+			connect.WithSchema(nodeServiceMethods.ByName("WithdrawTunnel")),
+			connect.WithClientOptions(opts...),
+		),
 		registerComponent: connect.NewClient[v1.RegisterComponentRequest, v1.RegisteredComponent](
 			httpClient,
 			baseURL+NodeServiceRegisterComponentProcedure,
@@ -194,6 +216,8 @@ func NewNodeServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 
 // nodeServiceClient implements NodeServiceClient.
 type nodeServiceClient struct {
+	advertiseTunnel       *connect.Client[v1.LocalTunnelRequest, v1.LocalTunnelStatus]
+	withdrawTunnel        *connect.Client[v1.Empty, v1.TestResult]
 	registerComponent     *connect.Client[v1.RegisterComponentRequest, v1.RegisteredComponent]
 	getConfig             *connect.Client[v1.Empty, v1.ConfigurationPayload]
 	resolveApplication    *connect.Client[v1.ResolveApplicationRequest, v1.ConfigurationPayload]
@@ -206,6 +230,16 @@ type nodeServiceClient struct {
 	submitPublicEndpoint  *connect.Client[v1.PublicEndpointPayload, v1.Empty]
 	listForwarders        *connect.Client[v1.Empty, v1.Nodes]
 	shutdown              *connect.Client[v1.ShutdownRequest, v1.TestResult]
+}
+
+// AdvertiseTunnel calls funnel.v1.NodeService.AdvertiseTunnel.
+func (c *nodeServiceClient) AdvertiseTunnel(ctx context.Context, req *connect.Request[v1.LocalTunnelRequest]) (*connect.Response[v1.LocalTunnelStatus], error) {
+	return c.advertiseTunnel.CallUnary(ctx, req)
+}
+
+// WithdrawTunnel calls funnel.v1.NodeService.WithdrawTunnel.
+func (c *nodeServiceClient) WithdrawTunnel(ctx context.Context, req *connect.Request[v1.Empty]) (*connect.Response[v1.TestResult], error) {
+	return c.withdrawTunnel.CallUnary(ctx, req)
 }
 
 // RegisterComponent calls funnel.v1.NodeService.RegisterComponent.
@@ -270,6 +304,10 @@ func (c *nodeServiceClient) Shutdown(ctx context.Context, req *connect.Request[v
 
 // NodeServiceHandler is an implementation of the funnel.v1.NodeService service.
 type NodeServiceHandler interface {
+	// Advertise one foreground localhost tunnel; requires the Tailnet gateway role.
+	AdvertiseTunnel(context.Context, *connect.Request[v1.LocalTunnelRequest]) (*connect.Response[v1.LocalTunnelStatus], error)
+	// Retire only the caller's local tunnel; DNS cleanup is asynchronous.
+	WithdrawTunnel(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.TestResult], error)
 	// Role-authorized registration. Identity and role come only from WhoIs.
 	RegisterComponent(context.Context, *connect.Request[v1.RegisterComponentRequest]) (*connect.Response[v1.RegisteredComponent], error)
 	GetConfig(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.ConfigurationPayload], error)
@@ -296,6 +334,18 @@ type NodeServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewNodeServiceHandler(svc NodeServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	nodeServiceMethods := v1.File_funnel_v1_runtime_proto.Services().ByName("NodeService").Methods()
+	nodeServiceAdvertiseTunnelHandler := connect.NewUnaryHandler(
+		NodeServiceAdvertiseTunnelProcedure,
+		svc.AdvertiseTunnel,
+		connect.WithSchema(nodeServiceMethods.ByName("AdvertiseTunnel")),
+		connect.WithHandlerOptions(opts...),
+	)
+	nodeServiceWithdrawTunnelHandler := connect.NewUnaryHandler(
+		NodeServiceWithdrawTunnelProcedure,
+		svc.WithdrawTunnel,
+		connect.WithSchema(nodeServiceMethods.ByName("WithdrawTunnel")),
+		connect.WithHandlerOptions(opts...),
+	)
 	nodeServiceRegisterComponentHandler := connect.NewUnaryHandler(
 		NodeServiceRegisterComponentProcedure,
 		svc.RegisterComponent,
@@ -370,6 +420,10 @@ func NewNodeServiceHandler(svc NodeServiceHandler, opts ...connect.HandlerOption
 	)
 	return "/funnel.v1.NodeService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case NodeServiceAdvertiseTunnelProcedure:
+			nodeServiceAdvertiseTunnelHandler.ServeHTTP(w, r)
+		case NodeServiceWithdrawTunnelProcedure:
+			nodeServiceWithdrawTunnelHandler.ServeHTTP(w, r)
 		case NodeServiceRegisterComponentProcedure:
 			nodeServiceRegisterComponentHandler.ServeHTTP(w, r)
 		case NodeServiceGetConfigProcedure:
@@ -402,6 +456,14 @@ func NewNodeServiceHandler(svc NodeServiceHandler, opts ...connect.HandlerOption
 
 // UnimplementedNodeServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedNodeServiceHandler struct{}
+
+func (UnimplementedNodeServiceHandler) AdvertiseTunnel(context.Context, *connect.Request[v1.LocalTunnelRequest]) (*connect.Response[v1.LocalTunnelStatus], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.AdvertiseTunnel is not implemented"))
+}
+
+func (UnimplementedNodeServiceHandler) WithdrawTunnel(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.TestResult], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.WithdrawTunnel is not implemented"))
+}
 
 func (UnimplementedNodeServiceHandler) RegisterComponent(context.Context, *connect.Request[v1.RegisterComponentRequest]) (*connect.Response[v1.RegisteredComponent], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.NodeService.RegisterComponent is not implemented"))

@@ -49,6 +49,16 @@ For intermittent Service routing, see [bounded diagnostic events and log collect
 Docker container/label removal automatically retires registrations after a complete authenticated scan, allowing authorized Kubernetes reclamation without changing DNS ownership. See [registration lifecycle](docs/docker-registration-lifecycle.md).
 
 
+## Expose a local HTTP port
+
+The `tunnel` command (v4.1.0+) runs in the foreground on Linux and Apple Silicon
+macOS, using host Tailscale to obtain a single-use key for a separate ephemeral
+identity, without Docker, systemd, or launchd. Control generates
+the command under **Gateways → Expose a local port**. The host needs no role tag
+or Funnel administrator permission; any verified peer allowed to reach control
+may request bootstrap. Hostname policy and exact DNS ownership still apply.
+See [usage, lifecycle and verification limits](docs/foreground-tunnel.md).
+
 ## Network and authority
 
 ```mermaid
@@ -59,7 +69,7 @@ flowchart LR
   LB -->|Encrypted application Service TCP| K8s[Node-local Kubernetes forwarders]
   Docker -->|Direct container IP and port| Container[Approved Docker backend]
   Tailnet -->|Explicit tailnet grant| Machine[Selected backend machine]
-  K8s -->|Ready same-node endpoint only| Pod[Application Pod]
+  K8s -->|Verified ready Pod, local first| Pod[Application Pod]
   Runtime[Installation role-tagged runtimes] -->|WhoIs-authenticated control Service| Control[Private control]
   Humans[Authorized Owner/Admin] --> Control
   Control -->|Exact owned records only| DNS[DNS provider]
@@ -67,7 +77,7 @@ flowchart LR
 
 | Boundary | Enforcement |
 |---|---|
-| Installation | Five exact device-role tags and two separate Service tags per installation; no generated cross-installation grants |
+| Installation | Separate device-role and Service tags; any reachable tailnet peer may request tunnel bootstrap, while application traffic remains restricted to the installation load-balancer role |
 | Human administration | Verified WhoIs plus separate human-role authorization; runtime tags never confer management permission |
 | Runtime registration | Exact installation/role check; logical IDs are selectors, not secrets; bounded instance leases prevent competing writers |
 | Exposure | Default-deny hostname policy, backend identity/reachability checks, fresh reports and load-balancer acknowledgment |
@@ -208,3 +218,6 @@ integration acceptance; local unit tests do not prove a live rollout. Build loca
 or in CI. See the [v4.0.1 rollout evidence](docs/verification/v4.0.1-rollout.md)
 and [fresh-name DNS fix](docs/verification/cloudflare-complete-names-20261019.md)
 for deployed artifacts, routing checks, and the stable/development release boundary.
+
+Service-host replacement acceptance and the required ICMP-only peer-discovery grant
+are recorded in [Service peer-discovery recovery](docs/verification/service-peer-discovery-20261020.md).
