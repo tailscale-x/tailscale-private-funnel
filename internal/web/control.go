@@ -351,7 +351,8 @@ type exposureInput struct {
 }
 
 func applicationAllows(app store.ApplicationRecord, node store.NodeRecord) bool {
-	return app.Enabled && !node.Revoked && store.IsGateway(node.Mode) && (app.BackendSource != "tailnet" || len(app.AllowedGatewayNodes) == 1) && (app.BackendSource == store.BackendSource(node.Mode) || (app.BackendSource == "" && node.Mode == "docker-gateway")) && (len(app.AllowedGatewayNodes) == 0 || contains(app.AllowedGatewayNodes, node.ID) || node.ParentID != "" && contains(app.AllowedGatewayNodes, node.ParentID))
+	local := app.BackendSource == "local" && node.Mode == "tailnet-gateway" && len(app.AllowedGatewayNodes) == 1 && app.AllowedGatewayNodes[0] == node.ID
+	return app.Enabled && !node.Revoked && store.IsGateway(node.Mode) && (app.BackendSource != "tailnet" || len(app.AllowedGatewayNodes) == 1) && (local || app.BackendSource == store.BackendSource(node.Mode) || (app.BackendSource == "" && node.Mode == "docker-gateway")) && (len(app.AllowedGatewayNodes) == 0 || contains(app.AllowedGatewayNodes, node.ID) || node.ParentID != "" && contains(app.AllowedGatewayNodes, node.ParentID))
 }
 
 func (c *Control) tailscaleRuntimeClient() (tailscale.Client, error) {
@@ -608,9 +609,9 @@ func (c *Control) ReconcileServiceApprovals(ctx context.Context) error {
 				return e
 			}
 		}
-		unused := strings.HasPrefix(service, "svc:tpf-k8s-")
+		unused := strings.HasPrefix(service, "svc:tpf-k8s-") || len(owners) > 0 && c.ownsLocalTunnelService(owners[0])
 		for _, app := range owners {
-			unused = unused && !app.Enabled && app.BackendSource == "kubernetes"
+			unused = unused && !app.Enabled && (app.BackendSource == "kubernetes" || c.ownsLocalTunnelService(app) && len(app.PublicHostnames) == 0)
 		}
 		if unused && c.provisionMu.TryLock() {
 			current, readErr := c.Store.Applications()
@@ -621,6 +622,9 @@ func (c *Control) ReconcileServiceApprovals(ctx context.Context) error {
 			for _, app := range current {
 				if !app.Enabled {
 					continue
+				}
+				if app.ServiceName == service {
+					unused = false
 				}
 				for _, b := range app.HTTPBackends {
 					if b.ServiceName == service {
@@ -719,6 +723,9 @@ func (c *Control) ExpireReports(ctx context.Context, maxAge time.Duration) (int,
 // The control node is never selected by Store.StaleNodes.
 func (c *Control) CleanupStaleNodes(ctx context.Context, maxAge time.Duration) (int, error) {
 	before := time.Now().Add(-maxAge).Unix()
+	if err := c.retireExpiredLocalTunnels(ctx, before); err != nil {
+		return 0, err
+	}
 	nodes, err := c.Store.StaleNodes(before)
 	if err != nil {
 		return 0, err

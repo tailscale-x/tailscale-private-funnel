@@ -1,0 +1,88 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
+)
+
+func TestLoadBalancerProbesEveryKubernetesBackendConcurrently(t *testing.T) {
+	var concurrent, peak atomic.Int32
+	release := make(chan struct{})
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	apps := []store.ApplicationRecord{{ID: "harbor", Enabled: true, BackendSource: "kubernetes", PublicHostnames: []string{"harbor.example.com"}, HTTPRules: []proxy.HTTPRule{{Matches: []proxy.Match{{Path: "/"}}}}, HTTPBackends: []proxy.Backend{{ServiceName: "svc:harbor", Service: "100.64.0.1", Port: 8080}, {ServiceName: "svc:solver", Service: "100.64.0.2", Port: 8089}}}}
+	dial := func(ctx context.Context, _, address string) (net.Conn, error) {
+		n := concurrent.Add(1)
+		defer concurrent.Add(-1)
+		for old := peak.Load(); n > old; old = peak.Load() {
+			if peak.CompareAndSwap(old, n) {
+				break
+			}
+		}
+		if n == 2 {
+			close(release)
+		}
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		if address == "100.64.0.2:8089" {
+			return nil, errors.New("solver not ready")
+		}
+		a, b := net.Pipe()
+		_ = b.Close()
+		return a, nil
+	}
+	exposures := probeLoadBalancerBackends(ctx, dial, apps)
+	if len(exposures) != 2 || !exposures[0].Reachable || exposures[1].Reachable || exposures[0].ServiceName != "svc:harbor" || exposures[1].ServiceName != "svc:solver" || exposures[1].Port != 8089 {
+		t.Fatalf("incorrect per-backend reports: %+v", exposures)
+	}
+	if peak.Load() != 2 {
+		t.Fatal("pending solver serialized healthy backend probe", peak.Load())
+	}
+}
+
+func TestLoadBalancerProbesBoundWorkAndHonorCancellation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	app := store.ApplicationRecord{ID: "many", Enabled: true, BackendSource: "kubernetes", PublicHostnames: []string{"many.example.com"}, HTTPRules: []proxy.HTTPRule{{Matches: []proxy.Match{{Path: "/"}}}}}
+	for i := 0; i < 32; i++ {
+		app.HTTPBackends = append(app.HTTPBackends, proxy.Backend{ServiceName: fmt.Sprintf("svc:%d", i), Service: "100.64.0.1", Port: 8080})
+	}
+	started := make(chan struct{})
+	var calls atomic.Int32
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		probeLoadBalancerBackends(ctx, func(ctx context.Context, _, _ string) (net.Conn, error) {
+			if calls.Add(1) == 8 {
+				close(started)
+			}
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}, []store.ApplicationRecord{app})
+	}()
+	select {
+	case <-started:
+	case <-ctx.Done():
+		t.Fatal("probes did not start")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("cancelled probes did not finish")
+	}
+	if calls.Load() != 8 {
+		t.Fatalf("started additional backend probes after cancellation: %d", calls.Load())
+	}
+}

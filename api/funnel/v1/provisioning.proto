@@ -7,6 +7,17 @@ import "funnel/v1/options.proto";
 option go_package = "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1;funnelv1";
 // DeploymentService authorizes deployments. Execution is performed by a generated installer on the target.
 service DeploymentService {
+  // Phone home using existing host connectivity. Issues only the installation
+  // Tailnet gateway role, never a caller-selected role or management permission.
+  rpc BootstrapTunnel(TunnelBootstrapRequest) returns (TunnelBootstrap) {
+    option (permission) = PERMISSION_TAILNET;
+    option (sensitive) = true;
+    option (audit) = true;
+  }
+  // Render a secret-free foreground command; no registration or DNS mutation.
+  rpc TunnelInstructions(TunnelInstructionsRequest) returns (DeploymentInstructions) {
+    option (permission) = PERMISSION_VIEWER;
+  }
   // Resolve deployment choices without creating bootstrap keys.
   rpc Instructions(DeploymentRequest) returns (DeploymentInstructions) {
     option (permission) = PERMISSION_ADMIN;
@@ -17,6 +28,25 @@ service DeploymentService {
     option (sensitive) = true;
     option (audit) = true;
   }
+}
+message TunnelBootstrapRequest {
+  string installation = 1;
+  string name = 2;
+  string hostname = 3;
+  uint32 port = 4 [(buf.validate.field).uint32 = {gt:0,lte:65535}];
+  string local_address = 5;
+}
+message TunnelBootstrap {
+  string auth_key = 1 [(secret) = true];
+  int64 expires_at = 2;
+  string installation = 3;
+}
+message TunnelInstructionsRequest {
+  string hostname = 1;
+  uint32 port = 2 [(buf.validate.field).uint32 = {gt:0,lte:65535}];
+  string local_address = 3;
+  string name = 4;
+  string tailscale_connection = 5;
 }
 message DeploymentRequest {
   string mode = 1 [

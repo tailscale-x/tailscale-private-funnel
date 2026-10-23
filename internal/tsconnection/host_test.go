@@ -2,6 +2,7 @@ package tsconnection
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -176,5 +177,34 @@ func TestHostMultiplePortsWithdrawAdvertisementAfterLastPort(t *testing.T) {
 	}
 	if !reflect.DeepEqual(f.prefs.AdvertiseServices, []string{"svc:unrelated"}) {
 		t.Fatal("last port left advertisement or removed unrelated one")
+	}
+}
+
+func TestDefaultHostLockRejectsUnsafeDirectory(t *testing.T) {
+	h, f := hostFixture(t)
+	h.LockPath = ""
+	h.deviceID = string(f.device) + t.TempDir()
+	dir := filepath.Join("/var/tmp", fmt.Sprintf("tailscale-private-funnel-host-%x", sha256.Sum256([]byte(h.deviceID))))
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	if err := os.Symlink(t.TempDir(), dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.locked(func(map[string]ownedService) error { return nil }); err == nil {
+		t.Fatal("symlink lock directory accepted")
+	}
+	if err := os.Remove(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.locked(func(map[string]ownedService) error { return nil }); err == nil {
+		t.Fatal("unsafe directory permissions accepted")
+	}
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.locked(func(map[string]ownedService) error { return nil }); err != nil {
+		t.Fatal(err)
 	}
 }

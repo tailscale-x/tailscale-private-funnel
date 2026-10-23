@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/identity"
 	"strings"
 )
 
@@ -73,5 +74,29 @@ non-executable preview. Inspect each command's --help for required settings.
 
 `, versionNote, releaseURL, downloadURL, downloadURL, downloadURL, downloadURL,
 		installRef, installVersion, quote(controlURL), quote(controlURL), quote(controlURL), quote(controlURL), quote(controlURL))
-	return []byte(strings.Replace(string(contract), "## Start here", bootstrap+"## Start here", 1)), nil
+	foreground := fmt.Sprintf(`## Foreground local HTTP tunnel
+
+With a compatible CLI, run on Linux or Apple Silicon macOS:
+
+`+"```sh"+`
+tailscale-private-funnel tunnel 8080 --hostname app.example.com --control-url %s
+`+"```"+`
+
+Unlike generated installers, tunnel phones home through an already-connected host
+Tailscale daemon. Any verified peer that can reach control may request bootstrap;
+no host tag or Funnel management role is required. Control issues a single-use,
+ephemeral, 15-minute key restricted to %s. The process starts a separate embedded
+tsnet identity with in-memory state and discards the key after joining. It never
+retags, joins, logs out or changes the borrowed host daemon. Ctrl+C withdraws the
+tunnel and logs out its embedded identity. Every restart requests a fresh key.
+
+Use --tailscale host only for an already role-tagged host with LocalAPI Service
+forwarding permission; that mode requests no key. No Docker, systemd or launchd.
+Use --output json for newline-delimited progress events. HTTP backends must listen
+on loopback; --local-address ::1 selects IPv6. Hostname policy, managed zones and
+exact DNS ownership apply. Bootstrap grants runtime authority, never human admin.
+
+
+`, quote(controlURL), identity.Tag(c.installation(), identity.TailnetGateway))
+	return []byte(strings.Replace(string(contract), "## Start here", bootstrap+foreground+"## Start here", 1)), nil
 }

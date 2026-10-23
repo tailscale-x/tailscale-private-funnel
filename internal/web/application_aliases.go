@@ -25,7 +25,7 @@ func (c *Control) expandDockerAliasesForPolicy(exposures []dns.GatewayExposure, 
 	}
 	for _, e := range exposures {
 		app, ok := approvedApplication(apps, e)
-		if !ok || app.BackendSource == "tailnet" || !applicationAllows(app, node) {
+		if !ok || app.BackendSource == "tailnet" || app.BackendSource == "local" || !applicationAllows(app, node) {
 			continue
 		}
 		for _, host := range app.PublicHostnames {
@@ -74,7 +74,7 @@ func (c *Control) addAliasOperation(ctx context.Context, id, hostname, actor str
 	if app.ID == "" {
 		return store.ApplicationRecord{}, rpcFailure(connect.CodeNotFound, errors.New("Resource not found"))
 	}
-	if !app.Enabled || app.BackendSource == "tailnet" {
+	if !app.Enabled || app.BackendSource == "tailnet" || app.BackendSource == "local" {
 		return store.ApplicationRecord{}, rpcFailure(connect.CodeInvalidArgument, errors.New("Select an enabled Docker application"))
 	}
 	if _, err = c.managedZone(hostname); err != nil {

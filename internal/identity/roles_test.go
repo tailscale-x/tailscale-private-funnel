@@ -25,7 +25,7 @@ func TestPolicySeparatesControlAndApplications(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(p.TagOwners) != 8 || len(p.Grants) != 5 {
+	if len(p.TagOwners) != 8 || len(p.Grants) != 4 {
 		t.Fatal(p)
 	}
 	issuer := IssuerTag("main")

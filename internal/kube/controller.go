@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/nodeconfig"
 	"k8s.io/client-go/util/retry"
 
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -37,8 +38,8 @@ import (
 )
 
 type Publication struct {
+	Resources map[string]string
 	Problems  map[string]string
-	Hosts     []string
 	Addresses []string
 }
 type Apply func(context.Context, Result) (Publication, error)
@@ -115,10 +116,7 @@ func (c *Controller) Reconcile(ctx context.Context, _ reconcile.Request) (ctrl.R
 		return ctrl.Result{}, err
 	}
 	published, applyErr := c.Apply(ctx, result)
-	set := map[string]bool{}
-	for _, h := range published.Hosts {
-		set[h] = true
-	}
+	expected := nodeconfig.KubernetesResourceRevisions(result.Hosts)
 	for _, object := range result.Objects {
 		id := resourceID(object)
 		problem := result.Problems[id]
@@ -134,6 +132,12 @@ func (c *Controller) Reconcile(ctx context.Context, _ reconcile.Request) (ctrl.R
 			if c.hostReferencesObject(ctx, object, host, result) {
 				seen = true
 				for _, resource := range host.ResourceIDs {
+					if _, route := object.(*v1.HTTPRoute); route && resource != id {
+						continue
+					}
+					if _, ingress := object.(*networking.Ingress); ingress && resource != id {
+						continue
+					}
 					if failure := published.Problems[resource]; failure != "" {
 						programmed = false
 						if problem == "" {
@@ -141,7 +145,15 @@ func (c *Controller) Reconcile(ctx context.Context, _ reconcile.Request) (ctrl.R
 						}
 					}
 				}
-				programmed = programmed && set[host.Hostname]
+				for _, resource := range host.ResourceIDs {
+					if _, route := object.(*v1.HTTPRoute); route && resource != id {
+						continue
+					}
+					if _, ingress := object.(*networking.Ingress); ingress && resource != id {
+						continue
+					}
+					programmed = programmed && expected[resource] != "" && published.Resources[resource] == expected[resource]
+				}
 			}
 		}
 		if !seen {

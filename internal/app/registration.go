@@ -63,6 +63,7 @@ func registerRuntimeWithCache(ctx context.Context, mode string, o *Options, c ts
 	if o.KubeNamespace != "" {
 		d.Target = "kubernetes"
 	}
+	d.Runtime = o.Runtime
 	if d.ResourceName == "" {
 		d.ResourceName = o.ComponentID
 	} else {

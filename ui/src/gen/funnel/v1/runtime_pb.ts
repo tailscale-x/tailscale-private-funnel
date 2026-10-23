@@ -16,7 +16,66 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file funnel/v1/runtime.proto.
  */
 export const file_funnel_v1_runtime: GenFile = /*@__PURE__*/
-  fileDesc("ChdmdW5uZWwvdjEvcnVudGltZS5wcm90bxIJZnVubmVsLnYxIpABChlSZXNvbHZlQXBwbGljYXRpb25SZXF1ZXN0EhMKC3BhdGhfcHJlZml4GAMgASgJEikKB3Jld3JpdGUYBCABKAsyGC5mdW5uZWwudjEuUHJlZml4UmV3cml0ZRIQCghob3N0bmFtZRgBIAEoCRIhCgxiYWNrZW5kX3BvcnQYAiABKA1CC7pICCoGGP//AyAAIjgKCUNvbmZpZ0FjaxIZCghyZXZpc2lvbhgBIAEoCUIHukgEcgIQARIQCghzZXJ2aWNlcxgCIAMoCSKgAgoKTm9kZUhlYWx0aBITCgtsYXN0X3JlcG9ydBgBIAEoAxIQCghyZXZpc2lvbhgCIAEoCRIRCglsaXN0ZW5lcnMYAyADKAkSEAoIYmFja2VuZHMYBCABKA0SEQoJcmVhY2hhYmxlGAUgASgNEh0KFWxvYWRiYWxhbmNlcl9ob3N0bmFtZRgGIAEoCRIOCgZvbmxpbmUYByABKAgSDgoGZXJyb3JzGAggAygJEhAKCG5vZGVfdWlkGAkgASgJEhEKCW5vZGVfbmFtZRgKIAEoCRIXCg9sb2NhbF9lbmRwb2ludHMYCyABKA0SGQoRd2l0aGRyYXdhbF9yZWFzb24YDCABKAkSGwoTYWR2ZXJ0aXNlZF9zZXJ2aWNlcxgNIAMoCSKIAQoVUHVibGljRW5kcG9pbnRQYXlsb2FkEhEKCW5hbWVzcGFjZRgBIAEoCRIPCgdzZXJ2aWNlGAIgASgJEgsKA3VpZBgDIAEoCRITCgtvYnNlcnZlZF9hdBgEIAEoAxIpCgdpbmdyZXNzGAUgAygLMhguZnVubmVsLnYxLlB1YmxpY0luZ3Jlc3MiPgoNUHVibGljSW5ncmVzcxIKCgJpcBgBIAEoCRIQCghob3N0bmFtZRgCIAEoCRIPCgdpcF9tb2RlGAMgASgJInQKDUJyb2tlclNlc3Npb24SEAoIbm9kZV91aWQYASABKAkSEQoJbm9kZV9uYW1lGAIgASgJEg8KB25vZGVfaWQYAyABKAkSFgoObWFuYWdlbWVudF91cmwYBSABKAkSFQoNY29udHJvbGxlcl9pZBgHIAEoCSLOAQoRS3ViZXJuZXRlc1BheWxvYWQSOAoGZXJyb3JzGAEgAygLMiguZnVubmVsLnYxLkt1YmVybmV0ZXNQYXlsb2FkLkVycm9yc0VudHJ5EhIKCmNsdXN0ZXJfaWQYAiABKAkSKAoFaG9zdHMYAyADKAsyGS5mdW5uZWwudjEuS3ViZXJuZXRlc0hvc3QSEgoKZXhwaXJlc19hdBgEIAEoAxotCgtFcnJvcnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIoYBCg5LdWJlcm5ldGVzSG9zdBIQCghob3N0bmFtZRgBIAEoCRIiCgVydWxlcxgCIAMoCzITLmZ1bm5lbC52MS5IVFRQUnVsZRIoCghiYWNrZW5kcxgDIAMoCzIWLmZ1bm5lbC52MS5IVFRQQmFja2VuZBIUCgxyZXNvdXJjZV9pZHMYBCADKAkiVAoLUG9kRW5kcG9pbnQSDwoHYWRkcmVzcxgBIAEoCRIPCgdwb2RfdWlkGAIgASgJEhEKCW5vZGVfbmFtZRgDIAEoCRIQCghub2RlX3VpZBgEIAEoCSKbAQoLSFRUUEJhY2tlbmQSKQoJZW5kcG9pbnRzGAEgAygLMhYuZnVubmVsLnYxLlBvZEVuZHBvaW50EgsKA2tleRgCIAEoCRIUCgxzZXJ2aWNlX25hbWUYAyABKAkSDwoHc2VydmljZRgEIAEoCRIMCgRwb3J0GAUgASgNEg8KB2FkZHJlc3MYBiABKAkSDgoGd2VpZ2h0GAcgASgFIvoBCglIVFRQTWF0Y2gSDAoEcGF0aBgBIAEoCRINCgVleGFjdBgCIAEoCBIOCgZtZXRob2QYAyABKAkSMgoHaGVhZGVycxgEIAMoCzIhLmZ1bm5lbC52MS5IVFRQTWF0Y2guSGVhZGVyc0VudHJ5Ei4KBXF1ZXJ5GAUgAygLMh8uZnVubmVsLnYxLkhUVFBNYXRjaC5RdWVyeUVudHJ5Gi4KDEhlYWRlcnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBGiwKClF1ZXJ5RW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASLUAQoMSGVhZGVyRmlsdGVyEi0KA3NldBgBIAMoCzIgLmZ1bm5lbC52MS5IZWFkZXJGaWx0ZXIuU2V0RW50cnkSLQoDYWRkGAIgAygLMiAuZnVubmVsLnYxLkhlYWRlckZpbHRlci5BZGRFbnRyeRIOCgZyZW1vdmUYAyADKAkaKgoIU2V0RW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ARoqCghBZGRFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIkoKDEhUVFBSZWRpcmVjdBIOCgZzY2hlbWUYASABKAkSDAoEaG9zdBgCIAEoCRIMCgRwb3J0GAMgASgNEg4KBnN0YXR1cxgEIAEoBSKbAwoISFRUUFJ1bGUSKQoHcmV3cml0ZRgLIAEoCzIYLmZ1bm5lbC52MS5QcmVmaXhSZXdyaXRlEh8KF2JhY2tlbmRfcmVxdWVzdF90aW1lb3V0GAEgASgJEiUKB21hdGNoZXMYAiADKAsyFC5mdW5uZWwudjEuSFRUUE1hdGNoEigKCGJhY2tlbmRzGAMgAygLMhYuZnVubmVsLnYxLkhUVFBCYWNrZW5kEjAKD3JlcXVlc3RfaGVhZGVycxgEIAEoCzIXLmZ1bm5lbC52MS5IZWFkZXJGaWx0ZXISMQoQcmVzcG9uc2VfaGVhZGVycxgFIAEoCzIXLmZ1bm5lbC52MS5IZWFkZXJGaWx0ZXISKQoIcmVkaXJlY3QYBiABKAsyFy5mdW5uZWwudjEuSFRUUFJlZGlyZWN0EhcKD3JlcXVlc3RfdGltZW91dBgHIAEoCRIXCg9iYWNrZW5kX3RpbWVvdXQYCCABKAkSHgoWbWF4X3JlcXVlc3RfYm9keV9ieXRlcxgJIAEoAxIQCghwcmlvcml0eRgKIAEoBSKPAwoSUnVudGltZUFwcGxpY2F0aW9uEicKCmh0dHBfcnVsZXMYASADKAsyEy5mdW5uZWwudjEuSFRUUFJ1bGUSLQoNaHR0cF9iYWNrZW5kcxgCIAMoCzIWLmZ1bm5lbC52MS5IVFRQQmFja2VuZBIMCgRuYW1lGAMgASgJEhYKDmJhY2tlbmRfc291cmNlGAQgASgJEhkKEWJhY2tlbmRfZGV2aWNlX2lkGAUgASgJEhkKEWJhY2tlbmRfYWRkcmVzc2VzGAYgAygJEgoKAmlkGAcgASgJEhQKDHNlcnZpY2VfbmFtZRgIIAEoCRIUCgxzZXJ2aWNlX2ZxZG4YCSABKAkSFAoMc2VydmljZV9wb3J0GAogASgNEhQKDGJhY2tlbmRfcG9ydBgLIAEoDRIYChBwdWJsaWNfaG9zdG5hbWVzGAwgAygJEh0KFWFsbG93ZWRfZ2F0ZXdheV9ub2RlcxgNIAMoCRIXCg9wb2xpY3lfcmV2aXNpb24YDiABKAMSDwoHZW5hYmxlZBgPIAEoCCJgCglIVFRQUm91dGUSIgoFcnVsZXMYASADKAsyEy5mdW5uZWwudjEuSFRUUFJ1bGUSEAoIaG9zdG5hbWUYAiABKAkSDwoHc2VydmljZRgDIAEoCRIMCgRwb3J0GAQgASgNIqUDChRDb25maWd1cmF0aW9uUGF5bG9hZBJQChFrdWJlcm5ldGVzX2Vycm9ycxgKIAMoCzI1LmZ1bm5lbC52MS5Db25maWd1cmF0aW9uUGF5bG9hZC5LdWJlcm5ldGVzRXJyb3JzRW50cnkSGwoTcHVibGlzaGVkX2FkZHJlc3NlcxgBIAMoCRIbChNwdWJsaXNoZWRfaG9zdG5hbWVzGAIgAygJEiQKBnJvdXRlcxgDIAMoCzIULmZ1bm5lbC52MS5IVFRQUm91dGUSIAoGcHJvYmVzGAQgAygLMhAuZnVubmVsLnYxLlByb2JlEg8KB25vZGVfaWQYBSABKAkSEAoIcmV2aXNpb24YBiABKAkSMwoMYXBwbGljYXRpb25zGAcgAygLMh0uZnVubmVsLnYxLlJ1bnRpbWVBcHBsaWNhdGlvbhIVCg1sYWJlbF9hbGlhc2VzGAggAygJEhEKCWlzc3VlZF9hdBgJIAEoAxo3ChVLdWJlcm5ldGVzRXJyb3JzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASIhCg9TaHV0ZG93blJlcXVlc3QSDgoGcmVtb3ZlGAEgASgIIpIBChZEb2NrZXJJbnZlbnRvcnlQYXlsb2FkEhkKCHJldmlzaW9uGAEgASgDQge6SAQiAiAAEhAKCGNvbXBsZXRlGAIgASgIEjcKCmNvbnRhaW5lcnMYAyADKAsyIy5mdW5uZWwudjEuRG9ja2VySW52ZW50b3J5Q29udGFpbmVyEhIKCmxhYmVsX2tleXMYBCADKAkipwEKGERvY2tlckludmVudG9yeUNvbnRhaW5lchIKCgJpZBgBIAEoCRIPCgdydW5uaW5nGAIgASgIEj8KBmxhYmVscxgDIAMoCzIvLmZ1bm5lbC52MS5Eb2NrZXJJbnZlbnRvcnlDb250YWluZXIuTGFiZWxzRW50cnkaLQoLTGFiZWxzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASKcAQoYUmVnaXN0ZXJDb21wb25lbnRSZXF1ZXN0EhQKDGNvbXBvbmVudF9pZBgBIAEoCRITCgtpbnN0YW5jZV9pZBgCIAEoCRIwCgpkZXBsb3ltZW50GAMgASgLMhwuZnVubmVsLnYxLkRlcGxveW1lbnRSZXF1ZXN0EhEKCXBhcmVudF9pZBgEIAEoCRIQCghub2RlX3VpZBgFIAEoCSJ8ChNSZWdpc3RlcmVkQ29tcG9uZW50EhQKDGNvbXBvbmVudF9pZBgBIAEoCRITCgtpbnN0YW5jZV9pZBgCIAEoCRIRCglkZXZpY2VfaWQYAyABKAkSEgoKZ2VuZXJhdGlvbhgEIAEoAxITCgtsZWFzZV91bnRpbBgFIAEoAyLGAQoRV29ya2xvYWRCb290c3RyYXASFgoIYXV0aF9rZXkYASABKAlCBNi1GAESFAoMY29tcG9uZW50X2lkGAIgASgJEhEKCXBhcmVudF9pZBgDIAEoCRITCgtpbnN0YW5jZV9pZBgEIAEoCRIUCgxpbnN0YWxsYXRpb24YBSABKAkSDAoEbW9kZRgGIAEoCRIQCghub2RlX3VpZBgHIAEoCRIRCglub2RlX25hbWUYCCABKAkSEgoKZXhwaXJlc19hdBgJIAEoAzLnCAoLTm9kZVNlcnZpY2USXgoRUmVnaXN0ZXJDb21wb25lbnQSIy5mdW5uZWwudjEuUmVnaXN0ZXJDb21wb25lbnRSZXF1ZXN0Gh4uZnVubmVsLnYxLlJlZ2lzdGVyZWRDb21wb25lbnQiBIi1GAQSZgoJR2V0Q29uZmlnEhAuZnVubmVsLnYxLkVtcHR5Gh8uZnVubmVsLnYxLkNvbmZpZ3VyYXRpb25QYXlsb2FkIiaItRgEorUYHmZ1bm5lbC52MS5Db25maWd1cmF0aW9uUGF5bG9hZBKDAQoSUmVzb2x2ZUFwcGxpY2F0aW9uEiQuZnVubmVsLnYxLlJlc29sdmVBcHBsaWNhdGlvblJlcXVlc3QaHy5mdW5uZWwudjEuQ29uZmlndXJhdGlvblBheWxvYWQiJoi1GASitRgeZnVubmVsLnYxLkNvbmZpZ3VyYXRpb25QYXlsb2FkEjsKC0Fja25vd2xlZGdlEhQuZnVubmVsLnYxLkNvbmZpZ0FjaxoQLmZ1bm5lbC52MS5FbXB0eSIEiLUYBBI9CgxSZXBvcnRIZWFsdGgSFS5mdW5uZWwudjEuTm9kZUhlYWx0aBoQLmZ1bm5lbC52MS5FbXB0eSIEiLUYBBJdCgxTdWJtaXRSZXBvcnQSGS5mdW5uZWwudjEuRXhwb3N1cmVSZXBvcnQaEC5mdW5uZWwudjEuRW1wdHkiIIi1GASitRgYZnVubmVsLnYxLkV4cG9zdXJlUmVwb3J0EnYKFVN1Ym1pdERvY2tlckludmVudG9yeRIhLmZ1bm5lbC52MS5Eb2NrZXJJbnZlbnRvcnlQYXlsb2FkGhAuZnVubmVsLnYxLkVtcHR5IiiItRgEorUYIGZ1bm5lbC52MS5Eb2NrZXJJbnZlbnRvcnlQYXlsb2FkElgKC1N1Ym1pdFBlZXJzEhcuZnVubmVsLnYxLlBlZXJTbmFwc2hvdBoQLmZ1bm5lbC52MS5FbXB0eSIeiLUYBKK1GBZmdW5uZWwudjEuUGVlclNuYXBzaG90EmcKEFN1Ym1pdEt1YmVybmV0ZXMSHC5mdW5uZWwudjEuS3ViZXJuZXRlc1BheWxvYWQaEC5mdW5uZWwudjEuRW1wdHkiI4i1GASitRgbZnVubmVsLnYxLkt1YmVybmV0ZXNQYXlsb2FkEnMKFFN1Ym1pdFB1YmxpY0VuZHBvaW50EiAuZnVubmVsLnYxLlB1YmxpY0VuZHBvaW50UGF5bG9hZBoQLmZ1bm5lbC52MS5FbXB0eSIniLUYBKK1GB9mdW5uZWwudjEuUHVibGljRW5kcG9pbnRQYXlsb2FkEjoKDkxpc3RGb3J3YXJkZXJzEhAuZnVubmVsLnYxLkVtcHR5GhAuZnVubmVsLnYxLk5vZGVzIgSItRgEEkMKCFNodXRkb3duEhouZnVubmVsLnYxLlNodXRkb3duUmVxdWVzdBoVLmZ1bm5lbC52MS5UZXN0UmVzdWx0IgSItRgEMq4CCg1Ccm9rZXJTZXJ2aWNlEkMKC09wZW5TZXNzaW9uEhAuZnVubmVsLnYxLkVtcHR5GhguZnVubmVsLnYxLkJyb2tlclNlc3Npb24iCIi1GAaYtRgBEmYKCUdldENvbmZpZxIQLmZ1bm5lbC52MS5FbXB0eRofLmZ1bm5lbC52MS5Db25maWd1cmF0aW9uUGF5bG9hZCImiLUYBqK1GB5mdW5uZWwudjEuQ29uZmlndXJhdGlvblBheWxvYWQSNgoKUmVuZXdMZWFzZRIQLmZ1bm5lbC52MS5FbXB0eRoQLmZ1bm5lbC52MS5FbXB0eSIEiLUYBhI4CgxSZWxlYXNlTGVhc2USEC5mdW5uZWwudjEuRW1wdHkaEC5mdW5uZWwudjEuRW1wdHkiBIi1GAYyYAoYV29ya2xvYWRCb290c3RyYXBTZXJ2aWNlEkQKCElzc3VlS2V5EhAuZnVubmVsLnYxLkVtcHR5GhwuZnVubmVsLnYxLldvcmtsb2FkQm9vdHN0cmFwIgiItRgGmLUYAUJRWk9naXRodWIuY29tL3RhaWxzY2FsZS14L3RhaWxzY2FsZS1wcml2YXRlLWZ1bm5lbC9pbnRlcm5hbC9nZW4vZnVubmVsL3YxO2Z1bm5lbHYxYgZwcm90bzM", [file_buf_validate_validate, file_funnel_v1_management, file_funnel_v1_options, file_funnel_v1_provisioning]);
+  fileDesc("ChdmdW5uZWwvdjEvcnVudGltZS5wcm90bxIJZnVubmVsLnYxIlgKEkxvY2FsVHVubmVsUmVxdWVzdBIQCghob3N0bmFtZRgBIAEoCRIZCgRwb3J0GAIgASgNQgu6SAgqBhj//wMgABIVCg1sb2NhbF9hZGRyZXNzGAMgASgJInsKEUxvY2FsVHVubmVsU3RhdHVzEjIKC2FwcGxpY2F0aW9uGAEgASgLMh0uZnVubmVsLnYxLlJ1bnRpbWVBcHBsaWNhdGlvbhISCgpwdWJsaWNfdXJsGAIgASgJEg0KBXJlYWR5GAMgASgIEg8KB21lc3NhZ2UYBCABKAkikAEKGVJlc29sdmVBcHBsaWNhdGlvblJlcXVlc3QSEwoLcGF0aF9wcmVmaXgYAyABKAkSKQoHcmV3cml0ZRgEIAEoCzIYLmZ1bm5lbC52MS5QcmVmaXhSZXdyaXRlEhAKCGhvc3RuYW1lGAEgASgJEiEKDGJhY2tlbmRfcG9ydBgCIAEoDUILukgIKgYY//8DIAAiOAoJQ29uZmlnQWNrEhkKCHJldmlzaW9uGAEgASgJQge6SARyAhABEhAKCHNlcnZpY2VzGAIgAygJIqACCgpOb2RlSGVhbHRoEhMKC2xhc3RfcmVwb3J0GAEgASgDEhAKCHJldmlzaW9uGAIgASgJEhEKCWxpc3RlbmVycxgDIAMoCRIQCghiYWNrZW5kcxgEIAEoDRIRCglyZWFjaGFibGUYBSABKA0SHQoVbG9hZGJhbGFuY2VyX2hvc3RuYW1lGAYgASgJEg4KBm9ubGluZRgHIAEoCBIOCgZlcnJvcnMYCCADKAkSEAoIbm9kZV91aWQYCSABKAkSEQoJbm9kZV9uYW1lGAogASgJEhcKD2xvY2FsX2VuZHBvaW50cxgLIAEoDRIZChF3aXRoZHJhd2FsX3JlYXNvbhgMIAEoCRIbChNhZHZlcnRpc2VkX3NlcnZpY2VzGA0gAygJIogBChVQdWJsaWNFbmRwb2ludFBheWxvYWQSEQoJbmFtZXNwYWNlGAEgASgJEg8KB3NlcnZpY2UYAiABKAkSCwoDdWlkGAMgASgJEhMKC29ic2VydmVkX2F0GAQgASgDEikKB2luZ3Jlc3MYBSADKAsyGC5mdW5uZWwudjEuUHVibGljSW5ncmVzcyI+Cg1QdWJsaWNJbmdyZXNzEgoKAmlwGAEgASgJEhAKCGhvc3RuYW1lGAIgASgJEg8KB2lwX21vZGUYAyABKAkidAoNQnJva2VyU2Vzc2lvbhIQCghub2RlX3VpZBgBIAEoCRIRCglub2RlX25hbWUYAiABKAkSDwoHbm9kZV9pZBgDIAEoCRIWCg5tYW5hZ2VtZW50X3VybBgFIAEoCRIVCg1jb250cm9sbGVyX2lkGAcgASgJIs4BChFLdWJlcm5ldGVzUGF5bG9hZBI4CgZlcnJvcnMYASADKAsyKC5mdW5uZWwudjEuS3ViZXJuZXRlc1BheWxvYWQuRXJyb3JzRW50cnkSEgoKY2x1c3Rlcl9pZBgCIAEoCRIoCgVob3N0cxgDIAMoCzIZLmZ1bm5lbC52MS5LdWJlcm5ldGVzSG9zdBISCgpleHBpcmVzX2F0GAQgASgDGi0KC0Vycm9yc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEihgEKDkt1YmVybmV0ZXNIb3N0EhAKCGhvc3RuYW1lGAEgASgJEiIKBXJ1bGVzGAIgAygLMhMuZnVubmVsLnYxLkhUVFBSdWxlEigKCGJhY2tlbmRzGAMgAygLMhYuZnVubmVsLnYxLkhUVFBCYWNrZW5kEhQKDHJlc291cmNlX2lkcxgEIAMoCSJUCgtQb2RFbmRwb2ludBIPCgdhZGRyZXNzGAEgASgJEg8KB3BvZF91aWQYAiABKAkSEQoJbm9kZV9uYW1lGAMgASgJEhAKCG5vZGVfdWlkGAQgASgJIpsBCgtIVFRQQmFja2VuZBIpCgllbmRwb2ludHMYASADKAsyFi5mdW5uZWwudjEuUG9kRW5kcG9pbnQSCwoDa2V5GAIgASgJEhQKDHNlcnZpY2VfbmFtZRgDIAEoCRIPCgdzZXJ2aWNlGAQgASgJEgwKBHBvcnQYBSABKA0SDwoHYWRkcmVzcxgGIAEoCRIOCgZ3ZWlnaHQYByABKAUi+gEKCUhUVFBNYXRjaBIMCgRwYXRoGAEgASgJEg0KBWV4YWN0GAIgASgIEg4KBm1ldGhvZBgDIAEoCRIyCgdoZWFkZXJzGAQgAygLMiEuZnVubmVsLnYxLkhUVFBNYXRjaC5IZWFkZXJzRW50cnkSLgoFcXVlcnkYBSADKAsyHy5mdW5uZWwudjEuSFRUUE1hdGNoLlF1ZXJ5RW50cnkaLgoMSGVhZGVyc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEaLAoKUXVlcnlFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBItQBCgxIZWFkZXJGaWx0ZXISLQoDc2V0GAEgAygLMiAuZnVubmVsLnYxLkhlYWRlckZpbHRlci5TZXRFbnRyeRItCgNhZGQYAiADKAsyIC5mdW5uZWwudjEuSGVhZGVyRmlsdGVyLkFkZEVudHJ5Eg4KBnJlbW92ZRgDIAMoCRoqCghTZXRFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBGioKCEFkZEVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiSgoMSFRUUFJlZGlyZWN0Eg4KBnNjaGVtZRgBIAEoCRIMCgRob3N0GAIgASgJEgwKBHBvcnQYAyABKA0SDgoGc3RhdHVzGAQgASgFIpsDCghIVFRQUnVsZRIpCgdyZXdyaXRlGAsgASgLMhguZnVubmVsLnYxLlByZWZpeFJld3JpdGUSHwoXYmFja2VuZF9yZXF1ZXN0X3RpbWVvdXQYASABKAkSJQoHbWF0Y2hlcxgCIAMoCzIULmZ1bm5lbC52MS5IVFRQTWF0Y2gSKAoIYmFja2VuZHMYAyADKAsyFi5mdW5uZWwudjEuSFRUUEJhY2tlbmQSMAoPcmVxdWVzdF9oZWFkZXJzGAQgASgLMhcuZnVubmVsLnYxLkhlYWRlckZpbHRlchIxChByZXNwb25zZV9oZWFkZXJzGAUgASgLMhcuZnVubmVsLnYxLkhlYWRlckZpbHRlchIpCghyZWRpcmVjdBgGIAEoCzIXLmZ1bm5lbC52MS5IVFRQUmVkaXJlY3QSFwoPcmVxdWVzdF90aW1lb3V0GAcgASgJEhcKD2JhY2tlbmRfdGltZW91dBgIIAEoCRIeChZtYXhfcmVxdWVzdF9ib2R5X2J5dGVzGAkgASgDEhAKCHByaW9yaXR5GAogASgFIo8DChJSdW50aW1lQXBwbGljYXRpb24SJwoKaHR0cF9ydWxlcxgBIAMoCzITLmZ1bm5lbC52MS5IVFRQUnVsZRItCg1odHRwX2JhY2tlbmRzGAIgAygLMhYuZnVubmVsLnYxLkhUVFBCYWNrZW5kEgwKBG5hbWUYAyABKAkSFgoOYmFja2VuZF9zb3VyY2UYBCABKAkSGQoRYmFja2VuZF9kZXZpY2VfaWQYBSABKAkSGQoRYmFja2VuZF9hZGRyZXNzZXMYBiADKAkSCgoCaWQYByABKAkSFAoMc2VydmljZV9uYW1lGAggASgJEhQKDHNlcnZpY2VfZnFkbhgJIAEoCRIUCgxzZXJ2aWNlX3BvcnQYCiABKA0SFAoMYmFja2VuZF9wb3J0GAsgASgNEhgKEHB1YmxpY19ob3N0bmFtZXMYDCADKAkSHQoVYWxsb3dlZF9nYXRld2F5X25vZGVzGA0gAygJEhcKD3BvbGljeV9yZXZpc2lvbhgOIAEoAxIPCgdlbmFibGVkGA8gASgIImAKCUhUVFBSb3V0ZRIiCgVydWxlcxgBIAMoCzITLmZ1bm5lbC52MS5IVFRQUnVsZRIQCghob3N0bmFtZRgCIAEoCRIPCgdzZXJ2aWNlGAMgASgJEgwKBHBvcnQYBCABKA0itgQKFENvbmZpZ3VyYXRpb25QYXlsb2FkElQKE3B1Ymxpc2hlZF9yZXNvdXJjZXMYCyADKAsyNy5mdW5uZWwudjEuQ29uZmlndXJhdGlvblBheWxvYWQuUHVibGlzaGVkUmVzb3VyY2VzRW50cnkSUAoRa3ViZXJuZXRlc19lcnJvcnMYCiADKAsyNS5mdW5uZWwudjEuQ29uZmlndXJhdGlvblBheWxvYWQuS3ViZXJuZXRlc0Vycm9yc0VudHJ5EhsKE3B1Ymxpc2hlZF9hZGRyZXNzZXMYASADKAkSGwoTcHVibGlzaGVkX2hvc3RuYW1lcxgCIAMoCRIkCgZyb3V0ZXMYAyADKAsyFC5mdW5uZWwudjEuSFRUUFJvdXRlEiAKBnByb2JlcxgEIAMoCzIQLmZ1bm5lbC52MS5Qcm9iZRIPCgdub2RlX2lkGAUgASgJEhAKCHJldmlzaW9uGAYgASgJEjMKDGFwcGxpY2F0aW9ucxgHIAMoCzIdLmZ1bm5lbC52MS5SdW50aW1lQXBwbGljYXRpb24SFQoNbGFiZWxfYWxpYXNlcxgIIAMoCRIRCglpc3N1ZWRfYXQYCSABKAMaOQoXUHVibGlzaGVkUmVzb3VyY2VzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ARo3ChVLdWJlcm5ldGVzRXJyb3JzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASIhCg9TaHV0ZG93blJlcXVlc3QSDgoGcmVtb3ZlGAEgASgIIpIBChZEb2NrZXJJbnZlbnRvcnlQYXlsb2FkEhkKCHJldmlzaW9uGAEgASgDQge6SAQiAiAAEhAKCGNvbXBsZXRlGAIgASgIEjcKCmNvbnRhaW5lcnMYAyADKAsyIy5mdW5uZWwudjEuRG9ja2VySW52ZW50b3J5Q29udGFpbmVyEhIKCmxhYmVsX2tleXMYBCADKAkipwEKGERvY2tlckludmVudG9yeUNvbnRhaW5lchIKCgJpZBgBIAEoCRIPCgdydW5uaW5nGAIgASgIEj8KBmxhYmVscxgDIAMoCzIvLmZ1bm5lbC52MS5Eb2NrZXJJbnZlbnRvcnlDb250YWluZXIuTGFiZWxzRW50cnkaLQoLTGFiZWxzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASKcAQoYUmVnaXN0ZXJDb21wb25lbnRSZXF1ZXN0EhQKDGNvbXBvbmVudF9pZBgBIAEoCRITCgtpbnN0YW5jZV9pZBgCIAEoCRIwCgpkZXBsb3ltZW50GAMgASgLMhwuZnVubmVsLnYxLkRlcGxveW1lbnRSZXF1ZXN0EhEKCXBhcmVudF9pZBgEIAEoCRIQCghub2RlX3VpZBgFIAEoCSJ8ChNSZWdpc3RlcmVkQ29tcG9uZW50EhQKDGNvbXBvbmVudF9pZBgBIAEoCRITCgtpbnN0YW5jZV9pZBgCIAEoCRIRCglkZXZpY2VfaWQYAyABKAkSEgoKZ2VuZXJhdGlvbhgEIAEoAxITCgtsZWFzZV91bnRpbBgFIAEoAyLGAQoRV29ya2xvYWRCb290c3RyYXASFgoIYXV0aF9rZXkYASABKAlCBNi1GAESFAoMY29tcG9uZW50X2lkGAIgASgJEhEKCXBhcmVudF9pZBgDIAEoCRITCgtpbnN0YW5jZV9pZBgEIAEoCRIUCgxpbnN0YWxsYXRpb24YBSABKAkSDAoEbW9kZRgGIAEoCRIQCghub2RlX3VpZBgHIAEoCRIRCglub2RlX25hbWUYCCABKAkSEgoKZXhwaXJlc19hdBgJIAEoAzL+CQoLTm9kZVNlcnZpY2USVAoPQWR2ZXJ0aXNlVHVubmVsEh0uZnVubmVsLnYxLkxvY2FsVHVubmVsUmVxdWVzdBocLmZ1bm5lbC52MS5Mb2NhbFR1bm5lbFN0YXR1cyIEiLUYBBI/Cg5XaXRoZHJhd1R1bm5lbBIQLmZ1bm5lbC52MS5FbXB0eRoVLmZ1bm5lbC52MS5UZXN0UmVzdWx0IgSItRgEEl4KEVJlZ2lzdGVyQ29tcG9uZW50EiMuZnVubmVsLnYxLlJlZ2lzdGVyQ29tcG9uZW50UmVxdWVzdBoeLmZ1bm5lbC52MS5SZWdpc3RlcmVkQ29tcG9uZW50IgSItRgEEmYKCUdldENvbmZpZxIQLmZ1bm5lbC52MS5FbXB0eRofLmZ1bm5lbC52MS5Db25maWd1cmF0aW9uUGF5bG9hZCImiLUYBKK1GB5mdW5uZWwudjEuQ29uZmlndXJhdGlvblBheWxvYWQSgwEKElJlc29sdmVBcHBsaWNhdGlvbhIkLmZ1bm5lbC52MS5SZXNvbHZlQXBwbGljYXRpb25SZXF1ZXN0Gh8uZnVubmVsLnYxLkNvbmZpZ3VyYXRpb25QYXlsb2FkIiaItRgEorUYHmZ1bm5lbC52MS5Db25maWd1cmF0aW9uUGF5bG9hZBI7CgtBY2tub3dsZWRnZRIULmZ1bm5lbC52MS5Db25maWdBY2saEC5mdW5uZWwudjEuRW1wdHkiBIi1GAQSPQoMUmVwb3J0SGVhbHRoEhUuZnVubmVsLnYxLk5vZGVIZWFsdGgaEC5mdW5uZWwudjEuRW1wdHkiBIi1GAQSXQoMU3VibWl0UmVwb3J0EhkuZnVubmVsLnYxLkV4cG9zdXJlUmVwb3J0GhAuZnVubmVsLnYxLkVtcHR5IiCItRgEorUYGGZ1bm5lbC52MS5FeHBvc3VyZVJlcG9ydBJ2ChVTdWJtaXREb2NrZXJJbnZlbnRvcnkSIS5mdW5uZWwudjEuRG9ja2VySW52ZW50b3J5UGF5bG9hZBoQLmZ1bm5lbC52MS5FbXB0eSIoiLUYBKK1GCBmdW5uZWwudjEuRG9ja2VySW52ZW50b3J5UGF5bG9hZBJYCgtTdWJtaXRQZWVycxIXLmZ1bm5lbC52MS5QZWVyU25hcHNob3QaEC5mdW5uZWwudjEuRW1wdHkiHoi1GASitRgWZnVubmVsLnYxLlBlZXJTbmFwc2hvdBJnChBTdWJtaXRLdWJlcm5ldGVzEhwuZnVubmVsLnYxLkt1YmVybmV0ZXNQYXlsb2FkGhAuZnVubmVsLnYxLkVtcHR5IiOItRgEorUYG2Z1bm5lbC52MS5LdWJlcm5ldGVzUGF5bG9hZBJzChRTdWJtaXRQdWJsaWNFbmRwb2ludBIgLmZ1bm5lbC52MS5QdWJsaWNFbmRwb2ludFBheWxvYWQaEC5mdW5uZWwudjEuRW1wdHkiJ4i1GASitRgfZnVubmVsLnYxLlB1YmxpY0VuZHBvaW50UGF5bG9hZBI6Cg5MaXN0Rm9yd2FyZGVycxIQLmZ1bm5lbC52MS5FbXB0eRoQLmZ1bm5lbC52MS5Ob2RlcyIEiLUYBBJDCghTaHV0ZG93bhIaLmZ1bm5lbC52MS5TaHV0ZG93blJlcXVlc3QaFS5mdW5uZWwudjEuVGVzdFJlc3VsdCIEiLUYBDKuAgoNQnJva2VyU2VydmljZRJDCgtPcGVuU2Vzc2lvbhIQLmZ1bm5lbC52MS5FbXB0eRoYLmZ1bm5lbC52MS5Ccm9rZXJTZXNzaW9uIgiItRgGmLUYARJmCglHZXRDb25maWcSEC5mdW5uZWwudjEuRW1wdHkaHy5mdW5uZWwudjEuQ29uZmlndXJhdGlvblBheWxvYWQiJoi1GAaitRgeZnVubmVsLnYxLkNvbmZpZ3VyYXRpb25QYXlsb2FkEjYKClJlbmV3TGVhc2USEC5mdW5uZWwudjEuRW1wdHkaEC5mdW5uZWwudjEuRW1wdHkiBIi1GAYSOAoMUmVsZWFzZUxlYXNlEhAuZnVubmVsLnYxLkVtcHR5GhAuZnVubmVsLnYxLkVtcHR5IgSItRgGMmAKGFdvcmtsb2FkQm9vdHN0cmFwU2VydmljZRJECghJc3N1ZUtleRIQLmZ1bm5lbC52MS5FbXB0eRocLmZ1bm5lbC52MS5Xb3JrbG9hZEJvb3RzdHJhcCIIiLUYBpi1GAFCUVpPZ2l0aHViLmNvbS90YWlsc2NhbGUteC90YWlsc2NhbGUtcHJpdmF0ZS1mdW5uZWwvaW50ZXJuYWwvZ2VuL2Z1bm5lbC92MTtmdW5uZWx2MWIGcHJvdG8z", [file_buf_validate_validate, file_funnel_v1_management, file_funnel_v1_options, file_funnel_v1_provisioning]);
+
+/**
+ * @generated from message funnel.v1.LocalTunnelRequest
+ */
+export type LocalTunnelRequest = Message<"funnel.v1.LocalTunnelRequest"> & {
+  /**
+   * @generated from field: string hostname = 1;
+   */
+  hostname: string;
+
+  /**
+   * @generated from field: uint32 port = 2;
+   */
+  port: number;
+
+  /**
+   * @generated from field: string local_address = 3;
+   */
+  localAddress: string;
+};
+
+/**
+ * Describes the message funnel.v1.LocalTunnelRequest.
+ * Use `create(LocalTunnelRequestSchema)` to create a new message.
+ */
+export const LocalTunnelRequestSchema: GenMessage<LocalTunnelRequest> = /*@__PURE__*/
+  messageDesc(file_funnel_v1_runtime, 0);
+
+/**
+ * @generated from message funnel.v1.LocalTunnelStatus
+ */
+export type LocalTunnelStatus = Message<"funnel.v1.LocalTunnelStatus"> & {
+  /**
+   * @generated from field: funnel.v1.RuntimeApplication application = 1;
+   */
+  application?: RuntimeApplication | undefined;
+
+  /**
+   * @generated from field: string public_url = 2;
+   */
+  publicUrl: string;
+
+  /**
+   * @generated from field: bool ready = 3;
+   */
+  ready: boolean;
+
+  /**
+   * @generated from field: string message = 4;
+   */
+  message: string;
+};
+
+/**
+ * Describes the message funnel.v1.LocalTunnelStatus.
+ * Use `create(LocalTunnelStatusSchema)` to create a new message.
+ */
+export const LocalTunnelStatusSchema: GenMessage<LocalTunnelStatus> = /*@__PURE__*/
+  messageDesc(file_funnel_v1_runtime, 1);
 
 /**
  * @generated from message funnel.v1.ResolveApplicationRequest
@@ -48,7 +107,7 @@ export type ResolveApplicationRequest = Message<"funnel.v1.ResolveApplicationReq
  * Use `create(ResolveApplicationRequestSchema)` to create a new message.
  */
 export const ResolveApplicationRequestSchema: GenMessage<ResolveApplicationRequest> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 0);
+  messageDesc(file_funnel_v1_runtime, 2);
 
 /**
  * @generated from message funnel.v1.ConfigAck
@@ -70,7 +129,7 @@ export type ConfigAck = Message<"funnel.v1.ConfigAck"> & {
  * Use `create(ConfigAckSchema)` to create a new message.
  */
 export const ConfigAckSchema: GenMessage<ConfigAck> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 1);
+  messageDesc(file_funnel_v1_runtime, 3);
 
 /**
  * @generated from message funnel.v1.NodeHealth
@@ -147,7 +206,7 @@ export type NodeHealth = Message<"funnel.v1.NodeHealth"> & {
  * Use `create(NodeHealthSchema)` to create a new message.
  */
 export const NodeHealthSchema: GenMessage<NodeHealth> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 2);
+  messageDesc(file_funnel_v1_runtime, 4);
 
 /**
  * @generated from message funnel.v1.PublicEndpointPayload
@@ -184,7 +243,7 @@ export type PublicEndpointPayload = Message<"funnel.v1.PublicEndpointPayload"> &
  * Use `create(PublicEndpointPayloadSchema)` to create a new message.
  */
 export const PublicEndpointPayloadSchema: GenMessage<PublicEndpointPayload> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 3);
+  messageDesc(file_funnel_v1_runtime, 5);
 
 /**
  * @generated from message funnel.v1.PublicIngress
@@ -211,7 +270,7 @@ export type PublicIngress = Message<"funnel.v1.PublicIngress"> & {
  * Use `create(PublicIngressSchema)` to create a new message.
  */
 export const PublicIngressSchema: GenMessage<PublicIngress> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 4);
+  messageDesc(file_funnel_v1_runtime, 6);
 
 /**
  * @generated from message funnel.v1.BrokerSession
@@ -248,7 +307,7 @@ export type BrokerSession = Message<"funnel.v1.BrokerSession"> & {
  * Use `create(BrokerSessionSchema)` to create a new message.
  */
 export const BrokerSessionSchema: GenMessage<BrokerSession> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 5);
+  messageDesc(file_funnel_v1_runtime, 7);
 
 /**
  * @generated from message funnel.v1.KubernetesPayload
@@ -280,7 +339,7 @@ export type KubernetesPayload = Message<"funnel.v1.KubernetesPayload"> & {
  * Use `create(KubernetesPayloadSchema)` to create a new message.
  */
 export const KubernetesPayloadSchema: GenMessage<KubernetesPayload> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 6);
+  messageDesc(file_funnel_v1_runtime, 8);
 
 /**
  * @generated from message funnel.v1.KubernetesHost
@@ -312,7 +371,7 @@ export type KubernetesHost = Message<"funnel.v1.KubernetesHost"> & {
  * Use `create(KubernetesHostSchema)` to create a new message.
  */
 export const KubernetesHostSchema: GenMessage<KubernetesHost> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 7);
+  messageDesc(file_funnel_v1_runtime, 9);
 
 /**
  * @generated from message funnel.v1.PodEndpoint
@@ -344,7 +403,7 @@ export type PodEndpoint = Message<"funnel.v1.PodEndpoint"> & {
  * Use `create(PodEndpointSchema)` to create a new message.
  */
 export const PodEndpointSchema: GenMessage<PodEndpoint> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 8);
+  messageDesc(file_funnel_v1_runtime, 10);
 
 /**
  * @generated from message funnel.v1.HTTPBackend
@@ -391,7 +450,7 @@ export type HTTPBackend = Message<"funnel.v1.HTTPBackend"> & {
  * Use `create(HTTPBackendSchema)` to create a new message.
  */
 export const HTTPBackendSchema: GenMessage<HTTPBackend> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 9);
+  messageDesc(file_funnel_v1_runtime, 11);
 
 /**
  * @generated from message funnel.v1.HTTPMatch
@@ -428,7 +487,7 @@ export type HTTPMatch = Message<"funnel.v1.HTTPMatch"> & {
  * Use `create(HTTPMatchSchema)` to create a new message.
  */
 export const HTTPMatchSchema: GenMessage<HTTPMatch> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 10);
+  messageDesc(file_funnel_v1_runtime, 12);
 
 /**
  * @generated from message funnel.v1.HeaderFilter
@@ -455,7 +514,7 @@ export type HeaderFilter = Message<"funnel.v1.HeaderFilter"> & {
  * Use `create(HeaderFilterSchema)` to create a new message.
  */
 export const HeaderFilterSchema: GenMessage<HeaderFilter> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 11);
+  messageDesc(file_funnel_v1_runtime, 13);
 
 /**
  * @generated from message funnel.v1.HTTPRedirect
@@ -487,7 +546,7 @@ export type HTTPRedirect = Message<"funnel.v1.HTTPRedirect"> & {
  * Use `create(HTTPRedirectSchema)` to create a new message.
  */
 export const HTTPRedirectSchema: GenMessage<HTTPRedirect> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 12);
+  messageDesc(file_funnel_v1_runtime, 14);
 
 /**
  * @generated from message funnel.v1.HTTPRule
@@ -554,7 +613,7 @@ export type HTTPRule = Message<"funnel.v1.HTTPRule"> & {
  * Use `create(HTTPRuleSchema)` to create a new message.
  */
 export const HTTPRuleSchema: GenMessage<HTTPRule> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 13);
+  messageDesc(file_funnel_v1_runtime, 15);
 
 /**
  * @generated from message funnel.v1.RuntimeApplication
@@ -641,7 +700,7 @@ export type RuntimeApplication = Message<"funnel.v1.RuntimeApplication"> & {
  * Use `create(RuntimeApplicationSchema)` to create a new message.
  */
 export const RuntimeApplicationSchema: GenMessage<RuntimeApplication> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 14);
+  messageDesc(file_funnel_v1_runtime, 16);
 
 /**
  * @generated from message funnel.v1.HTTPRoute
@@ -673,12 +732,19 @@ export type HTTPRoute = Message<"funnel.v1.HTTPRoute"> & {
  * Use `create(HTTPRouteSchema)` to create a new message.
  */
 export const HTTPRouteSchema: GenMessage<HTTPRoute> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 15);
+  messageDesc(file_funnel_v1_runtime, 17);
 
 /**
  * @generated from message funnel.v1.ConfigurationPayload
  */
 export type ConfigurationPayload = Message<"funnel.v1.ConfigurationPayload"> & {
+  /**
+   * Resource identity/generation to effective rule revision installed by an edge.
+   *
+   * @generated from field: map<string, string> published_resources = 11;
+   */
+  publishedResources: { [key: string]: string };
+
   /**
    * Per-resource reconciliation failures; unrelated hosts remain operational.
    *
@@ -737,7 +803,7 @@ export type ConfigurationPayload = Message<"funnel.v1.ConfigurationPayload"> & {
  * Use `create(ConfigurationPayloadSchema)` to create a new message.
  */
 export const ConfigurationPayloadSchema: GenMessage<ConfigurationPayload> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 16);
+  messageDesc(file_funnel_v1_runtime, 18);
 
 /**
  * Shutdown first withdraws owned state; confirm acknowledges receipt before device deletion.
@@ -756,7 +822,7 @@ export type ShutdownRequest = Message<"funnel.v1.ShutdownRequest"> & {
  * Use `create(ShutdownRequestSchema)` to create a new message.
  */
 export const ShutdownRequestSchema: GenMessage<ShutdownRequest> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 17);
+  messageDesc(file_funnel_v1_runtime, 19);
 
 /**
  * Only complete, successfully parsed scans may retire registrations.
@@ -790,7 +856,7 @@ export type DockerInventoryPayload = Message<"funnel.v1.DockerInventoryPayload">
  * Use `create(DockerInventoryPayloadSchema)` to create a new message.
  */
 export const DockerInventoryPayloadSchema: GenMessage<DockerInventoryPayload> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 18);
+  messageDesc(file_funnel_v1_runtime, 20);
 
 /**
  * @generated from message funnel.v1.DockerInventoryContainer
@@ -817,7 +883,7 @@ export type DockerInventoryContainer = Message<"funnel.v1.DockerInventoryContain
  * Use `create(DockerInventoryContainerSchema)` to create a new message.
  */
 export const DockerInventoryContainerSchema: GenMessage<DockerInventoryContainer> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 19);
+  messageDesc(file_funnel_v1_runtime, 21);
 
 /**
  * @generated from message funnel.v1.RegisterComponentRequest
@@ -854,7 +920,7 @@ export type RegisterComponentRequest = Message<"funnel.v1.RegisterComponentReque
  * Use `create(RegisterComponentRequestSchema)` to create a new message.
  */
 export const RegisterComponentRequestSchema: GenMessage<RegisterComponentRequest> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 20);
+  messageDesc(file_funnel_v1_runtime, 22);
 
 /**
  * @generated from message funnel.v1.RegisteredComponent
@@ -891,7 +957,7 @@ export type RegisteredComponent = Message<"funnel.v1.RegisteredComponent"> & {
  * Use `create(RegisteredComponentSchema)` to create a new message.
  */
 export const RegisteredComponentSchema: GenMessage<RegisteredComponent> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 21);
+  messageDesc(file_funnel_v1_runtime, 23);
 
 /**
  * @generated from message funnel.v1.WorkloadBootstrap
@@ -948,12 +1014,32 @@ export type WorkloadBootstrap = Message<"funnel.v1.WorkloadBootstrap"> & {
  * Use `create(WorkloadBootstrapSchema)` to create a new message.
  */
 export const WorkloadBootstrapSchema: GenMessage<WorkloadBootstrap> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_runtime, 22);
+  messageDesc(file_funnel_v1_runtime, 24);
 
 /**
  * @generated from service funnel.v1.NodeService
  */
 export const NodeService: GenService<{
+  /**
+   * Advertise one foreground localhost tunnel; requires the Tailnet gateway role.
+   *
+   * @generated from rpc funnel.v1.NodeService.AdvertiseTunnel
+   */
+  advertiseTunnel: {
+    methodKind: "unary";
+    input: typeof LocalTunnelRequestSchema;
+    output: typeof LocalTunnelStatusSchema;
+  },
+  /**
+   * Retire only the caller's local tunnel; DNS cleanup is asynchronous.
+   *
+   * @generated from rpc funnel.v1.NodeService.WithdrawTunnel
+   */
+  withdrawTunnel: {
+    methodKind: "unary";
+    input: typeof EmptySchema;
+    output: typeof TestResultSchema;
+  },
   /**
    * Role-authorized registration. Identity and role come only from WhoIs.
    *

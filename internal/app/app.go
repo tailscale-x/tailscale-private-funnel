@@ -724,6 +724,9 @@ func fetchLoadBalancerConfig(ctx context.Context, client *http.Client, managemen
 }
 
 func reportLoadBalancerPeers(ctx context.Context, s tsconnection.Connection, o Options) {
+	// Finish before the next 30-second poll, even with many pending backends.
+	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
 	nodeID := loadBalancerNodeID(o.DataDir)
 	if nodeID == "" || o.ManagementURL == "" {
 		return
@@ -735,35 +738,7 @@ func reportLoadBalancerPeers(ctx context.Context, s tsconnection.Connection, o O
 		slog.Warn("load balancer configuration failed", "error", err)
 		return
 	}
-	var exposures []report.Exposure
-	for _, app := range config.Applications {
-		if !app.Enabled {
-			continue
-		}
-		target := net.JoinHostPort(app.ServiceFQDN, strconv.Itoa(int(app.ServicePort)))
-		var targetErr error
-		reachable := false
-		backendIP, backendName := "", app.ServiceName
-		if targetErr == nil {
-			backendIP, _, _ = net.SplitHostPort(target)
-			probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			conn, dialErr := s.Dial(probeCtx, "tcp", target)
-			cancel()
-			if conn != nil {
-				_ = conn.Close()
-			}
-			reachable = dialErr == nil
-			if len(app.HTTPRules) > 0 && len(app.HTTPBackends) == 0 {
-				reachable = true
-			}
-			if dialErr != nil {
-				slog.Warn("application Service unavailable", "application", app.ID, "error", dialErr)
-			}
-		}
-		for _, host := range app.PublicHostnames {
-			exposures = append(exposures, loadBalancerExposure(app, host, backendName, backendIP, reachable))
-		}
-	}
+	exposures := probeLoadBalancerBackends(ctx, s.Dial, config.Applications)
 	if err = agent.Send(ctx, exposures); err != nil {
 		slog.Warn("load balancer exposure report failed", "error", err)
 	}

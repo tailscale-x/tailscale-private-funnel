@@ -929,6 +929,7 @@ type Node struct {
 	InstanceId          string                 `protobuf:"bytes,19,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
 	Generation          int64                  `protobuf:"varint,20,opt,name=generation,proto3" json:"generation,omitempty"`
 	LeaseUntil          int64                  `protobuf:"varint,21,opt,name=lease_until,json=leaseUntil,proto3" json:"lease_until,omitempty"`
+	Runtime             string                 `protobuf:"bytes,22,opt,name=runtime,proto3" json:"runtime,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -1108,6 +1109,13 @@ func (x *Node) GetLeaseUntil() int64 {
 		return x.LeaseUntil
 	}
 	return 0
+}
+
+func (x *Node) GetRuntime() string {
+	if x != nil {
+		return x.Runtime
+	}
+	return ""
 }
 
 type Nodes struct {
@@ -4348,7 +4356,7 @@ const file_funnel_v1_management_proto_rawDesc = "" +
 	"\x0eAddZoneRequest\x12(\n" +
 	"\vprovider_id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\n" +
 	"providerId\x12\x1f\n" +
-	"\x06domain\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06domain\"\xbb\x05\n" +
+	"\x06domain\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x06domain\"\xd5\x05\n" +
 	"\x04Node\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -4380,7 +4388,8 @@ const file_funnel_v1_management_proto_rawDesc = "" +
 	"generation\x18\x14 \x01(\x03R\n" +
 	"generation\x12\x1f\n" +
 	"\vlease_until\x18\x15 \x01(\x03R\n" +
-	"leaseUntil\".\n" +
+	"leaseUntil\x12\x18\n" +
+	"\aruntime\x18\x16 \x01(\tR\aruntime\".\n" +
 	"\x05Nodes\x12%\n" +
 	"\x05items\x18\x01 \x03(\v2\x0f.funnel.v1.NodeR\x05items\"&\n" +
 	"\x10ListNodesRequest\x12\x12\n" +

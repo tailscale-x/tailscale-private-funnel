@@ -134,9 +134,6 @@ func (c *Control) nodeConfiguration(ctx context.Context) (report.Snapshot, error
 	settings := struct{ LabelKeys string }{deployment.LabelKeys}
 	filtered := make([]store.ApplicationRecord, 0)
 	for _, app := range apps {
-		if store.BackendSource(node.Mode) != app.BackendSource && !(node.Mode == "docker-gateway" && app.BackendSource == "") {
-			continue
-		}
 		if !applicationAllows(app, node) {
 			continue
 		}
@@ -160,6 +157,7 @@ func (c *Control) nodeConfiguration(ctx context.Context) (report.Snapshot, error
 		var snapshot nodeconfig.KubernetesSnapshot
 		_ = c.Store.GetJSON("node_kubernetes:"+id, &snapshot)
 		config.KubernetesErrors = snapshot.Errors
+		config.PublishedResources = c.publishedKubernetesResources(id, snapshot, apps)
 	}
 	_ = c.Store.GetJSON("node_probes:"+node.ID, &config.Probes)
 	config.PublishedHostnames = c.publishedGatewayHosts()
@@ -187,6 +185,11 @@ func (c *Control) loadBalancerConfiguration(ctx context.Context) (report.Snapsho
 	if err != nil || node.Revoked || node.Mode != "loadbalancer" {
 		return report.Snapshot{}, rpcFailure(connectCodeHTTP(403), errors.New("registered load balancer identity required"))
 	}
+	unlock, lockErr := c.lockReport(ctx, node.ID)
+	if lockErr != nil {
+		return report.Snapshot{}, lockErr
+	}
+	defer unlock()
 	writer := c.Store.WithContext(ctx)
 	if err := writer.SetJSON("node_policy_roles:"+node.ID, rpcPrincipal(ctx).RoleSelectors()); err != nil {
 		return report.Snapshot{}, rpcFailure(connect.CodeUnavailable, err)
@@ -249,6 +252,18 @@ func (c *Control) loadBalancerConfiguration(ctx context.Context) (report.Snapsho
 						break
 					}
 				}
+			}
+			if app.BackendSource == "kubernetes" && len(app.HTTPRules) > 0 {
+				partial := c.kubernetesRoute(node, app, host, previous, allowed, eligible)
+				// Send desired backends for probing even while individual rules
+				// wait for their Service to become reachable.
+				if allowed {
+					hosts = append(hosts, host)
+				}
+				if len(partial.Rules) > 0 {
+					routes = append(routes, partial)
+				}
+				continue
 			}
 			if !eligible && !retained {
 				continue
@@ -313,7 +328,7 @@ func (c *Control) acceptDirectReport(ctx context.Context, env report.Snapshot, n
 	for _, e := range p.Exposures {
 		valid := false
 		for _, app := range apps {
-			if app.Enabled && app.ID == e.ApplicationID && app.BackendPort == e.Port && contains(app.PublicHostnames, e.PublicHostname) && reader.selected(e.PublicHostname, node.ID) && app.ServiceName == e.ServiceName && e.ContainerID == "" {
+			if app.Enabled && app.ID == e.ApplicationID && ((app.BackendPort == e.Port && app.ServiceName == e.ServiceName) || (app.BackendSource == "kubernetes" && kubernetesBackendMatches(app, e.ServiceName, e.Port))) && contains(app.PublicHostnames, e.PublicHostname) && reader.selected(e.PublicHostname, node.ID) && e.ContainerID == "" {
 				valid = true
 				break
 			}
@@ -447,9 +462,6 @@ func (c *Control) acceptExposureReport(ctx context.Context, envelope report.Snap
 		application, applicationOK := approvedApplication(applications, *exposure)
 		if !applicationOK || !applicationAllows(application, node) || !dockerReportRouteMatches(application, *exposure) {
 			return rpcFailure(connectCodeHTTP(http.StatusForbidden), errors.New("exposure does not match an enabled application Service"))
-		}
-		if store.BackendSource(node.Mode) != application.BackendSource && !(node.Mode == "docker-gateway" && application.BackendSource == "") {
-			return rpcFailure(connectCodeHTTP(403), errors.New("gateway backend source mismatch"))
 		}
 		if !exposure.Reachable {
 			continue
@@ -677,23 +689,9 @@ func (c *Control) resolveApplication(ctx context.Context, request *v1.ResolveApp
 		}
 		return c.nodeConfiguration(ctx)
 	}
-	clientID, err := c.Store.GetSecret("tailscale_services_client_id")
+	app, err = c.provisionApplicationService(ctx, app)
 	if err != nil {
-		return report.Snapshot{}, rpcFailure(connectCodeHTTP(428), errors.New("configure Tailscale OAuth first"))
-	}
-	secret, err := c.Store.GetSecret("tailscale_services_client_secret")
-	if err != nil || settings.Name == "" {
-		return report.Snapshot{}, rpcFailure(connectCodeHTTP(428), errors.New("configure Tailscale OAuth and tailnet first"))
-	}
-	service, err := c.tsClient(clientID, secret, settings.Name).CreateService(ctx, tailscale.Service{Name: app.ServiceName, DisplayName: hostname, Ports: []string{fmt.Sprintf("tcp:%d", app.ServicePort)}, Tags: []string{identity.ServiceTag(c.installation(), false)}})
-	if err != nil {
-		return report.Snapshot{}, rpcFailure(connectCodeHTTP(502), errors.New(err.Error()))
-	}
-	app.ServiceFQDN = selectServiceTarget(service.Addresses, app.ServiceName, settings.Name)
-	for i := range app.HTTPRules {
-		for j := range app.HTTPRules[i].Backends {
-			app.HTTPRules[i].Backends[j].Service = app.ServiceFQDN
-		}
+		return report.Snapshot{}, rpcFailure(connect.CodeUnavailable, err)
 	}
 	if err := c.Store.UpsertApplication(app); err != nil {
 		return report.Snapshot{}, rpcFailure(connectCodeHTTP(500), errors.New(err.Error()))
@@ -721,7 +719,7 @@ func (c *Control) acceptKubernetesSnapshot(ctx context.Context, env report.Snaps
 	}
 	seen := map[string]bool{}
 	for _, host := range snapshot.Hosts {
-		if policy.ValidateHostname(host.Hostname) != nil || seen[host.Hostname] || len(host.Rules) == 0 || len(host.Rules) > 100 {
+		if policy.ValidateHostname(host.Hostname) != nil || seen[host.Hostname] || len(host.Rules) == 0 || len(host.Rules) > 100 || (len(host.ResourceIDs) > 0 && len(host.ResourceIDs) != len(host.Rules)) {
 			return report.Snapshot{}, rpcFailure(connectCodeHTTP(400), errors.New("invalid or duplicate hostname"))
 		}
 		seen[host.Hostname] = true

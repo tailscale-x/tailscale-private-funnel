@@ -7,6 +7,7 @@ import (
 var BuildVersion = "dev"
 
 type Options struct {
+	Runtime                                        string
 	UsersClientIDFile, UsersClientSecretFile       string
 	ServicesClientIDFile, ServicesClientSecretFile string
 	MaterialDir                                    string

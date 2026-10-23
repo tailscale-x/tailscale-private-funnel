@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
@@ -25,13 +26,14 @@ func (c *Control) nodeMessage(n store.NodeRecord) *v1.Node {
 	if reg, e := c.Store.ComponentRegistration(n.ID); e == nil {
 		out.Installation = reg.Installation
 		out.TailscaleConnection = reg.Connection
+		out.Runtime = reg.Runtime
 	}
 	if instance, e := c.Store.CurrentInstance(n.ID); e == nil {
 		out.InstanceId = instance.InstanceID
 		out.Generation = instance.Generation
 		out.LeaseUntil = instance.LeaseUntil
 	}
-	if d.ResourceName != "" {
+	if d.ResourceName != "" && out.Runtime != "foreground-tunnel" {
 		out.Deployment = &v1.DeploymentMetadata{Target: d.DeploymentTarget, ResourceName: d.ResourceName, Namespace: d.KubernetesNamespace, Version: d.Version, StateDir: d.StateDir, DataDir: d.DataDir, ContextHint: d.ContextHint}
 	}
 	var health struct {
@@ -68,6 +70,26 @@ func (c *Control) nodeMessage(n store.NodeRecord) *v1.Node {
 			out.Diagnostics = append(out.Diagnostics, "Public endpoint discovery is degraded; prior owned addresses are retained.")
 		}
 		out.PublicReady = !n.Revoked && c.edgeFresh(n) && !retaining && len(ips) > 0
+	}
+	if out.Runtime == "foreground-tunnel" {
+		var request v1.LocalTunnelRequest
+		if c.Store.GetJSON("local_tunnel:"+n.ID, &request) == nil {
+			out.Diagnostics = append(out.Diagnostics, fmt.Sprintf("%s → %s:%d; keep the tunnel command running", request.Hostname, request.LocalAddress, request.Port))
+		}
+		var state struct {
+			Ready   bool   `json:"ready"`
+			Message string `json:"message"`
+		}
+		if c.Store.GetJSON("local_tunnel_state:"+n.ID, &state) == nil {
+			ttl := c.ReportTTL
+			if ttl <= 0 {
+				ttl = 5 * time.Minute
+			}
+			out.PublicReady = state.Ready && !n.Revoked && n.LastReport > time.Now().Add(-ttl).Unix()
+			if n.LastReport > 0 {
+				out.Diagnostics = append(out.Diagnostics, state.Message)
+			}
+		}
 	}
 	return out
 }

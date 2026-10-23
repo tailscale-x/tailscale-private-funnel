@@ -329,6 +329,7 @@ message Node {
   string instance_id = 19;
   int64 generation = 20;
   int64 lease_until = 21;
+  string runtime = 22;
 }
 message Nodes {
   repeated Node items = 1;

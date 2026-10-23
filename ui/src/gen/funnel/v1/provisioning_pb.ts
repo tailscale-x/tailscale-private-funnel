@@ -12,7 +12,108 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file funnel/v1/provisioning.proto.
  */
 export const file_funnel_v1_provisioning: GenFile = /*@__PURE__*/
-  fileDesc("ChxmdW5uZWwvdjEvcHJvdmlzaW9uaW5nLnByb3RvEglmdW5uZWwudjEikgoKEURlcGxveW1lbnRSZXF1ZXN0EmUKBG1vZGUYASABKAlCV7pIVNgBAXJPUghvcGVyYXRvclIHY29udHJvbFIMbG9hZGJhbGFuY2VyUg5kb2NrZXItZ2F0ZXdheVIPdGFpbG5ldC1nYXRld2F5UgtrOHMtZ2F0ZXdheRIsCgZ0YXJnZXQYAiABKAlCHLpIGdgBAXIUUgZuYXRpdmVSCmt1YmVybmV0ZXMSDwoHcnVudGltZRgDIAEoCRIMCgRuYW1lGAQgASgJEhAKCGhvc3RuYW1lGAUgASgJEhEKCXN0YXRlX2RpchgGIAEoCRIQCghkYXRhX2RpchgHIAEoCRIUCgxpbnN0YWxsYXRpb24YCCABKAkSFQoNcmVzb3VyY2VfbmFtZRgJIAEoCRIVCg1nYXRld2F5X2NsYXNzGAogASgJEhUKDWluZ3Jlc3NfY2xhc3MYCyABKAkSGAoQd2F0Y2hfbmFtZXNwYWNlcxgMIAMoCRJFCg1ub2RlX3NlbGVjdG9yGA0gAygLMi4uZnVubmVsLnYxLkRlcGxveW1lbnRSZXF1ZXN0Lk5vZGVTZWxlY3RvckVudHJ5EhkKEWNlcnRpZmljYXRlX2VtYWlsGA4gASgJEhcKD3B1YmxpY19ob3N0bmFtZRgPIAEoCRISCgpsYWJlbF9rZXlzGBAgAygJEhUKDWRlbnlfbmV0d29ya3MYESADKAkSEQoJbmFtZXNwYWNlGBIgASgJEg8KB2NvbnRleHQYEyABKAkSDwoHdmVyc2lvbhgUIAEoCRIUCgxkaXNwbGF5X25hbWUYFSABKAkSDwoHdGFpbG5ldBgWIAEoCRIcChRvYXV0aF9jbGllbnRfaWRfZmlsZRgXIAEoCRIgChhvYXV0aF9jbGllbnRfc2VjcmV0X2ZpbGUYGCABKAkSDwoHbm9kZV9pZBgZIAEoCRIaChJtYW5hZ2VkX25hbWVzcGFjZXMYGiADKAkSDAoEd2FpdBgbIAEoCBIXCg90aW1lb3V0X3NlY29uZHMYHCABKA0SFwoPY3VycmVudF9jb250cm9sGB0gASgIEhYKDmFkbWluaXN0cmF0b3JzGB4gAygJEhUKDXN0b3JhZ2VfY2xhc3MYHyABKAkSFAoMc3RvcmFnZV9zaXplGCAgASgJEhYKDnBsYWNlbWVudF9qc29uGCEgASgMEiAKGGZvcndhcmRlcl9wbGFjZW1lbnRfanNvbhgiIAEoDBIyCghkYXRhYmFzZRgjIAEoCzIgLmZ1bm5lbC52MS5EYXRhYmFzZUNvbmZpZ3VyYXRpb24SHAoUdGFpbHNjYWxlX2Nvbm5lY3Rpb24YJCABKAkSGAoQdGFpbHNjYWxlX3NvY2tldBglIAEoCRIZChFrZXlfaXNzdWVyX3NlY3JldBgmIAEoCRIXCg9zZXJ2aWNlc19zZWNyZXQYJyABKAkSHwoXc2VydmljZXNfY2xpZW50X2lkX2ZpbGUYKCABKAkSIwobc2VydmljZXNfY2xpZW50X3NlY3JldF9maWxlGCkgASgJEhQKDHVzZXJzX3NlY3JldBgqIAEoCRIcChR1c2Vyc19jbGllbnRfaWRfZmlsZRgrIAEoCRIgChh1c2Vyc19jbGllbnRfc2VjcmV0X2ZpbGUYLCABKAkaMwoRTm9kZVNlbGVjdG9yRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASI8ChRCb290c3RyYXBDcmVkZW50aWFscxIQCghhdXRoX2tleRgDIAEoCRISCgpleHBpcmVzX2F0GAUgASgDItgDChZEZXBsb3ltZW50SW5zdHJ1Y3Rpb25zEjAKCmRlcGxveW1lbnQYASABKAsyHC5mdW5uZWwudjEuRGVwbG95bWVudFJlcXVlc3QSFgoObWFuYWdlbWVudF91cmwYAiABKAkSDwoHdmVyc2lvbhgDIAEoCRINCgVpbWFnZRgEIAEoCRINCgVjaGFydBgFIAEoCRIVCg1jaGFydF92ZXJzaW9uGAYgASgJEhEKCW5hbWVzcGFjZRgHIAEoCRIoCgVzdGVwcxgIIAMoCzIZLmZ1bm5lbC52MS5EZXBsb3ltZW50U3RlcBIVCg1wcmVyZXF1aXNpdGVzGAkgAygJEjQKC2NyZWRlbnRpYWxzGAogASgLMh8uZnVubmVsLnYxLkJvb3RzdHJhcENyZWRlbnRpYWxzEg4KBnNjcmlwdBgLIAEoCRIPCgdleGFtcGxlGAwgASgJEkEKCGNvbW1hbmRzGA4gAygLMi8uZnVubmVsLnYxLkRlcGxveW1lbnRJbnN0cnVjdGlvbnMuQ29tbWFuZHNFbnRyeRIPCgdkcnlfcnVuGA8gASgIGi8KDUNvbW1hbmRzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASJACg5EZXBsb3ltZW50U3RlcBIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRITCgtkZXNjcmlwdGlvbhgDIAEoCSK+AQoVRGF0YWJhc2VDb25maWd1cmF0aW9uEgwKBHR5cGUYASABKAkSEAoIdXJsX2ZpbGUYAiABKAkSDwoHY2FfZmlsZRgDIAEoCRIQCgh0bHNfbW9kZRgEIAEoCRIZChFjb25uZWN0aW9uX3NlY3JldBgFIAEoCRIdChVjb25uZWN0aW9uX3NlY3JldF9rZXkYBiABKAkSEQoJY2Ffc2VjcmV0GAcgASgJEhUKDWNhX3NlY3JldF9rZXkYCCABKAkyxgEKEURlcGxveW1lbnRTZXJ2aWNlElUKDEluc3RydWN0aW9ucxIcLmZ1bm5lbC52MS5EZXBsb3ltZW50UmVxdWVzdBohLmZ1bm5lbC52MS5EZXBsb3ltZW50SW5zdHJ1Y3Rpb25zIgSItRgDEloKCUF1dGhvcml6ZRIcLmZ1bm5lbC52MS5EZXBsb3ltZW50UmVxdWVzdBohLmZ1bm5lbC52MS5EZXBsb3ltZW50SW5zdHJ1Y3Rpb25zIgyItRgDmLUYAai1GAFCUVpPZ2l0aHViLmNvbS90YWlsc2NhbGUteC90YWlsc2NhbGUtcHJpdmF0ZS1mdW5uZWwvaW50ZXJuYWwvZ2VuL2Z1bm5lbC92MTtmdW5uZWx2MWIGcHJvdG8z", [file_buf_validate_validate, file_funnel_v1_options]);
+  fileDesc("ChxmdW5uZWwvdjEvcHJvdmlzaW9uaW5nLnByb3RvEglmdW5uZWwudjEigAEKFlR1bm5lbEJvb3RzdHJhcFJlcXVlc3QSFAoMaW5zdGFsbGF0aW9uGAEgASgJEgwKBG5hbWUYAiABKAkSEAoIaG9zdG5hbWUYAyABKAkSGQoEcG9ydBgEIAEoDUILukgIKgYY//8DIAASFQoNbG9jYWxfYWRkcmVzcxgFIAEoCSJTCg9UdW5uZWxCb290c3RyYXASFgoIYXV0aF9rZXkYASABKAlCBNi1GAESEgoKZXhwaXJlc19hdBgCIAEoAxIUCgxpbnN0YWxsYXRpb24YAyABKAkiiwEKGVR1bm5lbEluc3RydWN0aW9uc1JlcXVlc3QSEAoIaG9zdG5hbWUYASABKAkSGQoEcG9ydBgCIAEoDUILukgIKgYY//8DIAASFQoNbG9jYWxfYWRkcmVzcxgDIAEoCRIMCgRuYW1lGAQgASgJEhwKFHRhaWxzY2FsZV9jb25uZWN0aW9uGAUgASgJIpIKChFEZXBsb3ltZW50UmVxdWVzdBJlCgRtb2RlGAEgASgJQle6SFTYAQFyT1IIb3BlcmF0b3JSB2NvbnRyb2xSDGxvYWRiYWxhbmNlclIOZG9ja2VyLWdhdGV3YXlSD3RhaWxuZXQtZ2F0ZXdheVILazhzLWdhdGV3YXkSLAoGdGFyZ2V0GAIgASgJQhy6SBnYAQFyFFIGbmF0aXZlUgprdWJlcm5ldGVzEg8KB3J1bnRpbWUYAyABKAkSDAoEbmFtZRgEIAEoCRIQCghob3N0bmFtZRgFIAEoCRIRCglzdGF0ZV9kaXIYBiABKAkSEAoIZGF0YV9kaXIYByABKAkSFAoMaW5zdGFsbGF0aW9uGAggASgJEhUKDXJlc291cmNlX25hbWUYCSABKAkSFQoNZ2F0ZXdheV9jbGFzcxgKIAEoCRIVCg1pbmdyZXNzX2NsYXNzGAsgASgJEhgKEHdhdGNoX25hbWVzcGFjZXMYDCADKAkSRQoNbm9kZV9zZWxlY3RvchgNIAMoCzIuLmZ1bm5lbC52MS5EZXBsb3ltZW50UmVxdWVzdC5Ob2RlU2VsZWN0b3JFbnRyeRIZChFjZXJ0aWZpY2F0ZV9lbWFpbBgOIAEoCRIXCg9wdWJsaWNfaG9zdG5hbWUYDyABKAkSEgoKbGFiZWxfa2V5cxgQIAMoCRIVCg1kZW55X25ldHdvcmtzGBEgAygJEhEKCW5hbWVzcGFjZRgSIAEoCRIPCgdjb250ZXh0GBMgASgJEg8KB3ZlcnNpb24YFCABKAkSFAoMZGlzcGxheV9uYW1lGBUgASgJEg8KB3RhaWxuZXQYFiABKAkSHAoUb2F1dGhfY2xpZW50X2lkX2ZpbGUYFyABKAkSIAoYb2F1dGhfY2xpZW50X3NlY3JldF9maWxlGBggASgJEg8KB25vZGVfaWQYGSABKAkSGgoSbWFuYWdlZF9uYW1lc3BhY2VzGBogAygJEgwKBHdhaXQYGyABKAgSFwoPdGltZW91dF9zZWNvbmRzGBwgASgNEhcKD2N1cnJlbnRfY29udHJvbBgdIAEoCBIWCg5hZG1pbmlzdHJhdG9ycxgeIAMoCRIVCg1zdG9yYWdlX2NsYXNzGB8gASgJEhQKDHN0b3JhZ2Vfc2l6ZRggIAEoCRIWCg5wbGFjZW1lbnRfanNvbhghIAEoDBIgChhmb3J3YXJkZXJfcGxhY2VtZW50X2pzb24YIiABKAwSMgoIZGF0YWJhc2UYIyABKAsyIC5mdW5uZWwudjEuRGF0YWJhc2VDb25maWd1cmF0aW9uEhwKFHRhaWxzY2FsZV9jb25uZWN0aW9uGCQgASgJEhgKEHRhaWxzY2FsZV9zb2NrZXQYJSABKAkSGQoRa2V5X2lzc3Vlcl9zZWNyZXQYJiABKAkSFwoPc2VydmljZXNfc2VjcmV0GCcgASgJEh8KF3NlcnZpY2VzX2NsaWVudF9pZF9maWxlGCggASgJEiMKG3NlcnZpY2VzX2NsaWVudF9zZWNyZXRfZmlsZRgpIAEoCRIUCgx1c2Vyc19zZWNyZXQYKiABKAkSHAoUdXNlcnNfY2xpZW50X2lkX2ZpbGUYKyABKAkSIAoYdXNlcnNfY2xpZW50X3NlY3JldF9maWxlGCwgASgJGjMKEU5vZGVTZWxlY3RvckVudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiPAoUQm9vdHN0cmFwQ3JlZGVudGlhbHMSEAoIYXV0aF9rZXkYAyABKAkSEgoKZXhwaXJlc19hdBgFIAEoAyLYAwoWRGVwbG95bWVudEluc3RydWN0aW9ucxIwCgpkZXBsb3ltZW50GAEgASgLMhwuZnVubmVsLnYxLkRlcGxveW1lbnRSZXF1ZXN0EhYKDm1hbmFnZW1lbnRfdXJsGAIgASgJEg8KB3ZlcnNpb24YAyABKAkSDQoFaW1hZ2UYBCABKAkSDQoFY2hhcnQYBSABKAkSFQoNY2hhcnRfdmVyc2lvbhgGIAEoCRIRCgluYW1lc3BhY2UYByABKAkSKAoFc3RlcHMYCCADKAsyGS5mdW5uZWwudjEuRGVwbG95bWVudFN0ZXASFQoNcHJlcmVxdWlzaXRlcxgJIAMoCRI0CgtjcmVkZW50aWFscxgKIAEoCzIfLmZ1bm5lbC52MS5Cb290c3RyYXBDcmVkZW50aWFscxIOCgZzY3JpcHQYCyABKAkSDwoHZXhhbXBsZRgMIAEoCRJBCghjb21tYW5kcxgOIAMoCzIvLmZ1bm5lbC52MS5EZXBsb3ltZW50SW5zdHJ1Y3Rpb25zLkNvbW1hbmRzRW50cnkSDwoHZHJ5X3J1bhgPIAEoCBovCg1Db21tYW5kc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEiQAoORGVwbG95bWVudFN0ZXASCgoCaWQYASABKAkSDQoFdGl0bGUYAiABKAkSEwoLZGVzY3JpcHRpb24YAyABKAkivgEKFURhdGFiYXNlQ29uZmlndXJhdGlvbhIMCgR0eXBlGAEgASgJEhAKCHVybF9maWxlGAIgASgJEg8KB2NhX2ZpbGUYAyABKAkSEAoIdGxzX21vZGUYBCABKAkSGQoRY29ubmVjdGlvbl9zZWNyZXQYBSABKAkSHQoVY29ubmVjdGlvbl9zZWNyZXRfa2V5GAYgASgJEhEKCWNhX3NlY3JldBgHIAEoCRIVCg1jYV9zZWNyZXRfa2V5GAggASgJMosDChFEZXBsb3ltZW50U2VydmljZRJeCg9Cb290c3RyYXBUdW5uZWwSIS5mdW5uZWwudjEuVHVubmVsQm9vdHN0cmFwUmVxdWVzdBoaLmZ1bm5lbC52MS5UdW5uZWxCb290c3RyYXAiDIi1GAWYtRgBqLUYARJjChJUdW5uZWxJbnN0cnVjdGlvbnMSJC5mdW5uZWwudjEuVHVubmVsSW5zdHJ1Y3Rpb25zUmVxdWVzdBohLmZ1bm5lbC52MS5EZXBsb3ltZW50SW5zdHJ1Y3Rpb25zIgSItRgBElUKDEluc3RydWN0aW9ucxIcLmZ1bm5lbC52MS5EZXBsb3ltZW50UmVxdWVzdBohLmZ1bm5lbC52MS5EZXBsb3ltZW50SW5zdHJ1Y3Rpb25zIgSItRgDEloKCUF1dGhvcml6ZRIcLmZ1bm5lbC52MS5EZXBsb3ltZW50UmVxdWVzdBohLmZ1bm5lbC52MS5EZXBsb3ltZW50SW5zdHJ1Y3Rpb25zIgyItRgDmLUYAai1GAFCUVpPZ2l0aHViLmNvbS90YWlsc2NhbGUteC90YWlsc2NhbGUtcHJpdmF0ZS1mdW5uZWwvaW50ZXJuYWwvZ2VuL2Z1bm5lbC92MTtmdW5uZWx2MWIGcHJvdG8z", [file_buf_validate_validate, file_funnel_v1_options]);
+
+/**
+ * @generated from message funnel.v1.TunnelBootstrapRequest
+ */
+export type TunnelBootstrapRequest = Message<"funnel.v1.TunnelBootstrapRequest"> & {
+  /**
+   * @generated from field: string installation = 1;
+   */
+  installation: string;
+
+  /**
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string hostname = 3;
+   */
+  hostname: string;
+
+  /**
+   * @generated from field: uint32 port = 4;
+   */
+  port: number;
+
+  /**
+   * @generated from field: string local_address = 5;
+   */
+  localAddress: string;
+};
+
+/**
+ * Describes the message funnel.v1.TunnelBootstrapRequest.
+ * Use `create(TunnelBootstrapRequestSchema)` to create a new message.
+ */
+export const TunnelBootstrapRequestSchema: GenMessage<TunnelBootstrapRequest> = /*@__PURE__*/
+  messageDesc(file_funnel_v1_provisioning, 0);
+
+/**
+ * @generated from message funnel.v1.TunnelBootstrap
+ */
+export type TunnelBootstrap = Message<"funnel.v1.TunnelBootstrap"> & {
+  /**
+   * @generated from field: string auth_key = 1;
+   */
+  authKey: string;
+
+  /**
+   * @generated from field: int64 expires_at = 2;
+   */
+  expiresAt: bigint;
+
+  /**
+   * @generated from field: string installation = 3;
+   */
+  installation: string;
+};
+
+/**
+ * Describes the message funnel.v1.TunnelBootstrap.
+ * Use `create(TunnelBootstrapSchema)` to create a new message.
+ */
+export const TunnelBootstrapSchema: GenMessage<TunnelBootstrap> = /*@__PURE__*/
+  messageDesc(file_funnel_v1_provisioning, 1);
+
+/**
+ * @generated from message funnel.v1.TunnelInstructionsRequest
+ */
+export type TunnelInstructionsRequest = Message<"funnel.v1.TunnelInstructionsRequest"> & {
+  /**
+   * @generated from field: string hostname = 1;
+   */
+  hostname: string;
+
+  /**
+   * @generated from field: uint32 port = 2;
+   */
+  port: number;
+
+  /**
+   * @generated from field: string local_address = 3;
+   */
+  localAddress: string;
+
+  /**
+   * @generated from field: string name = 4;
+   */
+  name: string;
+
+  /**
+   * @generated from field: string tailscale_connection = 5;
+   */
+  tailscaleConnection: string;
+};
+
+/**
+ * Describes the message funnel.v1.TunnelInstructionsRequest.
+ * Use `create(TunnelInstructionsRequestSchema)` to create a new message.
+ */
+export const TunnelInstructionsRequestSchema: GenMessage<TunnelInstructionsRequest> = /*@__PURE__*/
+  messageDesc(file_funnel_v1_provisioning, 2);
 
 /**
  * @generated from message funnel.v1.DeploymentRequest
@@ -246,7 +347,7 @@ export type DeploymentRequest = Message<"funnel.v1.DeploymentRequest"> & {
  * Use `create(DeploymentRequestSchema)` to create a new message.
  */
 export const DeploymentRequestSchema: GenMessage<DeploymentRequest> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_provisioning, 0);
+  messageDesc(file_funnel_v1_provisioning, 3);
 
 /**
  * Bootstrap credentials must not be persisted in plans, logs or receipts.
@@ -270,7 +371,7 @@ export type BootstrapCredentials = Message<"funnel.v1.BootstrapCredentials"> & {
  * Use `create(BootstrapCredentialsSchema)` to create a new message.
  */
 export const BootstrapCredentialsSchema: GenMessage<BootstrapCredentials> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_provisioning, 1);
+  messageDesc(file_funnel_v1_provisioning, 4);
 
 /**
  * @generated from message funnel.v1.DeploymentInstructions
@@ -354,7 +455,7 @@ export type DeploymentInstructions = Message<"funnel.v1.DeploymentInstructions">
  * Use `create(DeploymentInstructionsSchema)` to create a new message.
  */
 export const DeploymentInstructionsSchema: GenMessage<DeploymentInstructions> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_provisioning, 2);
+  messageDesc(file_funnel_v1_provisioning, 5);
 
 /**
  * @generated from message funnel.v1.DeploymentStep
@@ -381,7 +482,7 @@ export type DeploymentStep = Message<"funnel.v1.DeploymentStep"> & {
  * Use `create(DeploymentStepSchema)` to create a new message.
  */
 export const DeploymentStepSchema: GenMessage<DeploymentStep> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_provisioning, 3);
+  messageDesc(file_funnel_v1_provisioning, 6);
 
 /**
  * Control database settings contain file paths or Secret references, never credentials.
@@ -435,7 +536,7 @@ export type DatabaseConfiguration = Message<"funnel.v1.DatabaseConfiguration"> &
  * Use `create(DatabaseConfigurationSchema)` to create a new message.
  */
 export const DatabaseConfigurationSchema: GenMessage<DatabaseConfiguration> = /*@__PURE__*/
-  messageDesc(file_funnel_v1_provisioning, 4);
+  messageDesc(file_funnel_v1_provisioning, 7);
 
 /**
  * DeploymentService authorizes deployments. Execution is performed by a generated installer on the target.
@@ -443,6 +544,27 @@ export const DatabaseConfigurationSchema: GenMessage<DatabaseConfiguration> = /*
  * @generated from service funnel.v1.DeploymentService
  */
 export const DeploymentService: GenService<{
+  /**
+   * Phone home using existing host connectivity. Issues only the installation
+   * Tailnet gateway role, never a caller-selected role or management permission.
+   *
+   * @generated from rpc funnel.v1.DeploymentService.BootstrapTunnel
+   */
+  bootstrapTunnel: {
+    methodKind: "unary";
+    input: typeof TunnelBootstrapRequestSchema;
+    output: typeof TunnelBootstrapSchema;
+  },
+  /**
+   * Render a secret-free foreground command; no registration or DNS mutation.
+   *
+   * @generated from rpc funnel.v1.DeploymentService.TunnelInstructions
+   */
+  tunnelInstructions: {
+    methodKind: "unary";
+    input: typeof TunnelInstructionsRequestSchema;
+    output: typeof DeploymentInstructionsSchema;
+  },
   /**
    * Resolve deployment choices without creating bootstrap keys.
    *

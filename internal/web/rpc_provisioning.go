@@ -14,6 +14,7 @@ import (
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1/funnelv1connect"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/provision"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/tunnel"
 )
 
 type deploymentRPC struct {
@@ -117,6 +118,9 @@ func (c *Control) deploymentInput(in *v1.DeploymentRequest) (*v1.DeploymentReque
 	n, e := c.Store.Node(in.NodeId)
 	if e != nil {
 		return nil, rpcFailure(connect.CodeNotFound, errors.New("unknown node"))
+	}
+	if reg, e := c.Store.ComponentRegistration(n.ID); e == nil && reg.Runtime == tunnel.Runtime {
+		return nil, rpcFailure(connect.CodeFailedPrecondition, errors.New("foreground tunnels have no native service deployment; rerun the tunnel command or stop its terminal process"))
 	}
 	d, e := c.nodeDeployment(n.ID)
 	if e != nil || d.ResourceName == "" {

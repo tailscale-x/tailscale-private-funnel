@@ -397,6 +397,15 @@
             "title": "published_hostnames",
             "type": "array"
           },
+          "publishedResources": {
+            "additionalProperties": {
+              "title": "value",
+              "type": "string"
+            },
+            "description": "Resource identity/generation to effective rule revision installed by an edge.",
+            "title": "published_resources",
+            "type": "object"
+          },
           "revision": {
             "title": "revision",
             "type": "string"
@@ -1557,6 +1566,54 @@
         "title": "ListNodesRequest",
         "type": "object"
       },
+      "funnel.v1.LocalTunnelRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          },
+          "localAddress": {
+            "title": "local_address",
+            "type": "string"
+          },
+          "port": {
+            "exclusiveMinimum": 0,
+            "maximum": 65535,
+            "title": "port",
+            "type": "integer"
+          }
+        },
+        "title": "LocalTunnelRequest",
+        "type": "object"
+      },
+      "funnel.v1.LocalTunnelStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "application": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.RuntimeApplication"
+              }
+            ],
+            "title": "application"
+          },
+          "message": {
+            "title": "message",
+            "type": "string"
+          },
+          "publicUrl": {
+            "title": "public_url",
+            "type": "string"
+          },
+          "ready": {
+            "title": "ready",
+            "type": "boolean"
+          }
+        },
+        "title": "LocalTunnelStatus",
+        "type": "object"
+      },
       "funnel.v1.Node": {
         "additionalProperties": false,
         "properties": {
@@ -1651,6 +1708,10 @@
           "publicReady": {
             "title": "public_ready",
             "type": "boolean"
+          },
+          "runtime": {
+            "title": "runtime",
+            "type": "string"
           },
           "tailnetId": {
             "title": "tailnet_id",
@@ -1903,6 +1964,7 @@
           "PERMISSION_OPERATOR",
           "PERMISSION_ADMIN",
           "PERMISSION_NODE",
+          "PERMISSION_TAILNET",
           "PERMISSION_BROKER"
         ],
         "title": "Permission",
@@ -2801,6 +2863,84 @@
         "title": "TestResult",
         "type": "object"
       },
+      "funnel.v1.TunnelBootstrap": {
+        "additionalProperties": false,
+        "properties": {
+          "authKey": {
+            "title": "auth_key",
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "int64",
+            "title": "expires_at",
+            "type": "string"
+          },
+          "installation": {
+            "title": "installation",
+            "type": "string"
+          }
+        },
+        "title": "TunnelBootstrap",
+        "type": "object"
+      },
+      "funnel.v1.TunnelBootstrapRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          },
+          "installation": {
+            "title": "installation",
+            "type": "string"
+          },
+          "localAddress": {
+            "title": "local_address",
+            "type": "string"
+          },
+          "name": {
+            "title": "name",
+            "type": "string"
+          },
+          "port": {
+            "exclusiveMinimum": 0,
+            "maximum": 65535,
+            "title": "port",
+            "type": "integer"
+          }
+        },
+        "title": "TunnelBootstrapRequest",
+        "type": "object"
+      },
+      "funnel.v1.TunnelInstructionsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "hostname": {
+            "title": "hostname",
+            "type": "string"
+          },
+          "localAddress": {
+            "title": "local_address",
+            "type": "string"
+          },
+          "name": {
+            "title": "name",
+            "type": "string"
+          },
+          "port": {
+            "exclusiveMinimum": 0,
+            "maximum": 65535,
+            "title": "port",
+            "type": "integer"
+          },
+          "tailscaleConnection": {
+            "title": "tailscale_connection",
+            "type": "string"
+          }
+        },
+        "title": "TunnelInstructionsRequest",
+        "type": "object"
+      },
       "funnel.v1.Vendor": {
         "additionalProperties": false,
         "properties": {
@@ -3015,6 +3155,71 @@
         "x-funnel-sensitive": true
       }
     },
+    "/funnel.v1.DeploymentService/BootstrapTunnel": {
+      "post": {
+        "description": "Phone home using existing host connectivity. Issues only the installation\n Tailnet gateway role, never a caller-selected role or management permission.\nRequires verified Tailscale WhoIs identity and PERMISSION_TAILNET authorization.",
+        "operationId": "funnel.v1.DeploymentService.BootstrapTunnel",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.TunnelBootstrapRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.TunnelBootstrap"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "BootstrapTunnel",
+        "tags": [
+          "funnel.v1.DeploymentService"
+        ],
+        "x-funnel-audit": true,
+        "x-funnel-permission": "TAILNET",
+        "x-funnel-sensitive": true
+      }
+    },
     "/funnel.v1.DeploymentService/Instructions": {
       "post": {
         "description": "Resolve deployment choices without creating bootstrap keys.\nRequires verified Tailscale WhoIs identity and PERMISSION_ADMIN authorization.",
@@ -3077,6 +3282,70 @@
         ],
         "x-funnel-audit": false,
         "x-funnel-permission": "ADMIN"
+      }
+    },
+    "/funnel.v1.DeploymentService/TunnelInstructions": {
+      "post": {
+        "description": "Render a secret-free foreground command; no registration or DNS mutation.\nRequires verified Tailscale WhoIs identity and PERMISSION_VIEWER authorization.",
+        "operationId": "funnel.v1.DeploymentService.TunnelInstructions",
+        "parameters": [
+          {
+            "description": "Define the version of the Connect protocol",
+            "example": 1,
+            "in": "header",
+            "name": "Connect-Protocol-Version",
+            "schema": {
+              "$ref": "#/components/schemas/connect-protocol-version"
+            }
+          },
+          {
+            "description": "Define the timeout, in ms",
+            "example": 1000,
+            "in": "header",
+            "name": "Connect-Timeout-Ms",
+            "schema": {
+              "$ref": "#/components/schemas/connect-timeout-header"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/funnel.v1.TunnelInstructionsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/funnel.v1.DeploymentInstructions"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/connect.error"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "TunnelInstructions",
+        "tags": [
+          "funnel.v1.DeploymentService"
+        ],
+        "x-funnel-audit": false,
+        "x-funnel-permission": "VIEWER"
       }
     },
     "/funnel.v1.ManagementService/AddAlias": {

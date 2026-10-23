@@ -22,6 +22,218 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type TunnelBootstrapRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Installation  string                 `protobuf:"bytes,1,opt,name=installation,proto3" json:"installation,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Hostname      string                 `protobuf:"bytes,3,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	Port          uint32                 `protobuf:"varint,4,opt,name=port,proto3" json:"port,omitempty"`
+	LocalAddress  string                 `protobuf:"bytes,5,opt,name=local_address,json=localAddress,proto3" json:"local_address,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TunnelBootstrapRequest) Reset() {
+	*x = TunnelBootstrapRequest{}
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TunnelBootstrapRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TunnelBootstrapRequest) ProtoMessage() {}
+
+func (x *TunnelBootstrapRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TunnelBootstrapRequest.ProtoReflect.Descriptor instead.
+func (*TunnelBootstrapRequest) Descriptor() ([]byte, []int) {
+	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *TunnelBootstrapRequest) GetInstallation() string {
+	if x != nil {
+		return x.Installation
+	}
+	return ""
+}
+
+func (x *TunnelBootstrapRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *TunnelBootstrapRequest) GetHostname() string {
+	if x != nil {
+		return x.Hostname
+	}
+	return ""
+}
+
+func (x *TunnelBootstrapRequest) GetPort() uint32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *TunnelBootstrapRequest) GetLocalAddress() string {
+	if x != nil {
+		return x.LocalAddress
+	}
+	return ""
+}
+
+type TunnelBootstrap struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AuthKey       string                 `protobuf:"bytes,1,opt,name=auth_key,json=authKey,proto3" json:"auth_key,omitempty"`
+	ExpiresAt     int64                  `protobuf:"varint,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	Installation  string                 `protobuf:"bytes,3,opt,name=installation,proto3" json:"installation,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TunnelBootstrap) Reset() {
+	*x = TunnelBootstrap{}
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TunnelBootstrap) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TunnelBootstrap) ProtoMessage() {}
+
+func (x *TunnelBootstrap) ProtoReflect() protoreflect.Message {
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TunnelBootstrap.ProtoReflect.Descriptor instead.
+func (*TunnelBootstrap) Descriptor() ([]byte, []int) {
+	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *TunnelBootstrap) GetAuthKey() string {
+	if x != nil {
+		return x.AuthKey
+	}
+	return ""
+}
+
+func (x *TunnelBootstrap) GetExpiresAt() int64 {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return 0
+}
+
+func (x *TunnelBootstrap) GetInstallation() string {
+	if x != nil {
+		return x.Installation
+	}
+	return ""
+}
+
+type TunnelInstructionsRequest struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Hostname            string                 `protobuf:"bytes,1,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	Port                uint32                 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
+	LocalAddress        string                 `protobuf:"bytes,3,opt,name=local_address,json=localAddress,proto3" json:"local_address,omitempty"`
+	Name                string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	TailscaleConnection string                 `protobuf:"bytes,5,opt,name=tailscale_connection,json=tailscaleConnection,proto3" json:"tailscale_connection,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *TunnelInstructionsRequest) Reset() {
+	*x = TunnelInstructionsRequest{}
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TunnelInstructionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TunnelInstructionsRequest) ProtoMessage() {}
+
+func (x *TunnelInstructionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TunnelInstructionsRequest.ProtoReflect.Descriptor instead.
+func (*TunnelInstructionsRequest) Descriptor() ([]byte, []int) {
+	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *TunnelInstructionsRequest) GetHostname() string {
+	if x != nil {
+		return x.Hostname
+	}
+	return ""
+}
+
+func (x *TunnelInstructionsRequest) GetPort() uint32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *TunnelInstructionsRequest) GetLocalAddress() string {
+	if x != nil {
+		return x.LocalAddress
+	}
+	return ""
+}
+
+func (x *TunnelInstructionsRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *TunnelInstructionsRequest) GetTailscaleConnection() string {
+	if x != nil {
+		return x.TailscaleConnection
+	}
+	return ""
+}
+
 type DeploymentRequest struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
 	Mode                  string                 `protobuf:"bytes,1,opt,name=mode,proto3" json:"mode,omitempty"`
@@ -75,7 +287,7 @@ type DeploymentRequest struct {
 
 func (x *DeploymentRequest) Reset() {
 	*x = DeploymentRequest{}
-	mi := &file_funnel_v1_provisioning_proto_msgTypes[0]
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -87,7 +299,7 @@ func (x *DeploymentRequest) String() string {
 func (*DeploymentRequest) ProtoMessage() {}
 
 func (x *DeploymentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_provisioning_proto_msgTypes[0]
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -100,7 +312,7 @@ func (x *DeploymentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeploymentRequest.ProtoReflect.Descriptor instead.
 func (*DeploymentRequest) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{0}
+	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *DeploymentRequest) GetMode() string {
@@ -422,7 +634,7 @@ type BootstrapCredentials struct {
 
 func (x *BootstrapCredentials) Reset() {
 	*x = BootstrapCredentials{}
-	mi := &file_funnel_v1_provisioning_proto_msgTypes[1]
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -434,7 +646,7 @@ func (x *BootstrapCredentials) String() string {
 func (*BootstrapCredentials) ProtoMessage() {}
 
 func (x *BootstrapCredentials) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_provisioning_proto_msgTypes[1]
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -447,7 +659,7 @@ func (x *BootstrapCredentials) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BootstrapCredentials.ProtoReflect.Descriptor instead.
 func (*BootstrapCredentials) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{1}
+	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *BootstrapCredentials) GetAuthKey() string {
@@ -487,7 +699,7 @@ type DeploymentInstructions struct {
 
 func (x *DeploymentInstructions) Reset() {
 	*x = DeploymentInstructions{}
-	mi := &file_funnel_v1_provisioning_proto_msgTypes[2]
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -499,7 +711,7 @@ func (x *DeploymentInstructions) String() string {
 func (*DeploymentInstructions) ProtoMessage() {}
 
 func (x *DeploymentInstructions) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_provisioning_proto_msgTypes[2]
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -512,7 +724,7 @@ func (x *DeploymentInstructions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeploymentInstructions.ProtoReflect.Descriptor instead.
 func (*DeploymentInstructions) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{2}
+	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DeploymentInstructions) GetDeployment() *DeploymentRequest {
@@ -624,7 +836,7 @@ type DeploymentStep struct {
 
 func (x *DeploymentStep) Reset() {
 	*x = DeploymentStep{}
-	mi := &file_funnel_v1_provisioning_proto_msgTypes[3]
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -636,7 +848,7 @@ func (x *DeploymentStep) String() string {
 func (*DeploymentStep) ProtoMessage() {}
 
 func (x *DeploymentStep) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_provisioning_proto_msgTypes[3]
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -649,7 +861,7 @@ func (x *DeploymentStep) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeploymentStep.ProtoReflect.Descriptor instead.
 func (*DeploymentStep) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{3}
+	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DeploymentStep) GetId() string {
@@ -690,7 +902,7 @@ type DatabaseConfiguration struct {
 
 func (x *DatabaseConfiguration) Reset() {
 	*x = DatabaseConfiguration{}
-	mi := &file_funnel_v1_provisioning_proto_msgTypes[4]
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -702,7 +914,7 @@ func (x *DatabaseConfiguration) String() string {
 func (*DatabaseConfiguration) ProtoMessage() {}
 
 func (x *DatabaseConfiguration) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_provisioning_proto_msgTypes[4]
+	mi := &file_funnel_v1_provisioning_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -715,7 +927,7 @@ func (x *DatabaseConfiguration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DatabaseConfiguration.ProtoReflect.Descriptor instead.
 func (*DatabaseConfiguration) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{4}
+	return file_funnel_v1_provisioning_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DatabaseConfiguration) GetType() string {
@@ -778,7 +990,24 @@ var File_funnel_v1_provisioning_proto protoreflect.FileDescriptor
 
 const file_funnel_v1_provisioning_proto_rawDesc = "" +
 	"\n" +
-	"\x1cfunnel/v1/provisioning.proto\x12\tfunnel.v1\x1a\x1bbuf/validate/validate.proto\x1a\x17funnel/v1/options.proto\"\x92\x0f\n" +
+	"\x1cfunnel/v1/provisioning.proto\x12\tfunnel.v1\x1a\x1bbuf/validate/validate.proto\x1a\x17funnel/v1/options.proto\"\xb2\x01\n" +
+	"\x16TunnelBootstrapRequest\x12\"\n" +
+	"\finstallation\x18\x01 \x01(\tR\finstallation\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
+	"\bhostname\x18\x03 \x01(\tR\bhostname\x12\x1f\n" +
+	"\x04port\x18\x04 \x01(\rB\v\xbaH\b*\x06\x18\xff\xff\x03 \x00R\x04port\x12#\n" +
+	"\rlocal_address\x18\x05 \x01(\tR\flocalAddress\"u\n" +
+	"\x0fTunnelBootstrap\x12\x1f\n" +
+	"\bauth_key\x18\x01 \x01(\tB\x04ص\x18\x01R\aauthKey\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x02 \x01(\x03R\texpiresAt\x12\"\n" +
+	"\finstallation\x18\x03 \x01(\tR\finstallation\"\xc4\x01\n" +
+	"\x19TunnelInstructionsRequest\x12\x1a\n" +
+	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x1f\n" +
+	"\x04port\x18\x02 \x01(\rB\v\xbaH\b*\x06\x18\xff\xff\x03 \x00R\x04port\x12#\n" +
+	"\rlocal_address\x18\x03 \x01(\tR\flocalAddress\x12\x12\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\x121\n" +
+	"\x14tailscale_connection\x18\x05 \x01(\tR\x13tailscaleConnection\"\x92\x0f\n" +
 	"\x11DeploymentRequest\x12k\n" +
 	"\x04mode\x18\x01 \x01(\tBW\xbaHT\xd8\x01\x01rOR\boperatorR\acontrolR\floadbalancerR\x0edocker-gatewayR\x0ftailnet-gatewayR\vk8s-gatewayR\x04mode\x124\n" +
 	"\x06target\x18\x02 \x01(\tB\x1c\xbaH\x19\xd8\x01\x01r\x14R\x06nativeR\n" +
@@ -867,8 +1096,10 @@ const file_funnel_v1_provisioning_proto_rawDesc = "" +
 	"\x11connection_secret\x18\x05 \x01(\tR\x10connectionSecret\x122\n" +
 	"\x15connection_secret_key\x18\x06 \x01(\tR\x13connectionSecretKey\x12\x1b\n" +
 	"\tca_secret\x18\a \x01(\tR\bcaSecret\x12\"\n" +
-	"\rca_secret_key\x18\b \x01(\tR\vcaSecretKey2\xc6\x01\n" +
-	"\x11DeploymentService\x12U\n" +
+	"\rca_secret_key\x18\b \x01(\tR\vcaSecretKey2\x8b\x03\n" +
+	"\x11DeploymentService\x12^\n" +
+	"\x0fBootstrapTunnel\x12!.funnel.v1.TunnelBootstrapRequest\x1a\x1a.funnel.v1.TunnelBootstrap\"\f\x88\xb5\x18\x05\x98\xb5\x18\x01\xa8\xb5\x18\x01\x12c\n" +
+	"\x12TunnelInstructions\x12$.funnel.v1.TunnelInstructionsRequest\x1a!.funnel.v1.DeploymentInstructions\"\x04\x88\xb5\x18\x01\x12U\n" +
 	"\fInstructions\x12\x1c.funnel.v1.DeploymentRequest\x1a!.funnel.v1.DeploymentInstructions\"\x04\x88\xb5\x18\x03\x12Z\n" +
 	"\tAuthorize\x12\x1c.funnel.v1.DeploymentRequest\x1a!.funnel.v1.DeploymentInstructions\"\f\x88\xb5\x18\x03\x98\xb5\x18\x01\xa8\xb5\x18\x01BQZOgithub.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1;funnelv1b\x06proto3"
 
@@ -884,32 +1115,39 @@ func file_funnel_v1_provisioning_proto_rawDescGZIP() []byte {
 	return file_funnel_v1_provisioning_proto_rawDescData
 }
 
-var file_funnel_v1_provisioning_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_funnel_v1_provisioning_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_funnel_v1_provisioning_proto_goTypes = []any{
-	(*DeploymentRequest)(nil),      // 0: funnel.v1.DeploymentRequest
-	(*BootstrapCredentials)(nil),   // 1: funnel.v1.BootstrapCredentials
-	(*DeploymentInstructions)(nil), // 2: funnel.v1.DeploymentInstructions
-	(*DeploymentStep)(nil),         // 3: funnel.v1.DeploymentStep
-	(*DatabaseConfiguration)(nil),  // 4: funnel.v1.DatabaseConfiguration
-	nil,                            // 5: funnel.v1.DeploymentRequest.NodeSelectorEntry
-	nil,                            // 6: funnel.v1.DeploymentInstructions.CommandsEntry
+	(*TunnelBootstrapRequest)(nil),    // 0: funnel.v1.TunnelBootstrapRequest
+	(*TunnelBootstrap)(nil),           // 1: funnel.v1.TunnelBootstrap
+	(*TunnelInstructionsRequest)(nil), // 2: funnel.v1.TunnelInstructionsRequest
+	(*DeploymentRequest)(nil),         // 3: funnel.v1.DeploymentRequest
+	(*BootstrapCredentials)(nil),      // 4: funnel.v1.BootstrapCredentials
+	(*DeploymentInstructions)(nil),    // 5: funnel.v1.DeploymentInstructions
+	(*DeploymentStep)(nil),            // 6: funnel.v1.DeploymentStep
+	(*DatabaseConfiguration)(nil),     // 7: funnel.v1.DatabaseConfiguration
+	nil,                               // 8: funnel.v1.DeploymentRequest.NodeSelectorEntry
+	nil,                               // 9: funnel.v1.DeploymentInstructions.CommandsEntry
 }
 var file_funnel_v1_provisioning_proto_depIdxs = []int32{
-	5, // 0: funnel.v1.DeploymentRequest.node_selector:type_name -> funnel.v1.DeploymentRequest.NodeSelectorEntry
-	4, // 1: funnel.v1.DeploymentRequest.database:type_name -> funnel.v1.DatabaseConfiguration
-	0, // 2: funnel.v1.DeploymentInstructions.deployment:type_name -> funnel.v1.DeploymentRequest
-	3, // 3: funnel.v1.DeploymentInstructions.steps:type_name -> funnel.v1.DeploymentStep
-	1, // 4: funnel.v1.DeploymentInstructions.credentials:type_name -> funnel.v1.BootstrapCredentials
-	6, // 5: funnel.v1.DeploymentInstructions.commands:type_name -> funnel.v1.DeploymentInstructions.CommandsEntry
-	0, // 6: funnel.v1.DeploymentService.Instructions:input_type -> funnel.v1.DeploymentRequest
-	0, // 7: funnel.v1.DeploymentService.Authorize:input_type -> funnel.v1.DeploymentRequest
-	2, // 8: funnel.v1.DeploymentService.Instructions:output_type -> funnel.v1.DeploymentInstructions
-	2, // 9: funnel.v1.DeploymentService.Authorize:output_type -> funnel.v1.DeploymentInstructions
-	8, // [8:10] is the sub-list for method output_type
-	6, // [6:8] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	8,  // 0: funnel.v1.DeploymentRequest.node_selector:type_name -> funnel.v1.DeploymentRequest.NodeSelectorEntry
+	7,  // 1: funnel.v1.DeploymentRequest.database:type_name -> funnel.v1.DatabaseConfiguration
+	3,  // 2: funnel.v1.DeploymentInstructions.deployment:type_name -> funnel.v1.DeploymentRequest
+	6,  // 3: funnel.v1.DeploymentInstructions.steps:type_name -> funnel.v1.DeploymentStep
+	4,  // 4: funnel.v1.DeploymentInstructions.credentials:type_name -> funnel.v1.BootstrapCredentials
+	9,  // 5: funnel.v1.DeploymentInstructions.commands:type_name -> funnel.v1.DeploymentInstructions.CommandsEntry
+	0,  // 6: funnel.v1.DeploymentService.BootstrapTunnel:input_type -> funnel.v1.TunnelBootstrapRequest
+	2,  // 7: funnel.v1.DeploymentService.TunnelInstructions:input_type -> funnel.v1.TunnelInstructionsRequest
+	3,  // 8: funnel.v1.DeploymentService.Instructions:input_type -> funnel.v1.DeploymentRequest
+	3,  // 9: funnel.v1.DeploymentService.Authorize:input_type -> funnel.v1.DeploymentRequest
+	1,  // 10: funnel.v1.DeploymentService.BootstrapTunnel:output_type -> funnel.v1.TunnelBootstrap
+	5,  // 11: funnel.v1.DeploymentService.TunnelInstructions:output_type -> funnel.v1.DeploymentInstructions
+	5,  // 12: funnel.v1.DeploymentService.Instructions:output_type -> funnel.v1.DeploymentInstructions
+	5,  // 13: funnel.v1.DeploymentService.Authorize:output_type -> funnel.v1.DeploymentInstructions
+	10, // [10:14] is the sub-list for method output_type
+	6,  // [6:10] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_funnel_v1_provisioning_proto_init() }
@@ -924,7 +1162,7 @@ func file_funnel_v1_provisioning_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_funnel_v1_provisioning_proto_rawDesc), len(file_funnel_v1_provisioning_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

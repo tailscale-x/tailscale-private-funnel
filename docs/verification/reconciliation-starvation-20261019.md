@@ -45,3 +45,31 @@ owned records, fair progress after a stalled provider, no-op audit suppression,
 and a successful DNS mutation retaining its ledger despite request cancellation.
 Disposable PostgreSQL 16 and 18 storage contracts pass. Both Go suites and vet
 are required before the development control rollout.
+
+## Development rollout
+
+Both complete Go suites and vet passed, as did PostgreSQL 16/18 contracts. The
+locally built control image is pinned to:
+
+```text
+ghcr.io/tailscale-x/tailscale-private-funnel@sha256:8809999ecc1a80e7ec82ccfa22c0577be2ea9bf7b6782b89b64012ca2ebfadc7
+version: dev-reconcile-20261019-7167c85
+```
+
+GitOps commit `0e75f7ccc5f7ccb7e60c9cab7182bf5c26d7c0b5` updated control only.
+The replacement Pod exhibited the previously observed Tailscale Service cold
+reconnection delay; components reconnected without resets. A temporary scoped
+transport diagnostic logged out and its one-use key was revoked. Existing routes
+passed all 270 checks across thirty rounds, including both Luong Gia previews.
+
+Three fresh names, including a nested name and names late in the exposure order,
+were published automatically in 55.8 seconds. Authoritative DNS, Cloudflare and
+Google resolution, first-visit verified HTTPS, HTTP redirects, echo request
+preservation, and complete HTTP/2 SSE passed. Reconciliation reported no pending
+errors after runtime recovery. Control removed fixture records after container
+removal. The exact thirteen-record baseline ledger, ownership values, exposure
+IDs (including both Luong Gia previews), and encryption material were preserved.
+All fixture exposures are inactive and their containers/networks are removed.
+
+No database, identity, ACL, gateway, load-balancer or public certificate reset was
+performed. No stable tag or GitHub release was created.

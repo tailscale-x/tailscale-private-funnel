@@ -16,6 +16,8 @@ Connect over verified Tailscale identity or broker-scoped tokens.
 - `k8s operator`: singleton operator installation and lifecycle.
 - `k8s controls|gateways|loadbalancers`: component CR creation and lifecycle.
 - `manage`: application management through the authorized Funnel API.
+- `tunnel <port>`: foreground loopback HTTP forwarding with phone-home ephemeral bootstrap on
+  Linux/macOS; no installer or operating-system service. See [local tunnels](foreground-tunnel.md).
 
 Use standard help/completion offline. Kubernetes operations require explicit
 `--context`. Use `--output json`, mutation `--dry-run`, deployment `--wait` and
@@ -33,6 +35,19 @@ Kubernetes. Other lifecycle operations execute their action. See
 commands, prerequisites and diagnostics. It never creates keys.
 Both React and CLI use shared Go renderers. The browser does not build command
 strings, upload kubeconfigs, or execute host/cluster commands.
+
+`DeploymentService.BootstrapTunnel` uses `PERMISSION_TAILNET`: verified WhoIs is
+required, but no management role, component registration or device tag. It issues
+only the installation Tailnet gateway role, single-use/ephemeral/15-minute, with
+per-device and global durable rate limits and no-store responses. This deliberately
+permits reachable tailnet peers to obtain tunnel runtime authority. Keys are held
+in memory; OAuth stays in control. Runtime registration remains role-authorized.
+
+`DeploymentService.TunnelInstructions` is also read-only. It uses the shared
+foreground command renderer and returns prerequisites without registration or keys.
+`NodeService.AdvertiseTunnel` and `WithdrawTunnel` require a verified Tailnet gateway
+role and a foreground component. Control enforces hostname policy,
+managed zones, active instance leases and exact ownership; withdrawal queues cleanup.
 
 `DeploymentService.Authorize` issues an exact-role, one-use key for embedded native installers. Bootstrap enters the target through protected stdin. Host reuse has no join secret; Kubernetes references one shared installation issuer Secret and receives fresh ephemeral keys through the operator TLS endpoint. OAuth stays server-side; creating an independent control uses
 protected OAuth files on the target. UI instruction generation does not start

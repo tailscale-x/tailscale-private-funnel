@@ -3,11 +3,13 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"connectrpc.com/connect"
 	v1 "github.com/tailscale-x/tailscale-private-funnel/internal/gen/funnel/v1"
+	"github.com/tailscale-x/tailscale-private-funnel/internal/proxy"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/report"
 	"github.com/tailscale-x/tailscale-private-funnel/internal/store"
 )
@@ -42,6 +44,26 @@ func (s *nodeRPC) Acknowledge(ctx context.Context, r *connect.Request[v1.ConfigA
 	node, e := s.c.callerNodeContext(ctx, "")
 	if e != nil {
 		return nil, rpcFailure(connect.CodePermissionDenied, e)
+	}
+	unlock, lockErr := s.c.lockReport(ctx, node.ID)
+	if lockErr != nil {
+		return nil, lockErr
+	}
+	defer unlock()
+	if node.Mode == "loadbalancer" {
+		var sent struct {
+			Revision string        `json:"revision"`
+			Routes   []proxy.Route `json:"routes"`
+		}
+		if err := s.c.Store.GetJSON("node_sent_config:"+node.ID, &sent); err != nil {
+			return nil, rpcFailure(connect.CodeUnavailable, err)
+		}
+		if sent.Revision != r.Msg.Revision {
+			return nil, rpcFailure(connect.CodeAborted, fmt.Errorf("configuration superseded; fetch and apply current revision"))
+		}
+		if err := s.c.Store.SetJSON("node_applied_config:"+node.ID, map[string]any{"revision": sent.Revision, "routes": sent.Routes, "at": time.Now().Unix()}); err != nil {
+			return nil, rpcFailure(connect.CodeInternal, err)
+		}
 	}
 	e = s.c.Store.SetJSON("node_config_ack:"+node.ID, map[string]any{"revision": r.Msg.Revision, "services": r.Msg.Services, "at": time.Now().Unix()})
 	if e != nil {
