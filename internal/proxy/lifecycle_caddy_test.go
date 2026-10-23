@@ -37,14 +37,20 @@ func TestTemporaryChallengeRouteCaddyLifecycle(t *testing.T) {
 		return (&net.Dialer{}).DialContext(ctx, network, target)
 	})
 	defer SetDialer(nil)
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	reserved, err := listenPublic(t.Context(), "funnel", "127.0.0.1", "0", 0, net.ListenConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	listener := reserved.(*publicListener)
+	defer listener.Close()
 	address := listener.Addr().String()
-	listener.Close()
 	client := &http.Client{Timeout: 3 * time.Second}
 	defer client.CloseIdleConnections()
+	// Check the newly published route on a fresh connection. Harbor's separate
+	// concurrent probes retain keep-alive connections across every reload.
+	challengeTransport := &http.Transport{DisableKeepAlives: true}
+	defer challengeTransport.CloseIdleConnections()
+	challengeClient := &http.Client{Transport: challengeTransport, Timeout: 3 * time.Second}
 	catchAll := HTTPRule{Matches: []Match{{Path: "/"}}, Backends: []Backend{{Key: "harbor", Service: "100.64.0.1", Port: 8080, Weight: 1}}}
 	challenge := HTTPRule{Matches: []Match{{Path: "/.well-known/acme-challenge/token", Exact: true}}, Backends: []Backend{{Key: "solver", Service: "100.64.0.2", Port: 8089, Weight: 1}}}
 	dataDir := t.TempDir()
@@ -89,7 +95,7 @@ func TestTemporaryChallengeRouteCaddyLifecycle(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		if e = caddy.Load(raw, false); e != nil {
+		if e = loadPublicConfig(raw); e != nil {
 			t.Fatal(e)
 		}
 	}
@@ -99,7 +105,11 @@ func TestTemporaryChallengeRouteCaddyLifecycle(t *testing.T) {
 			return "", e
 		}
 		req.Host = "harbor.example.test"
-		r, e := client.Do(req)
+		requestClient := client
+		if path == "/.well-known/acme-challenge/token" {
+			requestClient = challengeClient
+		}
+		r, e := requestClient.Do(req)
 		if e != nil {
 			return "", e
 		}
