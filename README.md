@@ -167,7 +167,9 @@ DNS while another authorized assignment remains.
 
 One DNS provider can manage multiple vendor-discovered zones. Adding a zone does
 not register a domain or change nameservers. Display names are editable; immutable
-IDs bind references. DNS-only public A/CNAME records belong to the internal ledger.
+IDs bind references. Public A/CNAME records belong to the internal ledger.
+Hostnames default to DNS-only. Administrators can enable Cloudflare proxy mode per
+hostname in Funnel Control; see [hostname DNS settings](docs/hostname-dns.md).
 No outside-owner record is deleted or overwritten without explicit approval.
 
 ## CLI and API

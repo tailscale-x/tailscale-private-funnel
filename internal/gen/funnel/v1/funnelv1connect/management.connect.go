@@ -141,6 +141,9 @@ const (
 	// ManagementServiceListExposuresProcedure is the fully-qualified name of the ManagementService's
 	// ListExposures RPC.
 	ManagementServiceListExposuresProcedure = "/funnel.v1.ManagementService/ListExposures"
+	// ManagementServiceSaveHostnameDNSProcedure is the fully-qualified name of the ManagementService's
+	// SaveHostnameDNS RPC.
+	ManagementServiceSaveHostnameDNSProcedure = "/funnel.v1.ManagementService/SaveHostnameDNS"
 	// ManagementServiceDisableNodeProcedure is the fully-qualified name of the ManagementService's
 	// DisableNode RPC.
 	ManagementServiceDisableNodeProcedure = "/funnel.v1.ManagementService/DisableNode"
@@ -215,6 +218,7 @@ type ManagementServiceClient interface {
 	TestOAuth(context.Context, *connect.Request[v1.OAuthRequest]) (*connect.Response[v1.TestResult], error)
 	SaveOAuth(context.Context, *connect.Request[v1.OAuthRequest]) (*connect.Response[v1.TestResult], error)
 	ListExposures(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Exposures], error)
+	SaveHostnameDNS(context.Context, *connect.Request[v1.HostnameDNSRequest]) (*connect.Response[v1.HostnameDNSSettings], error)
 	DisableNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error)
 	CleanupNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error)
 	GetPeers(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.PeerSnapshot], error)
@@ -454,6 +458,12 @@ func NewManagementServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(managementServiceMethods.ByName("ListExposures")),
 			connect.WithClientOptions(opts...),
 		),
+		saveHostnameDNS: connect.NewClient[v1.HostnameDNSRequest, v1.HostnameDNSSettings](
+			httpClient,
+			baseURL+ManagementServiceSaveHostnameDNSProcedure,
+			connect.WithSchema(managementServiceMethods.ByName("SaveHostnameDNS")),
+			connect.WithClientOptions(opts...),
+		),
 		disableNode: connect.NewClient[v1.ResourceID, v1.TestResult](
 			httpClient,
 			baseURL+ManagementServiceDisableNodeProcedure,
@@ -555,6 +565,7 @@ type managementServiceClient struct {
 	testOAuth             *connect.Client[v1.OAuthRequest, v1.TestResult]
 	saveOAuth             *connect.Client[v1.OAuthRequest, v1.TestResult]
 	listExposures         *connect.Client[v1.Empty, v1.Exposures]
+	saveHostnameDNS       *connect.Client[v1.HostnameDNSRequest, v1.HostnameDNSSettings]
 	disableNode           *connect.Client[v1.ResourceID, v1.TestResult]
 	cleanupNode           *connect.Client[v1.ResourceID, v1.TestResult]
 	getPeers              *connect.Client[v1.ResourceID, v1.PeerSnapshot]
@@ -747,6 +758,11 @@ func (c *managementServiceClient) ListExposures(ctx context.Context, req *connec
 	return c.listExposures.CallUnary(ctx, req)
 }
 
+// SaveHostnameDNS calls funnel.v1.ManagementService.SaveHostnameDNS.
+func (c *managementServiceClient) SaveHostnameDNS(ctx context.Context, req *connect.Request[v1.HostnameDNSRequest]) (*connect.Response[v1.HostnameDNSSettings], error) {
+	return c.saveHostnameDNS.CallUnary(ctx, req)
+}
+
 // DisableNode calls funnel.v1.ManagementService.DisableNode.
 func (c *managementServiceClient) DisableNode(ctx context.Context, req *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error) {
 	return c.disableNode.CallUnary(ctx, req)
@@ -839,6 +855,7 @@ type ManagementServiceHandler interface {
 	TestOAuth(context.Context, *connect.Request[v1.OAuthRequest]) (*connect.Response[v1.TestResult], error)
 	SaveOAuth(context.Context, *connect.Request[v1.OAuthRequest]) (*connect.Response[v1.TestResult], error)
 	ListExposures(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Exposures], error)
+	SaveHostnameDNS(context.Context, *connect.Request[v1.HostnameDNSRequest]) (*connect.Response[v1.HostnameDNSSettings], error)
 	DisableNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error)
 	CleanupNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error)
 	GetPeers(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.PeerSnapshot], error)
@@ -1074,6 +1091,12 @@ func NewManagementServiceHandler(svc ManagementServiceHandler, opts ...connect.H
 		connect.WithSchema(managementServiceMethods.ByName("ListExposures")),
 		connect.WithHandlerOptions(opts...),
 	)
+	managementServiceSaveHostnameDNSHandler := connect.NewUnaryHandler(
+		ManagementServiceSaveHostnameDNSProcedure,
+		svc.SaveHostnameDNS,
+		connect.WithSchema(managementServiceMethods.ByName("SaveHostnameDNS")),
+		connect.WithHandlerOptions(opts...),
+	)
 	managementServiceDisableNodeHandler := connect.NewUnaryHandler(
 		ManagementServiceDisableNodeProcedure,
 		svc.DisableNode,
@@ -1208,6 +1231,8 @@ func NewManagementServiceHandler(svc ManagementServiceHandler, opts ...connect.H
 			managementServiceSaveOAuthHandler.ServeHTTP(w, r)
 		case ManagementServiceListExposuresProcedure:
 			managementServiceListExposuresHandler.ServeHTTP(w, r)
+		case ManagementServiceSaveHostnameDNSProcedure:
+			managementServiceSaveHostnameDNSHandler.ServeHTTP(w, r)
 		case ManagementServiceDisableNodeProcedure:
 			managementServiceDisableNodeHandler.ServeHTTP(w, r)
 		case ManagementServiceCleanupNodeProcedure:
@@ -1379,6 +1404,10 @@ func (UnimplementedManagementServiceHandler) SaveOAuth(context.Context, *connect
 
 func (UnimplementedManagementServiceHandler) ListExposures(context.Context, *connect.Request[v1.Empty]) (*connect.Response[v1.Exposures], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.ListExposures is not implemented"))
+}
+
+func (UnimplementedManagementServiceHandler) SaveHostnameDNS(context.Context, *connect.Request[v1.HostnameDNSRequest]) (*connect.Response[v1.HostnameDNSSettings], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("funnel.v1.ManagementService.SaveHostnameDNS is not implemented"))
 }
 
 func (UnimplementedManagementServiceHandler) DisableNode(context.Context, *connect.Request[v1.ResourceID]) (*connect.Response[v1.TestResult], error) {

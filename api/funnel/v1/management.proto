@@ -179,6 +179,11 @@ service ManagementService {
     option (permission) = PERMISSION_VIEWER;
     option (cli) = "exposures list";
   }
+  rpc SaveHostnameDNS(HostnameDNSRequest) returns (HostnameDNSSettings) {
+    option (permission) = PERMISSION_ADMIN;
+    option (cli) = "exposures dns save";
+    option (audit) = true;
+  }
   rpc DisableNode(ResourceID) returns (TestResult) {
     option (permission) = PERMISSION_ADMIN;
     option (cli) = "nodes disable";
@@ -461,6 +466,17 @@ message Exposure {
   string hostname = 3;
   bool active = 4;
   repeated Edge edges = 5;
+  HostnameDNSSettings dns = 6;
+  bool cloudflare_proxy_available = 7;
+}
+message HostnameDNSSettings {
+  bool cloudflare_proxied = 1;
+  uint64 revision = 2;
+}
+message HostnameDNSRequest {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  bool cloudflare_proxied = 2;
+  uint64 revision = 3;
 }
 message Exposures {
   repeated Exposure items = 1;
@@ -540,6 +556,7 @@ message DNSRequest {
   map<string, string> approvals = 2;
 }
 message DNSPartitionResult {
+  uint32 proxy_updates = 10;
   string resource_id = 1;
   string name = 2;
   string error = 3;
