@@ -60,6 +60,9 @@ func (s *managementRPC) dns(ctx context.Context, r *v1.DNSRequest, dryRun bool) 
 	items, _ := result["results"].([]map[string]any)
 	for _, item := range items {
 		entry := &v1.DNSPartitionResult{ResourceId: stringValue(item, "node_id", ""), Name: stringValue(item, "node_name", ""), Error: stringValue(item, "error", ""), RequiresApproval: item["requires_approval"] == true, ApprovalToken: stringValue(item, "approval_token", "")}
+		if n, ok := item["proxy_updates"].(int); ok {
+			entry.ProxyUpdates = uint32(n)
+		}
 		if n, ok := item["add"].(int); ok {
 			entry.AddCount = uint32(n)
 		}

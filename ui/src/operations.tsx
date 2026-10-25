@@ -249,7 +249,7 @@ export function DNSPage() {
                 <div className="pf-react-event" key={r.resourceId || i}>
                   <strong>{r.name}</strong>
                   <p>
-                    {r.addCount} additions · {r.removeCount} removals
+                    {r.addCount} additions · {r.removeCount} removals · {r.proxyUpdates} proxy updates
                   </p>
                   {r.error ? <p role="alert">{r.error}</p> : null}
                   {r.requiresApproval ? (

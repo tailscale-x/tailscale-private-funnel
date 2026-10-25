@@ -2596,14 +2596,16 @@ func (x *Edge) GetReason() string {
 }
 
 type Exposure struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	ApplicationId string                 `protobuf:"bytes,2,opt,name=application_id,json=applicationId,proto3" json:"application_id,omitempty"`
-	Hostname      string                 `protobuf:"bytes,3,opt,name=hostname,proto3" json:"hostname,omitempty"`
-	Active        bool                   `protobuf:"varint,4,opt,name=active,proto3" json:"active,omitempty"`
-	Edges         []*Edge                `protobuf:"bytes,5,rep,name=edges,proto3" json:"edges,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                    protoimpl.MessageState `protogen:"open.v1"`
+	Id                       string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ApplicationId            string                 `protobuf:"bytes,2,opt,name=application_id,json=applicationId,proto3" json:"application_id,omitempty"`
+	Hostname                 string                 `protobuf:"bytes,3,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	Active                   bool                   `protobuf:"varint,4,opt,name=active,proto3" json:"active,omitempty"`
+	Edges                    []*Edge                `protobuf:"bytes,5,rep,name=edges,proto3" json:"edges,omitempty"`
+	Dns                      *HostnameDNSSettings   `protobuf:"bytes,6,opt,name=dns,proto3" json:"dns,omitempty"`
+	CloudflareProxyAvailable bool                   `protobuf:"varint,7,opt,name=cloudflare_proxy_available,json=cloudflareProxyAvailable,proto3" json:"cloudflare_proxy_available,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *Exposure) Reset() {
@@ -2671,6 +2673,132 @@ func (x *Exposure) GetEdges() []*Edge {
 	return nil
 }
 
+func (x *Exposure) GetDns() *HostnameDNSSettings {
+	if x != nil {
+		return x.Dns
+	}
+	return nil
+}
+
+func (x *Exposure) GetCloudflareProxyAvailable() bool {
+	if x != nil {
+		return x.CloudflareProxyAvailable
+	}
+	return false
+}
+
+type HostnameDNSSettings struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	CloudflareProxied bool                   `protobuf:"varint,1,opt,name=cloudflare_proxied,json=cloudflareProxied,proto3" json:"cloudflare_proxied,omitempty"`
+	Revision          uint64                 `protobuf:"varint,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *HostnameDNSSettings) Reset() {
+	*x = HostnameDNSSettings{}
+	mi := &file_funnel_v1_management_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HostnameDNSSettings) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HostnameDNSSettings) ProtoMessage() {}
+
+func (x *HostnameDNSSettings) ProtoReflect() protoreflect.Message {
+	mi := &file_funnel_v1_management_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HostnameDNSSettings.ProtoReflect.Descriptor instead.
+func (*HostnameDNSSettings) Descriptor() ([]byte, []int) {
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *HostnameDNSSettings) GetCloudflareProxied() bool {
+	if x != nil {
+		return x.CloudflareProxied
+	}
+	return false
+}
+
+func (x *HostnameDNSSettings) GetRevision() uint64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
+type HostnameDNSRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Id                string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	CloudflareProxied bool                   `protobuf:"varint,2,opt,name=cloudflare_proxied,json=cloudflareProxied,proto3" json:"cloudflare_proxied,omitempty"`
+	Revision          uint64                 `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *HostnameDNSRequest) Reset() {
+	*x = HostnameDNSRequest{}
+	mi := &file_funnel_v1_management_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HostnameDNSRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HostnameDNSRequest) ProtoMessage() {}
+
+func (x *HostnameDNSRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_funnel_v1_management_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HostnameDNSRequest.ProtoReflect.Descriptor instead.
+func (*HostnameDNSRequest) Descriptor() ([]byte, []int) {
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *HostnameDNSRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *HostnameDNSRequest) GetCloudflareProxied() bool {
+	if x != nil {
+		return x.CloudflareProxied
+	}
+	return false
+}
+
+func (x *HostnameDNSRequest) GetRevision() uint64 {
+	if x != nil {
+		return x.Revision
+	}
+	return 0
+}
+
 type Exposures struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*Exposure            `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
@@ -2680,7 +2808,7 @@ type Exposures struct {
 
 func (x *Exposures) Reset() {
 	*x = Exposures{}
-	mi := &file_funnel_v1_management_proto_msgTypes[42]
+	mi := &file_funnel_v1_management_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2692,7 +2820,7 @@ func (x *Exposures) String() string {
 func (*Exposures) ProtoMessage() {}
 
 func (x *Exposures) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[42]
+	mi := &file_funnel_v1_management_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2705,7 +2833,7 @@ func (x *Exposures) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Exposures.ProtoReflect.Descriptor instead.
 func (*Exposures) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{42}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *Exposures) GetItems() []*Exposure {
@@ -2729,7 +2857,7 @@ type Peer struct {
 
 func (x *Peer) Reset() {
 	*x = Peer{}
-	mi := &file_funnel_v1_management_proto_msgTypes[43]
+	mi := &file_funnel_v1_management_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2741,7 +2869,7 @@ func (x *Peer) String() string {
 func (*Peer) ProtoMessage() {}
 
 func (x *Peer) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[43]
+	mi := &file_funnel_v1_management_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2754,7 +2882,7 @@ func (x *Peer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Peer.ProtoReflect.Descriptor instead.
 func (*Peer) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{43}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *Peer) GetId() string {
@@ -2811,7 +2939,7 @@ type Probe struct {
 
 func (x *Probe) Reset() {
 	*x = Probe{}
-	mi := &file_funnel_v1_management_proto_msgTypes[44]
+	mi := &file_funnel_v1_management_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2823,7 +2951,7 @@ func (x *Probe) String() string {
 func (*Probe) ProtoMessage() {}
 
 func (x *Probe) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[44]
+	mi := &file_funnel_v1_management_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2836,7 +2964,7 @@ func (x *Probe) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Probe.ProtoReflect.Descriptor instead.
 func (*Probe) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{44}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *Probe) GetId() string {
@@ -2881,7 +3009,7 @@ type ProbeResult struct {
 
 func (x *ProbeResult) Reset() {
 	*x = ProbeResult{}
-	mi := &file_funnel_v1_management_proto_msgTypes[45]
+	mi := &file_funnel_v1_management_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2893,7 +3021,7 @@ func (x *ProbeResult) String() string {
 func (*ProbeResult) ProtoMessage() {}
 
 func (x *ProbeResult) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[45]
+	mi := &file_funnel_v1_management_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2906,7 +3034,7 @@ func (x *ProbeResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProbeResult.ProtoReflect.Descriptor instead.
 func (*ProbeResult) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{45}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *ProbeResult) GetId() string {
@@ -2966,7 +3094,7 @@ type PeerSnapshot struct {
 
 func (x *PeerSnapshot) Reset() {
 	*x = PeerSnapshot{}
-	mi := &file_funnel_v1_management_proto_msgTypes[46]
+	mi := &file_funnel_v1_management_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2978,7 +3106,7 @@ func (x *PeerSnapshot) String() string {
 func (*PeerSnapshot) ProtoMessage() {}
 
 func (x *PeerSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[46]
+	mi := &file_funnel_v1_management_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2991,7 +3119,7 @@ func (x *PeerSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerSnapshot.ProtoReflect.Descriptor instead.
 func (*PeerSnapshot) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{46}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *PeerSnapshot) GetPeers() []*Peer {
@@ -3054,7 +3182,7 @@ type ProbeRequest struct {
 
 func (x *ProbeRequest) Reset() {
 	*x = ProbeRequest{}
-	mi := &file_funnel_v1_management_proto_msgTypes[47]
+	mi := &file_funnel_v1_management_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3066,7 +3194,7 @@ func (x *ProbeRequest) String() string {
 func (*ProbeRequest) ProtoMessage() {}
 
 func (x *ProbeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[47]
+	mi := &file_funnel_v1_management_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3079,7 +3207,7 @@ func (x *ProbeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProbeRequest.ProtoReflect.Descriptor instead.
 func (*ProbeRequest) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{47}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ProbeRequest) GetNodeId() string {
@@ -3120,7 +3248,7 @@ type TailnetExposureRequest struct {
 
 func (x *TailnetExposureRequest) Reset() {
 	*x = TailnetExposureRequest{}
-	mi := &file_funnel_v1_management_proto_msgTypes[48]
+	mi := &file_funnel_v1_management_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3132,7 +3260,7 @@ func (x *TailnetExposureRequest) String() string {
 func (*TailnetExposureRequest) ProtoMessage() {}
 
 func (x *TailnetExposureRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[48]
+	mi := &file_funnel_v1_management_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3145,7 +3273,7 @@ func (x *TailnetExposureRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TailnetExposureRequest.ProtoReflect.Descriptor instead.
 func (*TailnetExposureRequest) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{48}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *TailnetExposureRequest) GetId() string {
@@ -3221,7 +3349,7 @@ type AliasRequest struct {
 
 func (x *AliasRequest) Reset() {
 	*x = AliasRequest{}
-	mi := &file_funnel_v1_management_proto_msgTypes[49]
+	mi := &file_funnel_v1_management_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3233,7 +3361,7 @@ func (x *AliasRequest) String() string {
 func (*AliasRequest) ProtoMessage() {}
 
 func (x *AliasRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[49]
+	mi := &file_funnel_v1_management_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3246,7 +3374,7 @@ func (x *AliasRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AliasRequest.ProtoReflect.Descriptor instead.
 func (*AliasRequest) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{49}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *AliasRequest) GetApplicationId() string {
@@ -3276,7 +3404,7 @@ type DNSRecord struct {
 
 func (x *DNSRecord) Reset() {
 	*x = DNSRecord{}
-	mi := &file_funnel_v1_management_proto_msgTypes[50]
+	mi := &file_funnel_v1_management_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3288,7 +3416,7 @@ func (x *DNSRecord) String() string {
 func (*DNSRecord) ProtoMessage() {}
 
 func (x *DNSRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[50]
+	mi := &file_funnel_v1_management_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3301,7 +3429,7 @@ func (x *DNSRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DNSRecord.ProtoReflect.Descriptor instead.
 func (*DNSRecord) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{50}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *DNSRecord) GetName() string {
@@ -3351,7 +3479,7 @@ type ZoneDNSState struct {
 
 func (x *ZoneDNSState) Reset() {
 	*x = ZoneDNSState{}
-	mi := &file_funnel_v1_management_proto_msgTypes[51]
+	mi := &file_funnel_v1_management_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3363,7 +3491,7 @@ func (x *ZoneDNSState) String() string {
 func (*ZoneDNSState) ProtoMessage() {}
 
 func (x *ZoneDNSState) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[51]
+	mi := &file_funnel_v1_management_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3376,7 +3504,7 @@ func (x *ZoneDNSState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ZoneDNSState.ProtoReflect.Descriptor instead.
 func (*ZoneDNSState) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{51}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ZoneDNSState) GetDomain() string {
@@ -3417,7 +3545,7 @@ type DNSRequest struct {
 
 func (x *DNSRequest) Reset() {
 	*x = DNSRequest{}
-	mi := &file_funnel_v1_management_proto_msgTypes[52]
+	mi := &file_funnel_v1_management_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3429,7 +3557,7 @@ func (x *DNSRequest) String() string {
 func (*DNSRequest) ProtoMessage() {}
 
 func (x *DNSRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[52]
+	mi := &file_funnel_v1_management_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3442,7 +3570,7 @@ func (x *DNSRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DNSRequest.ProtoReflect.Descriptor instead.
 func (*DNSRequest) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{52}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *DNSRequest) GetZoneId() string {
@@ -3461,6 +3589,7 @@ func (x *DNSRequest) GetApprovals() map[string]string {
 
 type DNSPartitionResult struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
+	ProxyUpdates     uint32                 `protobuf:"varint,10,opt,name=proxy_updates,json=proxyUpdates,proto3" json:"proxy_updates,omitempty"`
 	ResourceId       string                 `protobuf:"bytes,1,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
 	Name             string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Error            string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
@@ -3476,7 +3605,7 @@ type DNSPartitionResult struct {
 
 func (x *DNSPartitionResult) Reset() {
 	*x = DNSPartitionResult{}
-	mi := &file_funnel_v1_management_proto_msgTypes[53]
+	mi := &file_funnel_v1_management_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3488,7 +3617,7 @@ func (x *DNSPartitionResult) String() string {
 func (*DNSPartitionResult) ProtoMessage() {}
 
 func (x *DNSPartitionResult) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[53]
+	mi := &file_funnel_v1_management_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3501,7 +3630,14 @@ func (x *DNSPartitionResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DNSPartitionResult.ProtoReflect.Descriptor instead.
 func (*DNSPartitionResult) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{53}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{55}
+}
+
+func (x *DNSPartitionResult) GetProxyUpdates() uint32 {
+	if x != nil {
+		return x.ProxyUpdates
+	}
+	return 0
 }
 
 func (x *DNSPartitionResult) GetResourceId() string {
@@ -3578,7 +3714,7 @@ type DNSResult struct {
 
 func (x *DNSResult) Reset() {
 	*x = DNSResult{}
-	mi := &file_funnel_v1_management_proto_msgTypes[54]
+	mi := &file_funnel_v1_management_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3590,7 +3726,7 @@ func (x *DNSResult) String() string {
 func (*DNSResult) ProtoMessage() {}
 
 func (x *DNSResult) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[54]
+	mi := &file_funnel_v1_management_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3603,7 +3739,7 @@ func (x *DNSResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DNSResult.ProtoReflect.Descriptor instead.
 func (*DNSResult) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{54}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *DNSResult) GetDryRun() bool {
@@ -3637,7 +3773,7 @@ type ResourceRevision struct {
 
 func (x *ResourceRevision) Reset() {
 	*x = ResourceRevision{}
-	mi := &file_funnel_v1_management_proto_msgTypes[55]
+	mi := &file_funnel_v1_management_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3649,7 +3785,7 @@ func (x *ResourceRevision) String() string {
 func (*ResourceRevision) ProtoMessage() {}
 
 func (x *ResourceRevision) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[55]
+	mi := &file_funnel_v1_management_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3662,7 +3798,7 @@ func (x *ResourceRevision) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceRevision.ProtoReflect.Descriptor instead.
 func (*ResourceRevision) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{55}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *ResourceRevision) GetId() string {
@@ -3689,7 +3825,7 @@ type ExposureReport struct {
 
 func (x *ExposureReport) Reset() {
 	*x = ExposureReport{}
-	mi := &file_funnel_v1_management_proto_msgTypes[56]
+	mi := &file_funnel_v1_management_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3701,7 +3837,7 @@ func (x *ExposureReport) String() string {
 func (*ExposureReport) ProtoMessage() {}
 
 func (x *ExposureReport) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[56]
+	mi := &file_funnel_v1_management_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3714,7 +3850,7 @@ func (x *ExposureReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExposureReport.ProtoReflect.Descriptor instead.
 func (*ExposureReport) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{56}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *ExposureReport) GetExposures() []*ReportedExposure {
@@ -3740,7 +3876,7 @@ type PrefixRewrite struct {
 
 func (x *PrefixRewrite) Reset() {
 	*x = PrefixRewrite{}
-	mi := &file_funnel_v1_management_proto_msgTypes[57]
+	mi := &file_funnel_v1_management_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3752,7 +3888,7 @@ func (x *PrefixRewrite) String() string {
 func (*PrefixRewrite) ProtoMessage() {}
 
 func (x *PrefixRewrite) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[57]
+	mi := &file_funnel_v1_management_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3765,7 +3901,7 @@ func (x *PrefixRewrite) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PrefixRewrite.ProtoReflect.Descriptor instead.
 func (*PrefixRewrite) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{57}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *PrefixRewrite) GetReplacePrefix() string {
@@ -3796,7 +3932,7 @@ type ReportedExposure struct {
 
 func (x *ReportedExposure) Reset() {
 	*x = ReportedExposure{}
-	mi := &file_funnel_v1_management_proto_msgTypes[58]
+	mi := &file_funnel_v1_management_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3808,7 +3944,7 @@ func (x *ReportedExposure) String() string {
 func (*ReportedExposure) ProtoMessage() {}
 
 func (x *ReportedExposure) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[58]
+	mi := &file_funnel_v1_management_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3821,7 +3957,7 @@ func (x *ReportedExposure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportedExposure.ProtoReflect.Descriptor instead.
 func (*ReportedExposure) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{58}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *ReportedExposure) GetPathPrefix() string {
@@ -3930,7 +4066,7 @@ type NodeReport struct {
 
 func (x *NodeReport) Reset() {
 	*x = NodeReport{}
-	mi := &file_funnel_v1_management_proto_msgTypes[59]
+	mi := &file_funnel_v1_management_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3942,7 +4078,7 @@ func (x *NodeReport) String() string {
 func (*NodeReport) ProtoMessage() {}
 
 func (x *NodeReport) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[59]
+	mi := &file_funnel_v1_management_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3955,7 +4091,7 @@ func (x *NodeReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeReport.ProtoReflect.Descriptor instead.
 func (*NodeReport) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{59}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *NodeReport) GetNodeId() string {
@@ -4016,7 +4152,7 @@ type Reports struct {
 
 func (x *Reports) Reset() {
 	*x = Reports{}
-	mi := &file_funnel_v1_management_proto_msgTypes[60]
+	mi := &file_funnel_v1_management_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4028,7 +4164,7 @@ func (x *Reports) String() string {
 func (*Reports) ProtoMessage() {}
 
 func (x *Reports) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[60]
+	mi := &file_funnel_v1_management_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4041,7 +4177,7 @@ func (x *Reports) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Reports.ProtoReflect.Descriptor instead.
 func (*Reports) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{60}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *Reports) GetItems() []*NodeReport {
@@ -4064,7 +4200,7 @@ type ServiceHost struct {
 
 func (x *ServiceHost) Reset() {
 	*x = ServiceHost{}
-	mi := &file_funnel_v1_management_proto_msgTypes[61]
+	mi := &file_funnel_v1_management_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4076,7 +4212,7 @@ func (x *ServiceHost) String() string {
 func (*ServiceHost) ProtoMessage() {}
 
 func (x *ServiceHost) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[61]
+	mi := &file_funnel_v1_management_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4089,7 +4225,7 @@ func (x *ServiceHost) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServiceHost.ProtoReflect.Descriptor instead.
 func (*ServiceHost) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{61}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *ServiceHost) GetServiceName() string {
@@ -4136,7 +4272,7 @@ type ServiceHosts struct {
 
 func (x *ServiceHosts) Reset() {
 	*x = ServiceHosts{}
-	mi := &file_funnel_v1_management_proto_msgTypes[62]
+	mi := &file_funnel_v1_management_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4148,7 +4284,7 @@ func (x *ServiceHosts) String() string {
 func (*ServiceHosts) ProtoMessage() {}
 
 func (x *ServiceHosts) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[62]
+	mi := &file_funnel_v1_management_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4161,7 +4297,7 @@ func (x *ServiceHosts) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServiceHosts.ProtoReflect.Descriptor instead.
 func (*ServiceHosts) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{62}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *ServiceHosts) GetItems() []*ServiceHost {
@@ -4188,7 +4324,7 @@ type DeploymentMetadata struct {
 
 func (x *DeploymentMetadata) Reset() {
 	*x = DeploymentMetadata{}
-	mi := &file_funnel_v1_management_proto_msgTypes[63]
+	mi := &file_funnel_v1_management_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4200,7 +4336,7 @@ func (x *DeploymentMetadata) String() string {
 func (*DeploymentMetadata) ProtoMessage() {}
 
 func (x *DeploymentMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_funnel_v1_management_proto_msgTypes[63]
+	mi := &file_funnel_v1_management_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4213,7 +4349,7 @@ func (x *DeploymentMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeploymentMetadata.ProtoReflect.Descriptor instead.
 func (*DeploymentMetadata) Descriptor() ([]byte, []int) {
-	return file_funnel_v1_management_proto_rawDescGZIP(), []int{63}
+	return file_funnel_v1_management_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *DeploymentMetadata) GetTarget() string {
@@ -4501,13 +4637,22 @@ const file_funnel_v1_management_proto_rawDesc = "" +
 	"\x11backend_reachable\x18\x06 \x01(\bR\x10backendReachable\x12\x1f\n" +
 	"\vpublic_ipv4\x18\a \x03(\tR\n" +
 	"publicIpv4\x12\x16\n" +
-	"\x06reason\x18\b \x01(\tR\x06reason\"\x9c\x01\n" +
+	"\x06reason\x18\b \x01(\tR\x06reason\"\x8c\x02\n" +
 	"\bExposure\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12%\n" +
 	"\x0eapplication_id\x18\x02 \x01(\tR\rapplicationId\x12\x1a\n" +
 	"\bhostname\x18\x03 \x01(\tR\bhostname\x12\x16\n" +
 	"\x06active\x18\x04 \x01(\bR\x06active\x12%\n" +
-	"\x05edges\x18\x05 \x03(\v2\x0f.funnel.v1.EdgeR\x05edges\"6\n" +
+	"\x05edges\x18\x05 \x03(\v2\x0f.funnel.v1.EdgeR\x05edges\x120\n" +
+	"\x03dns\x18\x06 \x01(\v2\x1e.funnel.v1.HostnameDNSSettingsR\x03dns\x12<\n" +
+	"\x1acloudflare_proxy_available\x18\a \x01(\bR\x18cloudflareProxyAvailable\"`\n" +
+	"\x13HostnameDNSSettings\x12-\n" +
+	"\x12cloudflare_proxied\x18\x01 \x01(\bR\x11cloudflareProxied\x12\x1a\n" +
+	"\brevision\x18\x02 \x01(\x04R\brevision\"x\n" +
+	"\x12HostnameDNSRequest\x12\x17\n" +
+	"\x02id\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\x02id\x12-\n" +
+	"\x12cloudflare_proxied\x18\x02 \x01(\bR\x11cloudflareProxied\x12\x1a\n" +
+	"\brevision\x18\x03 \x01(\x04R\brevision\"6\n" +
 	"\tExposures\x12)\n" +
 	"\x05items\x18\x01 \x03(\v2\x13.funnel.v1.ExposureR\x05items\"\x97\x01\n" +
 	"\x04Peer\x12\x0e\n" +
@@ -4577,8 +4722,10 @@ const file_funnel_v1_management_proto_rawDesc = "" +
 	"\tapprovals\x18\x02 \x03(\v2$.funnel.v1.DNSRequest.ApprovalsEntryR\tapprovals\x1a<\n" +
 	"\x0eApprovalsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf3\x02\n" +
-	"\x12DNSPartitionResult\x12\x1f\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x98\x03\n" +
+	"\x12DNSPartitionResult\x12#\n" +
+	"\rproxy_updates\x18\n" +
+	" \x01(\rR\fproxyUpdates\x12\x1f\n" +
 	"\vresource_id\x18\x01 \x01(\tR\n" +
 	"resourceId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -4652,7 +4799,7 @@ const file_funnel_v1_management_proto_rawDesc = "" +
 	"\x13conditions_reported\x18\b \x01(\bR\x12conditionsReported\x12\x1e\n" +
 	"\n" +
 	"conditions\x18\t \x03(\tR\n" +
-	"conditions2\xc9\x1f\n" +
+	"conditions2\xbb \n" +
 	"\x11ManagementService\x12?\n" +
 	"\x06WhoAmI\x12\x10.funnel.v1.Empty\x1a\x13.funnel.v1.Identity\"\x0e\x88\xb5\x18\x01\x92\xb5\x18\x06whoami\x12E\n" +
 	"\x06Health\x12\x10.funnel.v1.Empty\x1a\x19.funnel.v1.HealthResponse\"\x0e\x88\xb5\x18\x01\x92\xb5\x18\x06health\x12O\n" +
@@ -4701,7 +4848,8 @@ const file_funnel_v1_management_proto_rawDesc = "" +
 	"\fSaveDefaults\x12\x1d.funnel.v1.DeploymentDefaults\x1a\x13.funnel.v1.Settings\"\"\x88\xb5\x18\x03\x92\xb5\x18\x16settings defaults save\xa8\xb5\x18\x01\x12`\n" +
 	"\tTestOAuth\x12\x17.funnel.v1.OAuthRequest\x1a\x15.funnel.v1.TestResult\"#\x88\xb5\x18\x03\x92\xb5\x18\x13settings oauth test\x98\xb5\x18\x01\xa8\xb5\x18\x01\x12`\n" +
 	"\tSaveOAuth\x12\x17.funnel.v1.OAuthRequest\x1a\x15.funnel.v1.TestResult\"#\x88\xb5\x18\x03\x92\xb5\x18\x13settings oauth save\x98\xb5\x18\x01\xa8\xb5\x18\x01\x12O\n" +
-	"\rListExposures\x12\x10.funnel.v1.Empty\x1a\x14.funnel.v1.Exposures\"\x16\x88\xb5\x18\x01\x92\xb5\x18\x0eexposures list\x12V\n" +
+	"\rListExposures\x12\x10.funnel.v1.Empty\x1a\x14.funnel.v1.Exposures\"\x16\x88\xb5\x18\x01\x92\xb5\x18\x0eexposures list\x12p\n" +
+	"\x0fSaveHostnameDNS\x12\x1d.funnel.v1.HostnameDNSRequest\x1a\x1e.funnel.v1.HostnameDNSSettings\"\x1e\x88\xb5\x18\x03\x92\xb5\x18\x12exposures dns save\xa8\xb5\x18\x01\x12V\n" +
 	"\vDisableNode\x12\x15.funnel.v1.ResourceID\x1a\x15.funnel.v1.TestResult\"\x19\x88\xb5\x18\x03\x92\xb5\x18\rnodes disable\xa8\xb5\x18\x01\x12V\n" +
 	"\vCleanupNode\x12\x15.funnel.v1.ResourceID\x1a\x15.funnel.v1.TestResult\"\x19\x88\xb5\x18\x03\x92\xb5\x18\rnodes cleanup\xa8\xb5\x18\x01\x12O\n" +
 	"\bGetPeers\x12\x15.funnel.v1.ResourceID\x1a\x17.funnel.v1.PeerSnapshot\"\x13\x88\xb5\x18\x03\x92\xb5\x18\vnodes peers\x12R\n" +
@@ -4726,7 +4874,7 @@ func file_funnel_v1_management_proto_rawDescGZIP() []byte {
 	return file_funnel_v1_management_proto_rawDescData
 }
 
-var file_funnel_v1_management_proto_msgTypes = make([]protoimpl.MessageInfo, 67)
+var file_funnel_v1_management_proto_msgTypes = make([]protoimpl.MessageInfo, 69)
 var file_funnel_v1_management_proto_goTypes = []any{
 	(*Empty)(nil),                  // 0: funnel.v1.Empty
 	(*ResourceID)(nil),             // 1: funnel.v1.ResourceID
@@ -4770,160 +4918,165 @@ var file_funnel_v1_management_proto_goTypes = []any{
 	(*OAuthRequest)(nil),           // 39: funnel.v1.OAuthRequest
 	(*Edge)(nil),                   // 40: funnel.v1.Edge
 	(*Exposure)(nil),               // 41: funnel.v1.Exposure
-	(*Exposures)(nil),              // 42: funnel.v1.Exposures
-	(*Peer)(nil),                   // 43: funnel.v1.Peer
-	(*Probe)(nil),                  // 44: funnel.v1.Probe
-	(*ProbeResult)(nil),            // 45: funnel.v1.ProbeResult
-	(*PeerSnapshot)(nil),           // 46: funnel.v1.PeerSnapshot
-	(*ProbeRequest)(nil),           // 47: funnel.v1.ProbeRequest
-	(*TailnetExposureRequest)(nil), // 48: funnel.v1.TailnetExposureRequest
-	(*AliasRequest)(nil),           // 49: funnel.v1.AliasRequest
-	(*DNSRecord)(nil),              // 50: funnel.v1.DNSRecord
-	(*ZoneDNSState)(nil),           // 51: funnel.v1.ZoneDNSState
-	(*DNSRequest)(nil),             // 52: funnel.v1.DNSRequest
-	(*DNSPartitionResult)(nil),     // 53: funnel.v1.DNSPartitionResult
-	(*DNSResult)(nil),              // 54: funnel.v1.DNSResult
-	(*ResourceRevision)(nil),       // 55: funnel.v1.ResourceRevision
-	(*ExposureReport)(nil),         // 56: funnel.v1.ExposureReport
-	(*PrefixRewrite)(nil),          // 57: funnel.v1.PrefixRewrite
-	(*ReportedExposure)(nil),       // 58: funnel.v1.ReportedExposure
-	(*NodeReport)(nil),             // 59: funnel.v1.NodeReport
-	(*Reports)(nil),                // 60: funnel.v1.Reports
-	(*ServiceHost)(nil),            // 61: funnel.v1.ServiceHost
-	(*ServiceHosts)(nil),           // 62: funnel.v1.ServiceHosts
-	(*DeploymentMetadata)(nil),     // 63: funnel.v1.DeploymentMetadata
-	nil,                            // 64: funnel.v1.SaveProviderRequest.CredentialsEntry
-	nil,                            // 65: funnel.v1.AccessSettings.RolesEntry
-	nil,                            // 66: funnel.v1.DNSRequest.ApprovalsEntry
+	(*HostnameDNSSettings)(nil),    // 42: funnel.v1.HostnameDNSSettings
+	(*HostnameDNSRequest)(nil),     // 43: funnel.v1.HostnameDNSRequest
+	(*Exposures)(nil),              // 44: funnel.v1.Exposures
+	(*Peer)(nil),                   // 45: funnel.v1.Peer
+	(*Probe)(nil),                  // 46: funnel.v1.Probe
+	(*ProbeResult)(nil),            // 47: funnel.v1.ProbeResult
+	(*PeerSnapshot)(nil),           // 48: funnel.v1.PeerSnapshot
+	(*ProbeRequest)(nil),           // 49: funnel.v1.ProbeRequest
+	(*TailnetExposureRequest)(nil), // 50: funnel.v1.TailnetExposureRequest
+	(*AliasRequest)(nil),           // 51: funnel.v1.AliasRequest
+	(*DNSRecord)(nil),              // 52: funnel.v1.DNSRecord
+	(*ZoneDNSState)(nil),           // 53: funnel.v1.ZoneDNSState
+	(*DNSRequest)(nil),             // 54: funnel.v1.DNSRequest
+	(*DNSPartitionResult)(nil),     // 55: funnel.v1.DNSPartitionResult
+	(*DNSResult)(nil),              // 56: funnel.v1.DNSResult
+	(*ResourceRevision)(nil),       // 57: funnel.v1.ResourceRevision
+	(*ExposureReport)(nil),         // 58: funnel.v1.ExposureReport
+	(*PrefixRewrite)(nil),          // 59: funnel.v1.PrefixRewrite
+	(*ReportedExposure)(nil),       // 60: funnel.v1.ReportedExposure
+	(*NodeReport)(nil),             // 61: funnel.v1.NodeReport
+	(*Reports)(nil),                // 62: funnel.v1.Reports
+	(*ServiceHost)(nil),            // 63: funnel.v1.ServiceHost
+	(*ServiceHosts)(nil),           // 64: funnel.v1.ServiceHosts
+	(*DeploymentMetadata)(nil),     // 65: funnel.v1.DeploymentMetadata
+	nil,                            // 66: funnel.v1.SaveProviderRequest.CredentialsEntry
+	nil,                            // 67: funnel.v1.AccessSettings.RolesEntry
+	nil,                            // 68: funnel.v1.DNSRequest.ApprovalsEntry
 }
 var file_funnel_v1_management_proto_depIdxs = []int32{
-	63, // 0: funnel.v1.HealthResponse.deployment:type_name -> funnel.v1.DeploymentMetadata
+	65, // 0: funnel.v1.HealthResponse.deployment:type_name -> funnel.v1.DeploymentMetadata
 	6,  // 1: funnel.v1.Providers.items:type_name -> funnel.v1.Provider
-	64, // 2: funnel.v1.SaveProviderRequest.credentials:type_name -> funnel.v1.SaveProviderRequest.CredentialsEntry
+	66, // 2: funnel.v1.SaveProviderRequest.credentials:type_name -> funnel.v1.SaveProviderRequest.CredentialsEntry
 	10, // 3: funnel.v1.DiscoveredZones.items:type_name -> funnel.v1.DiscoveredZone
 	12, // 4: funnel.v1.Zones.items:type_name -> funnel.v1.Zone
-	63, // 5: funnel.v1.Node.deployment:type_name -> funnel.v1.DeploymentMetadata
+	65, // 5: funnel.v1.Node.deployment:type_name -> funnel.v1.DeploymentMetadata
 	15, // 6: funnel.v1.Nodes.items:type_name -> funnel.v1.Node
 	18, // 7: funnel.v1.Policy.rules:type_name -> funnel.v1.Rule
-	65, // 8: funnel.v1.AccessSettings.roles:type_name -> funnel.v1.AccessSettings.RolesEntry
-	57, // 9: funnel.v1.Application.rewrite:type_name -> funnel.v1.PrefixRewrite
+	67, // 8: funnel.v1.AccessSettings.roles:type_name -> funnel.v1.AccessSettings.RolesEntry
+	59, // 9: funnel.v1.Application.rewrite:type_name -> funnel.v1.PrefixRewrite
 	25, // 10: funnel.v1.Applications.items:type_name -> funnel.v1.Application
 	28, // 11: funnel.v1.AuditEvents.items:type_name -> funnel.v1.AuditEvent
 	30, // 12: funnel.v1.Vendors.items:type_name -> funnel.v1.Vendor
 	19, // 13: funnel.v1.PolicySaveResult.policy:type_name -> funnel.v1.Policy
 	18, // 14: funnel.v1.SaveRuleRequest.rule:type_name -> funnel.v1.Rule
 	40, // 15: funnel.v1.Exposure.edges:type_name -> funnel.v1.Edge
-	41, // 16: funnel.v1.Exposures.items:type_name -> funnel.v1.Exposure
-	43, // 17: funnel.v1.PeerSnapshot.peers:type_name -> funnel.v1.Peer
-	45, // 18: funnel.v1.PeerSnapshot.results:type_name -> funnel.v1.ProbeResult
-	50, // 19: funnel.v1.ZoneDNSState.records:type_name -> funnel.v1.DNSRecord
-	66, // 20: funnel.v1.DNSRequest.approvals:type_name -> funnel.v1.DNSRequest.ApprovalsEntry
-	50, // 21: funnel.v1.DNSPartitionResult.existing_records:type_name -> funnel.v1.DNSRecord
-	50, // 22: funnel.v1.DNSPartitionResult.desired_records:type_name -> funnel.v1.DNSRecord
-	53, // 23: funnel.v1.DNSResult.results:type_name -> funnel.v1.DNSPartitionResult
-	58, // 24: funnel.v1.ExposureReport.exposures:type_name -> funnel.v1.ReportedExposure
-	57, // 25: funnel.v1.ReportedExposure.rewrite:type_name -> funnel.v1.PrefixRewrite
-	58, // 26: funnel.v1.NodeReport.exposures:type_name -> funnel.v1.ReportedExposure
-	59, // 27: funnel.v1.Reports.items:type_name -> funnel.v1.NodeReport
-	61, // 28: funnel.v1.ServiceHosts.items:type_name -> funnel.v1.ServiceHost
-	22, // 29: funnel.v1.AccessSettings.RolesEntry.value:type_name -> funnel.v1.Selectors
-	0,  // 30: funnel.v1.ManagementService.WhoAmI:input_type -> funnel.v1.Empty
-	0,  // 31: funnel.v1.ManagementService.Health:input_type -> funnel.v1.Empty
-	0,  // 32: funnel.v1.ManagementService.ListProviders:input_type -> funnel.v1.Empty
-	8,  // 33: funnel.v1.ManagementService.SaveProvider:input_type -> funnel.v1.SaveProviderRequest
-	1,  // 34: funnel.v1.ManagementService.DeleteProvider:input_type -> funnel.v1.ResourceID
-	3,  // 35: funnel.v1.ManagementService.EnableProvider:input_type -> funnel.v1.EnableRequest
-	1,  // 36: funnel.v1.ManagementService.TestProvider:input_type -> funnel.v1.ResourceID
-	1,  // 37: funnel.v1.ManagementService.DiscoverZones:input_type -> funnel.v1.ResourceID
-	0,  // 38: funnel.v1.ManagementService.ListZones:input_type -> funnel.v1.Empty
-	14, // 39: funnel.v1.ManagementService.AddZone:input_type -> funnel.v1.AddZoneRequest
-	1,  // 40: funnel.v1.ManagementService.DeleteZone:input_type -> funnel.v1.ResourceID
-	1,  // 41: funnel.v1.ManagementService.TestZone:input_type -> funnel.v1.ResourceID
-	17, // 42: funnel.v1.ManagementService.ListNodes:input_type -> funnel.v1.ListNodesRequest
-	1,  // 43: funnel.v1.ManagementService.GetNode:input_type -> funnel.v1.ResourceID
-	2,  // 44: funnel.v1.ManagementService.RenameNode:input_type -> funnel.v1.RenameRequest
-	2,  // 45: funnel.v1.ManagementService.RenameApplication:input_type -> funnel.v1.RenameRequest
-	0,  // 46: funnel.v1.ManagementService.GetPolicy:input_type -> funnel.v1.Empty
-	19, // 47: funnel.v1.ManagementService.ValidatePolicy:input_type -> funnel.v1.Policy
-	20, // 48: funnel.v1.ManagementService.TestPolicy:input_type -> funnel.v1.PolicyTestRequest
-	0,  // 49: funnel.v1.ManagementService.GetAccess:input_type -> funnel.v1.Empty
-	37, // 50: funnel.v1.ManagementService.RolePolicy:input_type -> funnel.v1.RolePolicyRequest
-	0,  // 51: funnel.v1.ManagementService.GetSettings:input_type -> funnel.v1.Empty
-	0,  // 52: funnel.v1.ManagementService.ListApplications:input_type -> funnel.v1.Empty
-	0,  // 53: funnel.v1.ManagementService.ListReports:input_type -> funnel.v1.Empty
-	0,  // 54: funnel.v1.ManagementService.ListServiceHosts:input_type -> funnel.v1.Empty
-	27, // 55: funnel.v1.ManagementService.ListAudit:input_type -> funnel.v1.AuditRequest
-	0,  // 56: funnel.v1.ManagementService.ListVendors:input_type -> funnel.v1.Empty
-	19, // 57: funnel.v1.ManagementService.SavePolicy:input_type -> funnel.v1.Policy
-	19, // 58: funnel.v1.ManagementService.PreviewPolicy:input_type -> funnel.v1.Policy
-	34, // 59: funnel.v1.ManagementService.SaveRule:input_type -> funnel.v1.SaveRuleRequest
-	35, // 60: funnel.v1.ManagementService.DeleteRule:input_type -> funnel.v1.DeleteRuleRequest
-	23, // 61: funnel.v1.ManagementService.SaveAccess:input_type -> funnel.v1.AccessSettings
-	36, // 62: funnel.v1.ManagementService.SaveDefaults:input_type -> funnel.v1.DeploymentDefaults
-	39, // 63: funnel.v1.ManagementService.TestOAuth:input_type -> funnel.v1.OAuthRequest
-	39, // 64: funnel.v1.ManagementService.SaveOAuth:input_type -> funnel.v1.OAuthRequest
-	0,  // 65: funnel.v1.ManagementService.ListExposures:input_type -> funnel.v1.Empty
-	1,  // 66: funnel.v1.ManagementService.DisableNode:input_type -> funnel.v1.ResourceID
-	1,  // 67: funnel.v1.ManagementService.CleanupNode:input_type -> funnel.v1.ResourceID
-	1,  // 68: funnel.v1.ManagementService.GetPeers:input_type -> funnel.v1.ResourceID
-	47, // 69: funnel.v1.ManagementService.ProbeBackend:input_type -> funnel.v1.ProbeRequest
-	48, // 70: funnel.v1.ManagementService.SaveTailnetExposure:input_type -> funnel.v1.TailnetExposureRequest
-	55, // 71: funnel.v1.ManagementService.DeleteTailnetExposure:input_type -> funnel.v1.ResourceRevision
-	49, // 72: funnel.v1.ManagementService.AddAlias:input_type -> funnel.v1.AliasRequest
-	1,  // 73: funnel.v1.ManagementService.ZoneDNS:input_type -> funnel.v1.ResourceID
-	52, // 74: funnel.v1.ManagementService.PreviewDNS:input_type -> funnel.v1.DNSRequest
-	52, // 75: funnel.v1.ManagementService.ApplyDNS:input_type -> funnel.v1.DNSRequest
-	4,  // 76: funnel.v1.ManagementService.WhoAmI:output_type -> funnel.v1.Identity
-	5,  // 77: funnel.v1.ManagementService.Health:output_type -> funnel.v1.HealthResponse
-	7,  // 78: funnel.v1.ManagementService.ListProviders:output_type -> funnel.v1.Providers
-	6,  // 79: funnel.v1.ManagementService.SaveProvider:output_type -> funnel.v1.Provider
-	0,  // 80: funnel.v1.ManagementService.DeleteProvider:output_type -> funnel.v1.Empty
-	0,  // 81: funnel.v1.ManagementService.EnableProvider:output_type -> funnel.v1.Empty
-	9,  // 82: funnel.v1.ManagementService.TestProvider:output_type -> funnel.v1.TestResult
-	11, // 83: funnel.v1.ManagementService.DiscoverZones:output_type -> funnel.v1.DiscoveredZones
-	13, // 84: funnel.v1.ManagementService.ListZones:output_type -> funnel.v1.Zones
-	12, // 85: funnel.v1.ManagementService.AddZone:output_type -> funnel.v1.Zone
-	0,  // 86: funnel.v1.ManagementService.DeleteZone:output_type -> funnel.v1.Empty
-	9,  // 87: funnel.v1.ManagementService.TestZone:output_type -> funnel.v1.TestResult
-	16, // 88: funnel.v1.ManagementService.ListNodes:output_type -> funnel.v1.Nodes
-	15, // 89: funnel.v1.ManagementService.GetNode:output_type -> funnel.v1.Node
-	0,  // 90: funnel.v1.ManagementService.RenameNode:output_type -> funnel.v1.Empty
-	0,  // 91: funnel.v1.ManagementService.RenameApplication:output_type -> funnel.v1.Empty
-	19, // 92: funnel.v1.ManagementService.GetPolicy:output_type -> funnel.v1.Policy
-	9,  // 93: funnel.v1.ManagementService.ValidatePolicy:output_type -> funnel.v1.TestResult
-	21, // 94: funnel.v1.ManagementService.TestPolicy:output_type -> funnel.v1.PolicyTestResult
-	23, // 95: funnel.v1.ManagementService.GetAccess:output_type -> funnel.v1.AccessSettings
-	38, // 96: funnel.v1.ManagementService.RolePolicy:output_type -> funnel.v1.RolePolicyTemplate
-	24, // 97: funnel.v1.ManagementService.GetSettings:output_type -> funnel.v1.Settings
-	26, // 98: funnel.v1.ManagementService.ListApplications:output_type -> funnel.v1.Applications
-	60, // 99: funnel.v1.ManagementService.ListReports:output_type -> funnel.v1.Reports
-	62, // 100: funnel.v1.ManagementService.ListServiceHosts:output_type -> funnel.v1.ServiceHosts
-	29, // 101: funnel.v1.ManagementService.ListAudit:output_type -> funnel.v1.AuditEvents
-	31, // 102: funnel.v1.ManagementService.ListVendors:output_type -> funnel.v1.Vendors
-	32, // 103: funnel.v1.ManagementService.SavePolicy:output_type -> funnel.v1.PolicySaveResult
-	33, // 104: funnel.v1.ManagementService.PreviewPolicy:output_type -> funnel.v1.PolicyImpact
-	32, // 105: funnel.v1.ManagementService.SaveRule:output_type -> funnel.v1.PolicySaveResult
-	32, // 106: funnel.v1.ManagementService.DeleteRule:output_type -> funnel.v1.PolicySaveResult
-	23, // 107: funnel.v1.ManagementService.SaveAccess:output_type -> funnel.v1.AccessSettings
-	24, // 108: funnel.v1.ManagementService.SaveDefaults:output_type -> funnel.v1.Settings
-	9,  // 109: funnel.v1.ManagementService.TestOAuth:output_type -> funnel.v1.TestResult
-	9,  // 110: funnel.v1.ManagementService.SaveOAuth:output_type -> funnel.v1.TestResult
-	42, // 111: funnel.v1.ManagementService.ListExposures:output_type -> funnel.v1.Exposures
-	9,  // 112: funnel.v1.ManagementService.DisableNode:output_type -> funnel.v1.TestResult
-	9,  // 113: funnel.v1.ManagementService.CleanupNode:output_type -> funnel.v1.TestResult
-	46, // 114: funnel.v1.ManagementService.GetPeers:output_type -> funnel.v1.PeerSnapshot
-	44, // 115: funnel.v1.ManagementService.ProbeBackend:output_type -> funnel.v1.Probe
-	25, // 116: funnel.v1.ManagementService.SaveTailnetExposure:output_type -> funnel.v1.Application
-	9,  // 117: funnel.v1.ManagementService.DeleteTailnetExposure:output_type -> funnel.v1.TestResult
-	25, // 118: funnel.v1.ManagementService.AddAlias:output_type -> funnel.v1.Application
-	51, // 119: funnel.v1.ManagementService.ZoneDNS:output_type -> funnel.v1.ZoneDNSState
-	54, // 120: funnel.v1.ManagementService.PreviewDNS:output_type -> funnel.v1.DNSResult
-	54, // 121: funnel.v1.ManagementService.ApplyDNS:output_type -> funnel.v1.DNSResult
-	76, // [76:122] is the sub-list for method output_type
-	30, // [30:76] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	42, // 16: funnel.v1.Exposure.dns:type_name -> funnel.v1.HostnameDNSSettings
+	41, // 17: funnel.v1.Exposures.items:type_name -> funnel.v1.Exposure
+	45, // 18: funnel.v1.PeerSnapshot.peers:type_name -> funnel.v1.Peer
+	47, // 19: funnel.v1.PeerSnapshot.results:type_name -> funnel.v1.ProbeResult
+	52, // 20: funnel.v1.ZoneDNSState.records:type_name -> funnel.v1.DNSRecord
+	68, // 21: funnel.v1.DNSRequest.approvals:type_name -> funnel.v1.DNSRequest.ApprovalsEntry
+	52, // 22: funnel.v1.DNSPartitionResult.existing_records:type_name -> funnel.v1.DNSRecord
+	52, // 23: funnel.v1.DNSPartitionResult.desired_records:type_name -> funnel.v1.DNSRecord
+	55, // 24: funnel.v1.DNSResult.results:type_name -> funnel.v1.DNSPartitionResult
+	60, // 25: funnel.v1.ExposureReport.exposures:type_name -> funnel.v1.ReportedExposure
+	59, // 26: funnel.v1.ReportedExposure.rewrite:type_name -> funnel.v1.PrefixRewrite
+	60, // 27: funnel.v1.NodeReport.exposures:type_name -> funnel.v1.ReportedExposure
+	61, // 28: funnel.v1.Reports.items:type_name -> funnel.v1.NodeReport
+	63, // 29: funnel.v1.ServiceHosts.items:type_name -> funnel.v1.ServiceHost
+	22, // 30: funnel.v1.AccessSettings.RolesEntry.value:type_name -> funnel.v1.Selectors
+	0,  // 31: funnel.v1.ManagementService.WhoAmI:input_type -> funnel.v1.Empty
+	0,  // 32: funnel.v1.ManagementService.Health:input_type -> funnel.v1.Empty
+	0,  // 33: funnel.v1.ManagementService.ListProviders:input_type -> funnel.v1.Empty
+	8,  // 34: funnel.v1.ManagementService.SaveProvider:input_type -> funnel.v1.SaveProviderRequest
+	1,  // 35: funnel.v1.ManagementService.DeleteProvider:input_type -> funnel.v1.ResourceID
+	3,  // 36: funnel.v1.ManagementService.EnableProvider:input_type -> funnel.v1.EnableRequest
+	1,  // 37: funnel.v1.ManagementService.TestProvider:input_type -> funnel.v1.ResourceID
+	1,  // 38: funnel.v1.ManagementService.DiscoverZones:input_type -> funnel.v1.ResourceID
+	0,  // 39: funnel.v1.ManagementService.ListZones:input_type -> funnel.v1.Empty
+	14, // 40: funnel.v1.ManagementService.AddZone:input_type -> funnel.v1.AddZoneRequest
+	1,  // 41: funnel.v1.ManagementService.DeleteZone:input_type -> funnel.v1.ResourceID
+	1,  // 42: funnel.v1.ManagementService.TestZone:input_type -> funnel.v1.ResourceID
+	17, // 43: funnel.v1.ManagementService.ListNodes:input_type -> funnel.v1.ListNodesRequest
+	1,  // 44: funnel.v1.ManagementService.GetNode:input_type -> funnel.v1.ResourceID
+	2,  // 45: funnel.v1.ManagementService.RenameNode:input_type -> funnel.v1.RenameRequest
+	2,  // 46: funnel.v1.ManagementService.RenameApplication:input_type -> funnel.v1.RenameRequest
+	0,  // 47: funnel.v1.ManagementService.GetPolicy:input_type -> funnel.v1.Empty
+	19, // 48: funnel.v1.ManagementService.ValidatePolicy:input_type -> funnel.v1.Policy
+	20, // 49: funnel.v1.ManagementService.TestPolicy:input_type -> funnel.v1.PolicyTestRequest
+	0,  // 50: funnel.v1.ManagementService.GetAccess:input_type -> funnel.v1.Empty
+	37, // 51: funnel.v1.ManagementService.RolePolicy:input_type -> funnel.v1.RolePolicyRequest
+	0,  // 52: funnel.v1.ManagementService.GetSettings:input_type -> funnel.v1.Empty
+	0,  // 53: funnel.v1.ManagementService.ListApplications:input_type -> funnel.v1.Empty
+	0,  // 54: funnel.v1.ManagementService.ListReports:input_type -> funnel.v1.Empty
+	0,  // 55: funnel.v1.ManagementService.ListServiceHosts:input_type -> funnel.v1.Empty
+	27, // 56: funnel.v1.ManagementService.ListAudit:input_type -> funnel.v1.AuditRequest
+	0,  // 57: funnel.v1.ManagementService.ListVendors:input_type -> funnel.v1.Empty
+	19, // 58: funnel.v1.ManagementService.SavePolicy:input_type -> funnel.v1.Policy
+	19, // 59: funnel.v1.ManagementService.PreviewPolicy:input_type -> funnel.v1.Policy
+	34, // 60: funnel.v1.ManagementService.SaveRule:input_type -> funnel.v1.SaveRuleRequest
+	35, // 61: funnel.v1.ManagementService.DeleteRule:input_type -> funnel.v1.DeleteRuleRequest
+	23, // 62: funnel.v1.ManagementService.SaveAccess:input_type -> funnel.v1.AccessSettings
+	36, // 63: funnel.v1.ManagementService.SaveDefaults:input_type -> funnel.v1.DeploymentDefaults
+	39, // 64: funnel.v1.ManagementService.TestOAuth:input_type -> funnel.v1.OAuthRequest
+	39, // 65: funnel.v1.ManagementService.SaveOAuth:input_type -> funnel.v1.OAuthRequest
+	0,  // 66: funnel.v1.ManagementService.ListExposures:input_type -> funnel.v1.Empty
+	43, // 67: funnel.v1.ManagementService.SaveHostnameDNS:input_type -> funnel.v1.HostnameDNSRequest
+	1,  // 68: funnel.v1.ManagementService.DisableNode:input_type -> funnel.v1.ResourceID
+	1,  // 69: funnel.v1.ManagementService.CleanupNode:input_type -> funnel.v1.ResourceID
+	1,  // 70: funnel.v1.ManagementService.GetPeers:input_type -> funnel.v1.ResourceID
+	49, // 71: funnel.v1.ManagementService.ProbeBackend:input_type -> funnel.v1.ProbeRequest
+	50, // 72: funnel.v1.ManagementService.SaveTailnetExposure:input_type -> funnel.v1.TailnetExposureRequest
+	57, // 73: funnel.v1.ManagementService.DeleteTailnetExposure:input_type -> funnel.v1.ResourceRevision
+	51, // 74: funnel.v1.ManagementService.AddAlias:input_type -> funnel.v1.AliasRequest
+	1,  // 75: funnel.v1.ManagementService.ZoneDNS:input_type -> funnel.v1.ResourceID
+	54, // 76: funnel.v1.ManagementService.PreviewDNS:input_type -> funnel.v1.DNSRequest
+	54, // 77: funnel.v1.ManagementService.ApplyDNS:input_type -> funnel.v1.DNSRequest
+	4,  // 78: funnel.v1.ManagementService.WhoAmI:output_type -> funnel.v1.Identity
+	5,  // 79: funnel.v1.ManagementService.Health:output_type -> funnel.v1.HealthResponse
+	7,  // 80: funnel.v1.ManagementService.ListProviders:output_type -> funnel.v1.Providers
+	6,  // 81: funnel.v1.ManagementService.SaveProvider:output_type -> funnel.v1.Provider
+	0,  // 82: funnel.v1.ManagementService.DeleteProvider:output_type -> funnel.v1.Empty
+	0,  // 83: funnel.v1.ManagementService.EnableProvider:output_type -> funnel.v1.Empty
+	9,  // 84: funnel.v1.ManagementService.TestProvider:output_type -> funnel.v1.TestResult
+	11, // 85: funnel.v1.ManagementService.DiscoverZones:output_type -> funnel.v1.DiscoveredZones
+	13, // 86: funnel.v1.ManagementService.ListZones:output_type -> funnel.v1.Zones
+	12, // 87: funnel.v1.ManagementService.AddZone:output_type -> funnel.v1.Zone
+	0,  // 88: funnel.v1.ManagementService.DeleteZone:output_type -> funnel.v1.Empty
+	9,  // 89: funnel.v1.ManagementService.TestZone:output_type -> funnel.v1.TestResult
+	16, // 90: funnel.v1.ManagementService.ListNodes:output_type -> funnel.v1.Nodes
+	15, // 91: funnel.v1.ManagementService.GetNode:output_type -> funnel.v1.Node
+	0,  // 92: funnel.v1.ManagementService.RenameNode:output_type -> funnel.v1.Empty
+	0,  // 93: funnel.v1.ManagementService.RenameApplication:output_type -> funnel.v1.Empty
+	19, // 94: funnel.v1.ManagementService.GetPolicy:output_type -> funnel.v1.Policy
+	9,  // 95: funnel.v1.ManagementService.ValidatePolicy:output_type -> funnel.v1.TestResult
+	21, // 96: funnel.v1.ManagementService.TestPolicy:output_type -> funnel.v1.PolicyTestResult
+	23, // 97: funnel.v1.ManagementService.GetAccess:output_type -> funnel.v1.AccessSettings
+	38, // 98: funnel.v1.ManagementService.RolePolicy:output_type -> funnel.v1.RolePolicyTemplate
+	24, // 99: funnel.v1.ManagementService.GetSettings:output_type -> funnel.v1.Settings
+	26, // 100: funnel.v1.ManagementService.ListApplications:output_type -> funnel.v1.Applications
+	62, // 101: funnel.v1.ManagementService.ListReports:output_type -> funnel.v1.Reports
+	64, // 102: funnel.v1.ManagementService.ListServiceHosts:output_type -> funnel.v1.ServiceHosts
+	29, // 103: funnel.v1.ManagementService.ListAudit:output_type -> funnel.v1.AuditEvents
+	31, // 104: funnel.v1.ManagementService.ListVendors:output_type -> funnel.v1.Vendors
+	32, // 105: funnel.v1.ManagementService.SavePolicy:output_type -> funnel.v1.PolicySaveResult
+	33, // 106: funnel.v1.ManagementService.PreviewPolicy:output_type -> funnel.v1.PolicyImpact
+	32, // 107: funnel.v1.ManagementService.SaveRule:output_type -> funnel.v1.PolicySaveResult
+	32, // 108: funnel.v1.ManagementService.DeleteRule:output_type -> funnel.v1.PolicySaveResult
+	23, // 109: funnel.v1.ManagementService.SaveAccess:output_type -> funnel.v1.AccessSettings
+	24, // 110: funnel.v1.ManagementService.SaveDefaults:output_type -> funnel.v1.Settings
+	9,  // 111: funnel.v1.ManagementService.TestOAuth:output_type -> funnel.v1.TestResult
+	9,  // 112: funnel.v1.ManagementService.SaveOAuth:output_type -> funnel.v1.TestResult
+	44, // 113: funnel.v1.ManagementService.ListExposures:output_type -> funnel.v1.Exposures
+	42, // 114: funnel.v1.ManagementService.SaveHostnameDNS:output_type -> funnel.v1.HostnameDNSSettings
+	9,  // 115: funnel.v1.ManagementService.DisableNode:output_type -> funnel.v1.TestResult
+	9,  // 116: funnel.v1.ManagementService.CleanupNode:output_type -> funnel.v1.TestResult
+	48, // 117: funnel.v1.ManagementService.GetPeers:output_type -> funnel.v1.PeerSnapshot
+	46, // 118: funnel.v1.ManagementService.ProbeBackend:output_type -> funnel.v1.Probe
+	25, // 119: funnel.v1.ManagementService.SaveTailnetExposure:output_type -> funnel.v1.Application
+	9,  // 120: funnel.v1.ManagementService.DeleteTailnetExposure:output_type -> funnel.v1.TestResult
+	25, // 121: funnel.v1.ManagementService.AddAlias:output_type -> funnel.v1.Application
+	53, // 122: funnel.v1.ManagementService.ZoneDNS:output_type -> funnel.v1.ZoneDNSState
+	56, // 123: funnel.v1.ManagementService.PreviewDNS:output_type -> funnel.v1.DNSResult
+	56, // 124: funnel.v1.ManagementService.ApplyDNS:output_type -> funnel.v1.DNSResult
+	78, // [78:125] is the sub-list for method output_type
+	31, // [31:78] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_funnel_v1_management_proto_init() }
@@ -4939,7 +5092,7 @@ func file_funnel_v1_management_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_funnel_v1_management_proto_rawDesc), len(file_funnel_v1_management_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   67,
+			NumMessages:   69,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

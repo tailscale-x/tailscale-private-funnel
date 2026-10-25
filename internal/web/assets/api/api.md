@@ -690,6 +690,21 @@ No input fields.
 
 No input fields.
 
+### SaveHostnameDNS
+
+
+
+- RPC: `/funnel.v1.ManagementService/SaveHostnameDNS`
+- Permission: `PERMISSION_ADMIN`
+- Input: `funnel.v1.HostnameDNSRequest`
+- Output: `funnel.v1.HostnameDNSSettings`
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string |  |
+| `cloudflareProxied` | bool |  |
+| `revision` | uint64 |  |
+
 ### DisableNode
 
 
