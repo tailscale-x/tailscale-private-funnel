@@ -1,7 +1,7 @@
 # Funnel Control hostname DNS mode verification
 
-Implementation is isolated on `wip/hostname-cloudflare-proxy`, based on released
-v4.1.1. The original dirty checkout remains unchanged. No live DNS record, provider
+Release integration applies the scoped changes to the exact deployed v4.1.1
+commit and regenerates the API contracts and UI assets. The original dirty checkout remains unchanged. No live DNS record, provider
 configuration, Cloudflare SSL setting, service or identity was modified.
 
 ## Coverage
