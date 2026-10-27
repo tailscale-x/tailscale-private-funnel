@@ -48,6 +48,7 @@ type Host struct {
 	DataDir, LockPath string
 	mu                sync.Mutex
 	deviceID          string
+	http              httpClientPool
 }
 
 func NewHost(socket, dataDir string) *Host {
@@ -173,7 +174,7 @@ func (h *Host) Dial(ctx context.Context, network, address string) (net.Conn, err
 	return nil, errors.New("no usable Tailscale address for destination")
 }
 
-func (h *Host) HTTPClient() *http.Client { return HTTPClient(h.Dial) }
+func (h *Host) HTTPClient() *http.Client { return h.http.client(h.Dial) }
 func (h *Host) ListenService(string, tsnet.ServiceMode) (net.Listener, error) {
 	return nil, errors.New("host Services require direct forwarding targets")
 }
@@ -364,6 +365,7 @@ func (h *Host) RemoveService(ctx context.Context, name string, port uint16) erro
 	})
 }
 func (h *Host) Close() error {
+	h.http.closeIdle()
 	b, e := os.ReadFile(h.manifestPath())
 	if os.IsNotExist(e) {
 		return nil
