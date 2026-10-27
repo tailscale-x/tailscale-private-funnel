@@ -126,9 +126,13 @@ func TestBrowserPreview(t *testing.T) {
 			seedPeers()
 		}
 	}()
-	t.Log("Synthetic preview http://127.0.0.1:8097")
+	address := os.Getenv("PF_UI_PREVIEW_ADDR")
+	if address == "" {
+		address = "127.0.0.1:8097"
+	}
+	t.Log("Synthetic preview http://" + address)
 	h := c.controlHandler()
-	if err := http.ListenAndServe("127.0.0.1:8097", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	if err := http.ListenAndServe(address, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		node := "preview"
 		if cookie, err := r.Cookie("preview-role"); err == nil && (cookie.Value == "viewer" || cookie.Value == "operator") {
 			node = cookie.Value
