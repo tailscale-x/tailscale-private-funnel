@@ -11,10 +11,12 @@ import (
 )
 
 type ExposureRecord struct {
-	ID            string `json:"id"`
-	ApplicationID string `json:"application_id"`
-	Hostname      string `json:"hostname"`
-	Active        bool   `json:"active"`
+	ID                string `json:"id"`
+	ApplicationID     string `json:"application_id"`
+	Hostname          string `json:"hostname"`
+	Active            bool   `json:"active"`
+	CloudflareProxied bool   `json:"cloudflare_proxied"`
+	DNSRevision       uint64 `json:"dns_revision"`
 }
 
 // migrateExposures transfers only known application hostnames from node-owned
@@ -195,7 +197,7 @@ func (s *Store) Exposures() ([]ExposureRecord, error) {
 	if s.reads != nil {
 		return readCached(s, "exposures", func(b *Store) ([]ExposureRecord, error) { return b.Exposures() })
 	}
-	rows, err := s.db.Query(`SELECT id,application_id,hostname,active FROM exposures ORDER BY hostname`)
+	rows, err := s.db.Query(`SELECT e.id,e.application_id,e.hostname,e.active,COALESCE(d.cloudflare_proxied,0),COALESCE(d.revision,0) FROM exposures e LEFT JOIN hostname_dns d ON d.hostname=e.hostname ORDER BY e.hostname`)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +205,7 @@ func (s *Store) Exposures() ([]ExposureRecord, error) {
 	out := []ExposureRecord{}
 	for rows.Next() {
 		var e ExposureRecord
-		if err = rows.Scan(&e.ID, &e.ApplicationID, &e.Hostname, &e.Active); err != nil {
+		if err = rows.Scan(&e.ID, &e.ApplicationID, &e.Hostname, &e.Active, &e.CloudflareProxied, &e.DNSRevision); err != nil {
 			return nil, err
 		}
 		out = append(out, e)

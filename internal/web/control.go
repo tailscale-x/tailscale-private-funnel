@@ -2,7 +2,9 @@ package web
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -290,6 +292,30 @@ func (c *Control) reconcile(ctx context.Context, providerID, zone, ownerID strin
 	if err != nil {
 		return nil, fmt.Errorf("record ownership conflict: managed by another node; preview and approve the specific overwrite")
 	}
+	// Proxy mode is control-owned and read under the DNS mutation lock; gateway
+	// snapshots and temporary HTTPRoute membership never supply this setting.
+	var proxyProvider dns.ProxyProvider
+	var proxyChanges []dns.ProxyChange
+	proxyEnabled := false
+	if strings.HasPrefix(ownerID, "exposure:") && len(desired) > 0 {
+		exposure, e := s.Exposure(strings.TrimPrefix(ownerID, "exposure:"))
+		if e != nil && !errors.Is(e, sql.ErrNoRows) {
+			return nil, e
+		}
+		proxyEnabled = exposure.CloudflareProxied
+		if p.Provider == "cloudflare" {
+			proxyProvider, _ = provider.(dns.ProxyProvider)
+			if proxyProvider == nil {
+				return nil, fmt.Errorf("Cloudflare adapter cannot configure proxy mode")
+			}
+			proxyChanges, err = proxyProvider.ProxyChanges(ctx, zone, desired, proxyEnabled)
+			if err != nil {
+				return nil, err
+			}
+		} else if proxyEnabled {
+			return nil, fmt.Errorf("hostname proxy mode requires Cloudflare")
+		}
+	}
 	if !dryRun {
 		// A verified no-op must not delete/reinsert the ledger and fsync an audit
 		// event on every poll. Keep the provider read and exact ownership checks.
@@ -306,7 +332,7 @@ func (c *Control) reconcile(ctx context.Context, providerID, zone, ownerID strin
 		for _, count := range counts {
 			ledgerChanged = ledgerChanged || count != 0
 		}
-		if len(add) == 0 && len(remove) == 0 && !ledgerChanged && !allowUnowned {
+		if len(add) == 0 && len(remove) == 0 && len(proxyChanges) == 0 && !ledgerChanged && !allowUnowned {
 			return map[string]any{"add": 0, "remove": 0, "requires_approval": false, "existing_records": managedRecordViews(existing, allLedger, ownerID), "desired_records": recordViews(desired)}, nil
 		}
 		if err := provider.Apply(ctx, zone, add, remove); err != nil {
@@ -326,6 +352,17 @@ func (c *Control) reconcile(ctx context.Context, providerID, zone, ownerID strin
 		if err := s.ReplaceLedger(p.ID, zone, ownerID, desired); err != nil {
 			return nil, err
 		}
+		// Commit newly created RR ownership before a separate proxy update. If the
+		// Cloudflare PATCH fails, the next pass can safely retry the owned record.
+		if proxyProvider != nil {
+			proxyChanges, err = proxyProvider.ProxyChanges(ctx, zone, desired, proxyEnabled)
+			if err != nil {
+				return nil, err
+			}
+			if err = proxyProvider.ApplyProxyChanges(ctx, proxyChanges); err != nil {
+				return nil, err
+			}
+		}
 		if assignment, err := c.managedZone(zone); err == nil && assignment.ProviderID == providerID {
 			_ = s.SetJSON("zone_last_sync:"+assignment.ID, time.Now().Unix())
 		}
@@ -334,7 +371,7 @@ func (c *Control) reconcile(ctx context.Context, providerID, zone, ownerID strin
 			_ = s.Audit("dns.explicit-overwrite:"+ownerID, "administrator")
 		}
 	}
-	return map[string]any{"add": len(add), "remove": len(remove), "requires_approval": false, "existing_records": managedRecordViews(existing, allLedger, ownerID), "desired_records": recordViews(desired)}, nil
+	return map[string]any{"add": len(add), "remove": len(remove), "proxy_updates": len(proxyChanges), "requires_approval": false, "existing_records": managedRecordViews(existing, allLedger, ownerID), "desired_records": recordViews(desired)}, nil
 }
 
 type exposureInput struct {

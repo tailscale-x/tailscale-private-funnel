@@ -367,6 +367,18 @@ Required permission: `PERMISSION_VIEWER`. Request: `funnel.v1.Empty`.
 
 No input fields.
 
+## manage exposures dns save
+
+
+
+Required permission: `PERMISSION_ADMIN`. Request: `funnel.v1.HostnameDNSRequest`.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string |  |
+| `cloudflareProxied` | bool |  |
+| `revision` | uint64 |  |
+
 ## manage nodes disable
 
 
@@ -1078,6 +1090,26 @@ Flags:
       --file string             protobuf JSON input file; - reads stdin
   -h, --help                    help for add
       --hostname string         hostname
+
+Global Flags:
+      --control-url string   tailnet control URL (or XDG client.json)
+      --output string        output: table or json (default "table")
+      --timeout duration     RPC timeout (default 30s)
+```
+
+## tailscale-private-funnel manage exposures dns save
+
+```text
+Usage:
+  tailscale-private-funnel manage exposures dns save [flags]
+
+Flags:
+      --cloudflare-proxied   cloudflare_proxied
+      --dry-run              validate input without sending a mutation
+      --file string          protobuf JSON input file; - reads stdin
+  -h, --help                 help for save
+      --id string            id
+      --revision uint        revision
 
 Global Flags:
       --control-url string   tailnet control URL (or XDG client.json)

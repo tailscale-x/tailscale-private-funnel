@@ -15,7 +15,7 @@ import {
   date,
   formValues,
 } from "./components";
-import type { Application } from "./gen/funnel/v1/management_pb";
+import type { Application, Exposure } from "./gen/funnel/v1/management_pb";
 export function ExposuresPage({
   applications = false,
 }: {
@@ -37,8 +37,23 @@ export function ExposuresPage({
     enabled: applications,
     refetchInterval: 15000,
   });
+  const [dnsHost, setDNSHost] = useState<Exposure>();
+  const [proxied, setProxied] = useState(false);
+  const [dnsSaved, setDNSSaved] = useState(false);
   const [alias, setAlias] = useState<Application>();
   const qc = useQueryClient();
+  const saveDNS = useMutation({
+    mutationFn: () => api.saveHostnameDNS({
+      id: dnsHost!.id,
+      cloudflareProxied: proxied,
+      revision: dnsHost!.dns?.revision ?? 0n,
+    }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["exposures"] });
+      setDNSHost(undefined);
+      setDNSSaved(true);
+    },
+  });
   const addAlias = useMutation({
     mutationFn: (form: FormData) =>
       api.addAlias({
@@ -75,6 +90,7 @@ export function ExposuresPage({
       <ErrorMessage
         error={exposures.error || apps.error || serviceHosts.error}
       />
+      {dnsSaved ? <Alert>Hostname DNS settings saved. DNS reconciliation will apply the change.</Alert> : null}
       <Panel title={applications ? "Application Services" : "Public hostnames"}>
         <Table
           headers={[
@@ -83,6 +99,7 @@ export function ExposuresPage({
             "Backend",
             "Service",
             "Hostname readiness",
+            "DNS mode",
             "Actions",
           ]}
           empty={!exposures.isPending && !exposures.data?.items.length}
@@ -142,6 +159,14 @@ export function ExposuresPage({
                   ))}
                 </td>
                 <td>
+                  <span>{e.dns?.cloudflareProxied ? "Cloudflare proxy" : "DNS-only"}</span>
+                  {admin && (e.cloudflareProxyAvailable || e.dns?.cloudflareProxied) ? (
+                    <button className="pf-text-link block" onClick={() => {
+                      saveDNS.reset(); setDNSHost(e); setProxied(e.dns?.cloudflareProxied ?? false);
+                    }}>Configure DNS</button>
+                  ) : null}
+                </td>
+                <td>
                   {admin && app?.backendSource === "tailnet" ? (
                     <a
                       className="pf-text-link"
@@ -170,6 +195,24 @@ export function ExposuresPage({
           })}
         </Table>
       </Panel>
+      {dnsHost ? (
+        <Modal title="Hostname DNS" onClose={() => setDNSHost(undefined)}>
+          <form onSubmit={(event) => { event.preventDefault(); saveDNS.mutate(); }}>
+            <p className="pf-help break-all">{dnsHost.hostname}</p>
+            <Field label="Traffic mode">
+              <select className="pf-input" value={proxied ? "cloudflare" : "dns-only"}
+                onChange={(event) => setProxied(event.target.value === "cloudflare")}>
+                <option value="dns-only">DNS-only</option>
+                <option value="cloudflare" disabled={!dnsHost.cloudflareProxyAvailable}>Cloudflare proxy (orange cloud)</option>
+              </select>
+            </Field>
+            <p className="pf-help">This setting applies to every route and gateway using {dnsHost.hostname}.</p>
+            {proxied ? <Alert>Use Cloudflare Full (strict) TLS and a valid origin certificate. Cloudflare upload limits, caching and request timeouts apply to this hostname.</Alert> : null}
+            <Submit pending={saveDNS.isPending} label="Save DNS settings" />
+            <ErrorMessage error={saveDNS.error} />
+          </form>
+        </Modal>
+      ) : null}
       {alias ? (
         <Modal
           title={`Add alias to ${alias.name} (${alias.pathPrefix || "/"})`}

@@ -32,7 +32,8 @@ func TestBrowserPreview(t *testing.T) {
 	_ = s.SetJSON("tailnet", map[string]any{"name": "example.ts.net", "management_url": "http://control.example.ts.net:8080", "release_version": "v1.0.2", "loadbalancer_hostname": "edge.example.com"})
 	f := installDNSFixture(t, s, "example.com")
 	previous := dns.Registry["cloudflare"]
-	dns.Registry["cloudflare"] = func(map[string]string) (dns.Provider, error) { return f, nil }
+	proxyFixture := &proxyDNSFixture{fixtureDNS: f}
+	dns.Registry["cloudflare"] = func(map[string]string) (dns.Provider, error) { return proxyFixture, nil }
 	t.Cleanup(func() { dns.Registry["cloudflare"] = previous })
 	_ = s.DeleteZone("fixture", "example.com")
 	_ = s.DeleteProvider("fixture")
