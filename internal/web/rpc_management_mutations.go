@@ -177,7 +177,7 @@ func (s *managementRPC) ListExposures(ctx context.Context, _ *connect.Request[v1
 			continue
 		}
 		_, states := reader.exposureDesired(item, reader.loadExposurePolicy())
-		exposure := &v1.Exposure{Id: item.ID, ApplicationId: item.ApplicationID, Hostname: item.Hostname, Active: item.Active}
+		exposure := &v1.Exposure{Id: item.ID, ApplicationId: item.ApplicationID, Hostname: item.Hostname, Active: item.Active, Dns: hostnameDNSMessage(item), CloudflareProxyAvailable: reader.cloudflareHostname(item.Hostname)}
 		for _, edge := range states {
 			ips, _ := edge["public_ipv4"].([]string)
 			exposure.Edges = append(exposure.Edges, &v1.Edge{Id: stringValue(edge, "id", ""), Name: stringValue(edge, "name", ""), Ready: edge["ready"] == true, Healthy: edge["healthy"] == true, PolicyAllowed: edge["policy_allowed"] == true, BackendReachable: edge["backend_reachable"] == true, PublicIpv4: ips, Reason: stringValue(edge, "reason", "")})

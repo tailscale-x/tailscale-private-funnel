@@ -454,6 +454,10 @@
             "title": "name",
             "type": "string"
           },
+          "proxyUpdates": {
+            "title": "proxy_updates",
+            "type": "integer"
+          },
           "removeCount": {
             "title": "remove_count",
             "type": "integer"
@@ -1135,6 +1139,18 @@
             "title": "application_id",
             "type": "string"
           },
+          "cloudflareProxyAvailable": {
+            "title": "cloudflare_proxy_available",
+            "type": "boolean"
+          },
+          "dns": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/funnel.v1.HostnameDNSSettings"
+              }
+            ],
+            "title": "dns"
+          },
           "edges": {
             "items": {
               "$ref": "#/components/schemas/funnel.v1.Edge"
@@ -1457,6 +1473,43 @@
           }
         },
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "funnel.v1.HostnameDNSRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cloudflareProxied": {
+            "title": "cloudflare_proxied",
+            "type": "boolean"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "id",
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "title": "revision",
+            "type": "string"
+          }
+        },
+        "title": "HostnameDNSRequest",
+        "type": "object"
+      },
+      "funnel.v1.HostnameDNSSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "cloudflareProxied": {
+            "title": "cloudflare_proxied",
+            "type": "boolean"
+          },
+          "revision": {
+            "format": "int64",
+            "title": "revision",
+            "type": "string"
+          }
+        },
+        "title": "HostnameDNSSettings",
         "type": "object"
       },
       "funnel.v1.Identity": {
