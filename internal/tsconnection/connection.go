@@ -32,13 +32,12 @@ type Embedded struct {
 	closeOnce sync.Once
 	closeErr  error
 	routes    routeObserver
+	http      httpClientPool
 }
 
 func Wrap(s *tsnet.Server) *Embedded { return &Embedded{Server: s} }
 func (e *Embedded) HTTPClient() *http.Client {
-	client := e.Server.HTTPClient()
-	client.Transport.(*http.Transport).DialContext = e.Dial
-	return client
+	return e.http.client(e.Dial)
 }
 
 // Disposable workloads must retire their owned device, rather than leave a
@@ -46,6 +45,7 @@ func (e *Embedded) HTTPClient() *http.Client {
 // Persistent native identities and borrowed host daemons are never logged out.
 func (e *Embedded) Close() error {
 	e.closeOnce.Do(func() {
+		e.http.closeIdle()
 		e.closeErr = closeEmbedded(e.Server.Ephemeral, func(ctx context.Context) error {
 			api, err := e.Server.LocalClient()
 			if err != nil {

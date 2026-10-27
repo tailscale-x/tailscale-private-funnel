@@ -31,3 +31,14 @@ func (t *boundTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	return base.RoundTrip(c)
 }
+
+// Preserve client lifecycle operations through the identity-header wrapper.
+func (t *boundTransport) CloseIdleConnections() {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	if closer, ok := base.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
+}
