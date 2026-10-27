@@ -661,7 +661,7 @@ func Serve(ctx context.Context, mode string, o Options) error {
 		slog.Info("tailnet request identity", "remote", r.RemoteAddr, "node_id", p.NodeID, "hostname", p.Hostname, "login", p.Login, "groups", p.Groups, "tags", p.Tags)
 		h.ServeHTTP(w, web.WithPrincipal(web.WithIdentity(r, identity), p))
 	})
-	server := &http.Server{Handler: identityHandler}
+	server := controlHTTPServer(identityHandler)
 	go func() { <-ctx.Done(); _ = server.Shutdown(context.Background()) }()
 	fmt.Printf("control listening on tailnet %s\n", o.Listen)
 	if mode != "control" {
